@@ -1,0 +1,101 @@
+# DB 돋보기
+
+오라클 데이터베이스의 **테이블 명세서 · 쿼리 보관함 · 업무 문서**를 한곳에서 관리하는 PyQt6 데스크톱 애플리케이션입니다.
+
+> **이 저장소의 데이터는 전부 샘플입니다.**
+> 포함된 `metadata.db` 와 `attachments/` 는 기능 시연을 위해 생성한 **가상 데이터**이며,
+> 실제 운영 데이터나 실존하는 기업·기관·개인정보는 들어 있지 않습니다.
+
+---
+
+## 주요 기능
+
+| 화면 | 설명 |
+|---|---|
+| **테이블 정보** | 테이블·컬럼 명세 조회, 관계도, 조인 SQL 자동 생성, 업무별 폴더 분류 |
+| **쿼리 정보** | 계층형 쿼리 보관함, SQL 구문 강조, 즐겨찾기, 일괄 가져오기/내보내기 |
+| **문법 정보** | 오라클 문법 레퍼런스 |
+| **업무 정보** | 업무 문서 작성(서식 지원), 첨부파일 및 본문 이미지, 반복 주기 설정 |
+| **업무 달력** | 반복 업무를 월 단위 달력으로 확인 |
+| **공통코드** | 코드 그룹/상세 관리, 컬럼 자동 매핑 |
+
+---
+
+## 실행
+
+```bash
+pip install PyQt6 pandas openpyxl pillow pywin32
+python oracle_guide_app.py
+```
+
+| 패키지 | 용도 |
+|---|---|
+| PyQt6 | GUI 프레임워크 |
+| pandas / openpyxl | 엑셀 명세서 읽기 |
+| pillow | 이미지 첨부 처리, 샘플 데이터 생성 |
+| pywin32 | DRM 적용 엑셀 로드 (선택) |
+
+`oracle_guide_app.py` 와 `metadata.db` 는 **항상 같은 폴더**에 있어야 합니다.
+
+---
+
+## 샘플 데이터
+
+가상의 온라인 쇼핑몰 도메인(`SHOPDB`)으로 구성되어 있습니다.
+
+| 구분 | 내용 |
+|---|---|
+| 테이블 | 11개 (회원 / 상품 / 주문 / 결제 / 배송 / 클레임) |
+| 컬럼 | 97개 |
+| 관계 | 13건 (FK 기준) |
+| 공통코드 | 8개 그룹 / 36건 |
+| 쿼리 | 19건 (매출 집계, 정합성 점검, 재고 점검, 운영 DML, 딕셔너리) |
+| 업무 문서 | 9건 + 첨부파일 4건 + 본문 이미지 6건 |
+
+샘플을 다시 만들려면:
+
+```bash
+python sample_data/build_sample.py
+```
+
+> `build_sample.py` 는 기존 `metadata.db` 와 `attachments/` 를 **지우고 처음부터 새로 만듭니다.**
+> 실제 데이터를 넣어 쓰고 있다면 실행하지 마세요.
+
+---
+
+## 실행 파일 빌드
+
+```bash
+pip install pyinstaller
+pyinstaller --noconsole --onefile --icon=app_icon.ico --name="DB돋보기" oracle_guide_app.py
+```
+
+빌드 결과는 `dist/` 에 생성됩니다. exe 와 `metadata.db` 를 같은 폴더에 두고 실행하세요.
+아이콘은 소스에 base64로 내장되어 있어 별도 이미지 파일 없이도 표시됩니다.
+
+---
+
+## 저장소 구성
+
+```
+oracle_guide_app.py      메인 애플리케이션
+biz_guide_app.py         업무 가이드 애플리케이션
+metadata.db              샘플 데이터 (SQLite)
+attachments/             업무 문서 첨부파일 · 이미지 (샘플)
+sample_data/
+  build_sample.py        샘플 데이터 생성 스크립트
+dummy_csv/               명세서 가져오기 예시 CSV
+hwp_export/              HWP 내보내기 (Java + hwplib)
+app_icon.ico             애플리케이션 아이콘
+```
+
+---
+
+## 데이터 취급 주의
+
+`metadata.db` 와 `attachments/` 는 앱을 실제로 사용하는 순간 **실 업무 데이터로 덮입니다.**
+이 저장소에 커밋하기 전 반드시 `git status` 로 두 항목의 변경 여부를 확인하세요.
+
+SQLite 는 `DELETE` 로 지운 데이터를 파일에서 즉시 제거하지 않습니다.
+운영 데이터를 담았던 `.db` 파일은 레코드를 지웠더라도 **파일 내부에 원문이 남아 복구될 수 있으므로**,
+공개 저장소에 올리지 말고 `sample_data/build_sample.py` 로 새로 만든 파일을 사용하세요.

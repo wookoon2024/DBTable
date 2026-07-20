@@ -1,0 +1,28 @@
+-- [샘플] 휴면회원 전환 수동 실행 스크립트
+-- ※ 데모용 샘플입니다. 실제 운영 스크립트가 아닙니다.
+-- 배치(매일 03:00) 실패 시에만 사용한다.
+
+-- 1) 대상 건수 확인 (반드시 먼저 실행)
+SELECT COUNT(*) AS TARGET_CNT
+  FROM TB_MEMBER
+ WHERE MEMBER_STAT   = '10'
+   AND LAST_LOGIN_DT < ADD_MONTHS(SYSDATE, -12);
+
+-- 2) 대상 목록 백업
+CREATE TABLE TMP_IDLE_BACKUP_20260720 AS
+SELECT MEMBER_ID, MEMBER_STAT, LAST_LOGIN_DT, SYSDATE AS BACKUP_DT
+  FROM TB_MEMBER
+ WHERE MEMBER_STAT   = '10'
+   AND LAST_LOGIN_DT < ADD_MONTHS(SYSDATE, -12);
+
+-- 3) 전환
+UPDATE TB_MEMBER
+   SET MEMBER_STAT = '20'
+     , UPD_DT      = SYSDATE
+ WHERE MEMBER_STAT   = '10'
+   AND LAST_LOGIN_DT < ADD_MONTHS(SYSDATE, -12);
+
+-- 4) 반영 건수가 1) 과 일치하는지 확인 후
+-- COMMIT;
+-- 불일치 시
+-- ROLLBACK;
