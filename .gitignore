@@ -36,6 +36,7 @@ tables.db
 # ─────────────────────────────────────────────────────────────
 scratch/
 backup_*/
+release/
 *.bak
 *.log
 error_out.txt

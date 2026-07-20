@@ -8,6 +8,24 @@
 
 ---
 
+## 다운로드
+
+### [⬇️ 실행 파일 내려받기 (Windows 64bit)](https://github.com/wookoon2024/DBTable/releases/latest)
+
+파이썬 설치 없이 바로 실행할 수 있는 단독 실행 파일입니다.
+
+1. 위 링크에서 `DB돋보기_vX.X_win64.zip` 을 받습니다.
+2. 원하는 폴더에 압축을 풉니다.
+3. `DB돋보기.exe` 를 실행합니다.
+
+> **처음 실행하면 빈 상태로 시작합니다.**
+> 이 저장소의 샘플 데이터를 보시려면 [`metadata.db`](metadata.db) 와 [`attachments/`](attachments) 를
+> 내려받아 exe 와 같은 폴더에 두고 실행하세요.
+
+> 압축 해제 없이 zip 안에서 바로 실행하면 데이터 파일이 만들어지지 않습니다. 반드시 풀어서 쓰세요.
+
+---
+
 ## 주요 기능
 
 | 화면 | 설명 |
@@ -29,7 +47,7 @@
 
 ---
 
-## 실행
+## 소스로 실행
 
 ```bash
 pip install PyQt6 pandas openpyxl pillow pywin32
@@ -86,10 +104,10 @@ python sample_data/build_sample.py
 
 ```bash
 pip install pyinstaller
-pyinstaller --noconsole --onefile --icon=app_icon.ico --name="DB돋보기" oracle_guide_app.py
+pyinstaller --noconfirm DB돋보기.spec
 ```
 
-빌드 결과는 `dist/` 에 생성됩니다. exe 와 `metadata.db` 를 같은 폴더에 두고 실행하세요.
+빌드 결과는 `dist/DB돋보기.exe` 에 생성됩니다. exe 와 `metadata.db` 를 같은 폴더에 두고 실행하세요.
 아이콘은 소스에 base64로 내장되어 있어 별도 이미지 파일 없이도 표시됩니다.
 
 ---
@@ -105,6 +123,7 @@ sample_data/
   build_sample.py        샘플 데이터 생성 스크립트
 dummy_csv/               명세서 가져오기 예시 CSV
 hwp_export/              HWP 내보내기 (Java + hwplib)
+DB돋보기.spec            PyInstaller 빌드 설정
 app_icon.ico             애플리케이션 아이콘
 ```
 
