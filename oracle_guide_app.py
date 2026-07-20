@@ -13826,48 +13826,78 @@ class OracleGuideApp(QMainWindow):
 
         top_layout.addStretch()
 
-        btn_setup = QPushButton("⚙️ 공통코드 변환 설정")
-        btn_setup.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_setup.setStyleSheet("""
+        # 설정 메뉴 (톱니바퀴) - 데이터 불러오기 / 공통코드 변환 설정 / 기본 정보 초기화
+        self.settings_menu = QMenu(self)
+        self.settings_menu.setStyleSheet("""
+            QMenu {
+                background-color: #FFFFFF;
+                border: 1px solid #CBD5E1;
+                border-radius: 6px;
+                padding: 6px;
+                font-size: 12px;
+                color: #334155;
+            }
+            QMenu::item {
+                padding: 7px 22px 7px 14px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #EFF6FF;
+                color: #1D4ED8;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #E2E8F0;
+                margin: 5px 8px;
+            }
+        """)
+
+        act_import = QAction("📁  데이터 불러오기", self)
+        act_import.setStatusTip("엑셀/CSV 명세서를 읽어 테이블·컬럼·관계 정보를 적재합니다.")
+        act_import.triggered.connect(self.on_import_clicked)
+        self.settings_menu.addAction(act_import)
+
+        act_code_setup = QAction("🔤  공통코드 변환 설정", self)
+        act_code_setup.setStatusTip("공통코드 그룹과 컬럼의 매핑 규칙을 설정합니다.")
+        act_code_setup.triggered.connect(self.on_code_setup_clicked)
+        self.settings_menu.addAction(act_code_setup)
+
+        self.settings_menu.addSeparator()
+
+        act_reset = QAction("♻️  기본 정보 초기화", self)
+        act_reset.setStatusTip("모든 데이터를 지우고 기본 샘플 데이터로 되돌립니다.")
+        act_reset.triggered.connect(self.on_reset_sample_data)
+        self.settings_menu.addAction(act_reset)
+
+        btn_settings = QPushButton("⚙️")
+        btn_settings.setToolTip("설정")
+        btn_settings.setFixedSize(38, 28)
+        btn_settings.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_settings.setMenu(self.settings_menu)
+        btn_settings.setStyleSheet("""
             QPushButton {
                 background-color: #FFFFFF;
                 color: #475569;
                 border: 1px solid #CBD5E1;
-                font-weight: bold;
-                font-size: 11px;
-                padding: 5px 12px;
+                font-size: 13px;
                 border-radius: 4px;
-                margin-right: 4px;
+                padding-left: 2px;
             }
             QPushButton:hover {
                 background-color: #F1F5F9;
-                color: #1E293B;
-            }
-        """)
-        btn_setup.clicked.connect(self.on_code_setup_clicked)
-        top_layout.addWidget(btn_setup)
-
-        btn_import = QPushButton("📁 데이터 불러오기")
-        btn_import.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_import.setStyleSheet("""
-            QPushButton {
-                background-color: #2563EB;
-                color: #FFFFFF;
-                border: none;
-                font-weight: bold;
-                font-size: 11px;
-                padding: 5px 12px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #1D4ED8;
+                border-color: #2563EB;
             }
             QPushButton:pressed {
-                background-color: #1E40AF;
+                background-color: #E2E8F0;
+            }
+            QPushButton::menu-indicator {
+                subcontrol-origin: padding;
+                subcontrol-position: right center;
+                right: 4px;
+                width: 8px;
             }
         """)
-        btn_import.clicked.connect(self.on_import_clicked)
-        top_layout.addWidget(btn_import)
+        top_layout.addWidget(btn_settings)
         top_bar.setLayout(top_layout)
         
         main_layout.addWidget(top_bar, 0)
@@ -15852,6 +15882,109 @@ class OracleGuideApp(QMainWindow):
     def on_code_setup_clicked(self):
         dialog = CommonCodeSetupDialog(self.db_mgr, self)
         dialog.exec()
+
+    def on_reset_sample_data(self):
+        """모든 데이터를 지우고 기본 샘플 데이터로 되돌린다."""
+        import importlib.util
+
+        script_path = os.path.join(base_dir, "sample_data", "build_sample.py")
+        if not os.path.exists(script_path):
+            QMessageBox.warning(
+                self, "초기화 불가",
+                "샘플 생성 스크립트를 찾을 수 없습니다.\n\n"
+                f"필요 경로: {script_path}\n\n"
+                "저장소의 sample_data 폴더를 프로그램과 같은 위치에 두고 다시 시도하세요.")
+            return
+
+        answer = QMessageBox.warning(
+            self, "기본 정보 초기화",
+            "현재 저장된 <b>모든 데이터가 삭제</b>되고 기본 샘플 데이터로 대체됩니다."
+            "<br><br>"
+            "· 테이블·컬럼·관계 명세<br>"
+            "· 보관된 쿼리 전체<br>"
+            "· 업무 문서 및 첨부파일<br>"
+            "· 공통코드 설정<br><br>"
+            "<b>이 작업은 되돌릴 수 없습니다.</b> 계속하시겠습니까?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        # 실수 방지를 위해 한 번 더 확인
+        confirm_text, ok = QInputDialog.getText(
+            self, "초기화 확인",
+            "정말 초기화하려면 아래에 <b>초기화</b> 를 입력하세요.")
+        if not ok or confirm_text.strip() != "초기화":
+            QMessageBox.information(self, "취소됨", "초기화가 취소되었습니다.")
+            return
+
+        # 되돌릴 수 없으므로 기존 DB를 백업해 둔다
+        backup_path = None
+        try:
+            if os.path.exists(DB_FILE):
+                stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                backup_path = os.path.join(base_dir, f"metadata_backup_{stamp}.db")
+                shutil.copy2(DB_FILE, backup_path)
+        except Exception as e:
+            answer = QMessageBox.question(
+                self, "백업 실패",
+                f"기존 데이터 백업에 실패했습니다.\n\n{e}\n\n"
+                "백업 없이 그대로 진행하시겠습니까?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+
+        QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
+        try:
+            spec = importlib.util.spec_from_file_location("build_sample", script_path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            module.build()
+        except ImportError as e:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.critical(
+                self, "초기화 실패",
+                f"샘플 생성에 필요한 패키지가 없습니다.\n\n{e}\n\n"
+                "아래 명령으로 설치 후 다시 시도하세요.\n\n    pip install pillow")
+            return
+        except Exception as e:
+            QApplication.restoreOverrideCursor()
+            msg = f"샘플 데이터 생성 중 오류가 발생했습니다.\n\n{e}"
+            if backup_path:
+                msg += f"\n\n기존 데이터는 아래에 백업되어 있습니다.\n{backup_path}"
+            QMessageBox.critical(self, "초기화 실패", msg)
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        msg = "기본 샘플 데이터로 초기화되었습니다."
+        if backup_path:
+            msg += f"\n\n초기화 전 데이터는 아래 파일로 백업했습니다.\n{os.path.basename(backup_path)}"
+        msg += "\n\n변경 내용을 적용하려면 프로그램을 다시 시작해야 합니다.\n지금 다시 시작할까요?"
+
+        answer = QMessageBox.question(
+            self, "초기화 완료", msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes)
+        if answer == QMessageBox.StandardButton.Yes:
+            self._restart_application()
+
+    def _restart_application(self):
+        """현재 프로세스를 종료하고 프로그램을 다시 실행한다."""
+        import subprocess
+        try:
+            if getattr(sys, "frozen", False):
+                args = [sys.executable]
+            else:
+                args = [sys.executable, os.path.abspath(sys.argv[0])] + sys.argv[1:]
+            subprocess.Popen(args, cwd=base_dir, close_fds=True)
+        except Exception as e:
+            QMessageBox.warning(
+                self, "재시작 실패",
+                f"자동 재시작에 실패했습니다. 프로그램을 직접 다시 실행해 주세요.\n\n{e}")
+            return
+        QApplication.quit()
 
     def on_task_tree_export(self):
         """업무별 분류 구조를 체크박스 트리로 선택 후 Excel로 내보내기"""
