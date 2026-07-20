@@ -83,12 +83,8 @@ python oracle_guide_app.py
 
 ### 샘플로 되돌리기
 
-```bash
-python sample_data/build_sample.py
-```
-
-> 기존 `metadata.db` 와 `attachments/` 를 **지우고 처음부터 새로 만듭니다.**
-> 실제 데이터를 넣어 쓰고 있다면 실행하지 마세요.
+이 저장소의 [`metadata.db`](metadata.db) 와 [`attachments/`](attachments) 를 내려받아
+기존 파일에 덮어쓰면 됩니다.
 
 ### 전부 비우기
 
@@ -121,11 +117,8 @@ pyinstaller --noconfirm DB돋보기.spec
 oracle_guide_app.py      메인 애플리케이션
 metadata.db              샘플 데이터 (SQLite)
 attachments/             업무 문서 첨부파일 · 이미지 (샘플)
-sample_data/
-  build_sample.py        샘플 데이터 생성 스크립트
 DB돋보기.spec            PyInstaller 빌드 설정
 app_icon.ico             애플리케이션 아이콘
-run_app.bat              실행 배치 파일
 ```
 
 ---
@@ -136,5 +129,7 @@ run_app.bat              실행 배치 파일
 이 저장소에 커밋하기 전 반드시 `git status` 로 두 항목의 변경 여부를 확인하세요.
 
 SQLite 는 `DELETE` 로 지운 데이터를 파일에서 즉시 제거하지 않습니다.
-운영 데이터를 담았던 `.db` 파일은 레코드를 지웠더라도 **파일 내부에 원문이 남아 복구될 수 있으므로**,
-공개 저장소에 올리지 말고 `sample_data/build_sample.py` 로 새로 만든 파일을 사용하세요.
+운영 데이터를 담았던 `.db` 파일은 레코드를 지웠더라도 **파일 내부에 원문이 남아 복구될 수 있습니다.**
+공개 저장소에 올리지 마세요.
+
+앱의 **기본 정보 초기화** 는 삭제 후 `VACUUM` 까지 수행하므로 이 문제가 없습니다.
