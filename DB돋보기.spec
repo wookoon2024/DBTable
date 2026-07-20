@@ -1,4 +1,19 @@
 # -*- mode: python ; coding: utf-8 -*-
+#
+# PyInstaller 빌드 설정.  빌드: pyinstaller --noconfirm DB돋보기.spec
+#
+# 이 파일 없이 `pyinstaller oracle_guide_app.py` 로 빌드하면 안 된다.
+# 아래 두 가지를 하지 않으면 결과물이 망가진다.
+#
+#   1. excludes
+#      개발 PC에 torch, scipy, sklearn 등이 깔려 있으면 PyInstaller 가
+#      전부 끌어안는다. torch 만으로도 수 GB 라 76MB 짜리 exe 가 수 GB 로
+#      부푼다. 특히 PySide6 / PyQt5 는 PyQt6 와 함께 번들되면 Qt 바인딩이
+#      충돌해 실행 자체가 깨진다.
+#
+#   2. collect_data_files('hwpx')
+#      python-hwpx 의 템플릿 데이터가 빠지면 HWPX 내보내기가 동작하지 않는다.
+#
 from PyInstaller.utils.hooks import collect_data_files
 
 datas = []

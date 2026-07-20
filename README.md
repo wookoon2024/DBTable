@@ -35,7 +35,7 @@
 <summary>파일 검증 (SHA-256)</summary>
 
 ```
-4bfddd2bb79ad3c1d8a93681b0f62f5be9bb7787223d8dc797584da13688499a  DB돋보기.exe
+f1f403f3bf591a18522b43d5b74dd7b18fa6c9ecfed1302c4b0a0565c93b41ef  DB돋보기.exe
 ```
 
 PowerShell 에서 확인:
@@ -132,7 +132,14 @@ pyinstaller --noconfirm DB돋보기.spec
 ```
 
 빌드 결과는 `dist/DB돋보기.exe` 에 생성됩니다. exe 와 `metadata.db` 를 같은 폴더에 두고 실행하세요.
-아이콘은 소스에 base64로 내장되어 있어 별도 이미지 파일 없이도 표시됩니다.
+
+> **반드시 `DB돋보기.spec` 을 사용하세요.**
+> 이 파일에는 불필요한 대용량 패키지(torch, scipy 등)를 제외하고
+> `python-hwpx` 데이터를 포함시키는 설정이 들어 있습니다.
+> spec 없이 빌드하면 exe 가 수 GB 로 부풀거나 Qt 바인딩 충돌로 실행되지 않습니다.
+
+앱 창에 표시되는 아이콘은 소스에 base64 로 내장되어 있습니다.
+`app_icon.ico` 는 **exe 파일 자체의 아이콘**용으로 빌드 시에만 쓰입니다.
 
 배포용 zip 만들기 (PowerShell):
 
@@ -152,8 +159,8 @@ Compress-Archive -Path dist\DB돋보기.exe `
 oracle_guide_app.py      메인 애플리케이션
 metadata.db              샘플 데이터 (SQLite)
 attachments/             업무 문서 첨부파일 · 이미지 (샘플)
-DB돋보기.spec            PyInstaller 빌드 설정
-app_icon.ico             애플리케이션 아이콘
+DB돋보기.spec            PyInstaller 빌드 설정 (빌드 시 필수)
+app_icon.ico             exe 파일 아이콘 (빌드 시 사용)
 ```
 
 ---
