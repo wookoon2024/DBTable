@@ -14,15 +14,40 @@
 
 파이썬 설치 없이 바로 실행할 수 있는 단독 실행 파일입니다.
 
-1. 위 링크에서 `DB돋보기_vX.X_win64.zip` 을 받습니다.
-2. 원하는 폴더에 압축을 풉니다.
+| | |
+|---|---|
+| 파일 | `DB돋보기_v1.0_win64.zip` |
+| 크기 | 75.9 MB (압축 해제 시 76.5 MB) |
+| 구성 | `DB돋보기.exe` 단일 파일 |
+| 요구 사항 | Windows 10 이상 64bit · 별도 설치 불필요 |
+
+**사용법**
+
+1. 위 링크에서 zip 을 받습니다.
+2. **원하는 폴더에 압축을 풉니다.** (zip 안에서 바로 실행하면 데이터가 저장되지 않습니다)
 3. `DB돋보기.exe` 를 실행합니다.
 
-> **처음 실행하면 빈 상태로 시작합니다.**
-> 이 저장소의 샘플 데이터를 보시려면 [`metadata.db`](metadata.db) 와 [`attachments/`](attachments) 를
-> 내려받아 exe 와 같은 폴더에 두고 실행하세요.
+**첫 실행 시 데이터가 비어 있습니다.** exe 만 들어 있으므로, 실행하면 옆에 빈 `metadata.db` 가 새로 만들어집니다.
+이 저장소의 샘플 데이터를 보시려면 [`metadata.db`](metadata.db) 와 [`attachments/`](attachments) 를
+내려받아 **exe 와 같은 폴더**에 두고 실행하세요.
 
-> 압축 해제 없이 zip 안에서 바로 실행하면 데이터 파일이 만들어지지 않습니다. 반드시 풀어서 쓰세요.
+<details>
+<summary>파일 검증 (SHA-256)</summary>
+
+```
+4bfddd2bb79ad3c1d8a93681b0f62f5be9bb7787223d8dc797584da13688499a  DB돋보기.exe
+```
+
+PowerShell 에서 확인:
+
+```powershell
+Get-FileHash .\DB돋보기.exe -Algorithm SHA256
+```
+
+</details>
+
+> 코드 서명이 되어 있지 않아 Windows SmartScreen 경고가 뜰 수 있습니다.
+> **추가 정보 → 실행** 을 눌러 진행하세요.
 
 ---
 
@@ -108,6 +133,16 @@ pyinstaller --noconfirm DB돋보기.spec
 
 빌드 결과는 `dist/DB돋보기.exe` 에 생성됩니다. exe 와 `metadata.db` 를 같은 폴더에 두고 실행하세요.
 아이콘은 소스에 base64로 내장되어 있어 별도 이미지 파일 없이도 표시됩니다.
+
+배포용 zip 만들기 (PowerShell):
+
+```powershell
+Compress-Archive -Path dist\DB돋보기.exe `
+                 -DestinationPath release\DB돋보기_v1.0_win64.zip `
+                 -CompressionLevel Optimal
+```
+
+> onefile 실행 파일은 이미 내부 압축이 적용되어 있어, zip 으로 묶어도 용량은 거의 줄지 않습니다.
 
 ---
 
