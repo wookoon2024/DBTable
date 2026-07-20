@@ -7079,9 +7079,21 @@ class DatabaseManager:
             )
             """)
             
-            # 카테고리 & 쿼리 샘플 시딩 (비어 있는 경우)
+            # app_metadata 를 먼저 만들어 둔다 (기본 시딩 여부 판단에 사용)
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS app_metadata (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+            """)
+            # '기본 정보 초기화'로 비운 DB에 예시 데이터가 되살아나지 않도록,
+            # 기본 시딩은 seeded 플래그가 없을 때(최초 1회)만 수행한다.
+            cursor.execute("SELECT 1 FROM app_metadata WHERE key = 'seeded'")
+            already_seeded = cursor.fetchone() is not None
+
+            # 카테고리 & 쿼리 샘플 시딩 (최초 1회, 비어 있는 경우)
             cursor.execute("SELECT COUNT(*) FROM query_categories")
-            if cursor.fetchone()[0] == 0:
+            if not already_seeded and cursor.fetchone()[0] == 0:
                 now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 cursor.execute("INSERT OR IGNORE INTO query_categories (category_name, created_at) VALUES (?, ?)", ("기본 조회 쿼리", now_str))
                 cursor.execute("INSERT OR IGNORE INTO query_categories (category_name, created_at) VALUES (?, ?)", ("자주 쓰는 DML", now_str))
@@ -7222,18 +7234,18 @@ class DatabaseManager:
             )
             """)
             
-            # COMMON_CODE_MASTER 데이터 시딩
+            # COMMON_CODE_MASTER 데이터 시딩 (최초 1회)
             cursor.execute("SELECT COUNT(*) FROM COMMON_CODE_MASTER")
-            if cursor.fetchone()[0] == 0:
+            if not already_seeded and cursor.fetchone()[0] == 0:
                 master_data = [
                     ('USER_STATUS_GRP', 'USER_STATUS', '사용자상태그룹', 'Y', 'SCOTT'),
                     ('BOARD_TYPE_GRP', 'BOARD_TYPE', '게시판유형그룹', 'Y', 'SCOTT')
                 ]
                 cursor.executemany("INSERT INTO COMMON_CODE_MASTER VALUES (?, ?, ?, ?, ?)", master_data)
                 
-            # COMMON_CODE_SUB 데이터 시딩
+            # COMMON_CODE_SUB 데이터 시딩 (최초 1회)
             cursor.execute("SELECT COUNT(*) FROM COMMON_CODE_SUB")
-            if cursor.fetchone()[0] == 0:
+            if not already_seeded and cursor.fetchone()[0] == 0:
                 sub_data = [
                     ('USER_STATUS_GRP', '10', '정상', '정상 사용중', 'Y', 1),
                     ('USER_STATUS_GRP', '20', '정지', '일시 정지', 'Y', 2),
@@ -7245,7 +7257,7 @@ class DatabaseManager:
                     ('BOARD_TYPE_GRP', 'GALLERY', '갤러리', '이미지 게시판', 'Y', 4)
                 ]
                 cursor.executemany("INSERT INTO COMMON_CODE_SUB VALUES (?, ?, ?, ?, ?, ?)", sub_data)
-            
+
             # 8. 기본 쿼리 템플릿 초기화 (app_metadata 테이블 활용)
             default_query_columns = """SELECT A.TABLE_NAME AS "테이블명", C.COMMENTS AS "테이블한글명", A.COLUMN_NAME AS "컬럼명", B.COMMENTS AS "컬럼한글명", A.DATA_TYPE AS "데이터타입", A.DATA_LENGTH AS "길이", A.NULLABLE AS "정널여부", CASE WHEN D.COLUMN_NAME IS NOT NULL THEN 'Y' ELSE 'N' END AS "pk여부" FROM ALL_TAB_COLUMNS A LEFT JOIN ALL_COL_COMMENTS B ON A.OWNER = B.OWNER AND A.TABLE_NAME = B.TABLE_NAME AND A.COLUMN_NAME = B.COLUMN_NAME LEFT JOIN ALL_TAB_COMMENTS C ON A.OWNER = C.OWNER AND A.TABLE_NAME = C.TABLE_NAME LEFT JOIN (SELECT DISTINCT CC.OWNER, CC.TABLE_NAME, CC.COLUMN_NAME FROM ALL_CONSTRAINTS C JOIN ALL_CONS_COLUMNS CC ON C.OWNER = CC.OWNER AND C.CONSTRAINT_NAME = CC.CONSTRAINT_NAME WHERE C.CONSTRAINT_TYPE = 'P') D ON A.OWNER = D.OWNER AND A.TABLE_NAME = D.TABLE_NAME AND A.COLUMN_NAME = D.COLUMN_NAME WHERE A.OWNER = '{schema_name}' ORDER BY A.TABLE_NAME, A.COLUMN_ID;"""
             
@@ -7275,9 +7287,9 @@ class DatabaseManager:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_common_codes_group ON common_codes(code_group_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_common_codes_col ON common_codes(column_name)")
 
-            # 명세표 테이블(tables)에 공통코드 테이블이 없는 경우 수동 시딩 보장
+            # 명세표 테이블(tables)에 공통코드 테이블이 없는 경우 수동 시딩 보장 (최초 1회)
             cursor.execute("SELECT COUNT(*) FROM tables WHERE table_name = 'COMMON_CODE_MASTER'")
-            if cursor.fetchone()[0] == 0:
+            if not already_seeded and cursor.fetchone()[0] == 0:
                 now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 cursor.execute("INSERT OR IGNORE INTO tables (table_name, table_ko_name, is_favorite, updated_at) VALUES ('COMMON_CODE_MASTER', '공통코드마스터', 0, ?)", (now_str,))
                 cursor.execute("INSERT OR IGNORE INTO tables (table_name, table_ko_name, is_favorite, updated_at) VALUES ('COMMON_CODE_SUB', '공통코드상세', 0, ?)", (now_str,))
@@ -7322,10 +7334,10 @@ class DatabaseManager:
             """)
             conn.commit()
 
-            # 테이블 목록이 비어 있으면 자동 샘플 데이터 시딩
+            # 테이블 목록이 비어 있으면 자동 샘플 데이터 시딩 (최초 1회)
             cursor.execute("SELECT COUNT(*) FROM tables")
             count = cursor.fetchone()[0]
-            if count == 0:
+            if not already_seeded and count == 0:
                 now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 # 1. tables
                 sample_tables = [
@@ -7393,6 +7405,13 @@ class DatabaseManager:
                     (now_str,)
                 )
                 conn.commit()
+
+            # 기본 시딩을 마쳤음을 표시한다.
+            # '기본 정보 초기화'로 비운 DB에는 이 플래그가 남아 있으므로
+            # 재기동해도 위의 예시 데이터가 다시 채워지지 않는다.
+            cursor.execute(
+                "INSERT OR REPLACE INTO app_metadata (key, value) VALUES ('seeded', 'Y')")
+            conn.commit()
 
             # 9. 컬럼명 매핑 자동 마이그레이션 (동일 컬럼명 공통코드 자동 연동)
             cursor.execute("""
@@ -13864,14 +13883,13 @@ class OracleGuideApp(QMainWindow):
 
         self.settings_menu.addSeparator()
 
-        act_reset = QAction("♻️  기본 정보 초기화", self)
-        act_reset.setStatusTip("모든 데이터를 지우고 기본 샘플 데이터로 되돌립니다.")
-        act_reset.triggered.connect(self.on_reset_sample_data)
+        act_reset = QAction("🗑️  기본 정보 초기화", self)
+        act_reset.setStatusTip("저장된 모든 데이터를 삭제하고 빈 상태로 되돌립니다.")
+        act_reset.triggered.connect(self.on_reset_all_data)
         self.settings_menu.addAction(act_reset)
 
-        btn_settings = QPushButton("⚙️")
+        btn_settings = QPushButton("⚙️ 설정")
         btn_settings.setToolTip("설정")
-        btn_settings.setFixedSize(38, 28)
         btn_settings.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         btn_settings.setMenu(self.settings_menu)
         btn_settings.setStyleSheet("""
@@ -13879,9 +13897,10 @@ class OracleGuideApp(QMainWindow):
                 background-color: #FFFFFF;
                 color: #475569;
                 border: 1px solid #CBD5E1;
-                font-size: 13px;
+                font-weight: bold;
+                font-size: 11px;
+                padding: 5px 22px 5px 12px;
                 border-radius: 4px;
-                padding-left: 2px;
             }
             QPushButton:hover {
                 background-color: #F1F5F9;
@@ -15883,27 +15902,20 @@ class OracleGuideApp(QMainWindow):
         dialog = CommonCodeSetupDialog(self.db_mgr, self)
         dialog.exec()
 
-    def on_reset_sample_data(self):
-        """모든 데이터를 지우고 기본 샘플 데이터로 되돌린다."""
-        import importlib.util
+    # 초기화 시 비우지 않는 테이블 (스키마 관리용)
+    RESET_KEEP_TABLES = {"sqlite_sequence"}
 
-        script_path = os.path.join(base_dir, "sample_data", "build_sample.py")
-        if not os.path.exists(script_path):
-            QMessageBox.warning(
-                self, "초기화 불가",
-                "샘플 생성 스크립트를 찾을 수 없습니다.\n\n"
-                f"필요 경로: {script_path}\n\n"
-                "저장소의 sample_data 폴더를 프로그램과 같은 위치에 두고 다시 시도하세요.")
-            return
-
+    def on_reset_all_data(self):
+        """저장된 모든 데이터를 지우고 빈 상태로 되돌린다."""
         answer = QMessageBox.warning(
             self, "기본 정보 초기화",
-            "현재 저장된 <b>모든 데이터가 삭제</b>되고 기본 샘플 데이터로 대체됩니다."
+            "저장된 <b>모든 데이터가 삭제</b>되고 아무것도 없는 빈 상태가 됩니다."
             "<br><br>"
             "· 테이블·컬럼·관계 명세<br>"
             "· 보관된 쿼리 전체<br>"
             "· 업무 문서 및 첨부파일<br>"
-            "· 공통코드 설정<br><br>"
+            "· 공통코드 및 변환 설정<br>"
+            "· 최근 조회 이력<br><br>"
             "<b>이 작업은 되돌릴 수 없습니다.</b> 계속하시겠습니까?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Cancel)
@@ -15918,13 +15930,16 @@ class OracleGuideApp(QMainWindow):
             QMessageBox.information(self, "취소됨", "초기화가 취소되었습니다.")
             return
 
-        # 되돌릴 수 없으므로 기존 DB를 백업해 둔다
-        backup_path = None
+        # 되돌릴 수 없으므로 DB와 첨부파일을 백업해 둔다
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_dir = os.path.join(base_dir, f"backup_{stamp}")
+        attach_dir = os.path.join(base_dir, "attachments")
         try:
+            os.makedirs(backup_dir, exist_ok=True)
             if os.path.exists(DB_FILE):
-                stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                backup_path = os.path.join(base_dir, f"metadata_backup_{stamp}.db")
-                shutil.copy2(DB_FILE, backup_path)
+                shutil.copy2(DB_FILE, os.path.join(backup_dir, "metadata.db"))
+            if os.path.isdir(attach_dir):
+                shutil.copytree(attach_dir, os.path.join(backup_dir, "attachments"))
         except Exception as e:
             answer = QMessageBox.question(
                 self, "백업 실패",
@@ -15934,33 +15949,50 @@ class OracleGuideApp(QMainWindow):
                 QMessageBox.StandardButton.No)
             if answer != QMessageBox.StandardButton.Yes:
                 return
+            backup_dir = None
 
         QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
         try:
-            spec = importlib.util.spec_from_file_location("build_sample", script_path)
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            module.build()
-        except ImportError as e:
-            QApplication.restoreOverrideCursor()
-            QMessageBox.critical(
-                self, "초기화 실패",
-                f"샘플 생성에 필요한 패키지가 없습니다.\n\n{e}\n\n"
-                "아래 명령으로 설치 후 다시 시도하세요.\n\n    pip install pillow")
-            return
+            with self.db_mgr.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("PRAGMA foreign_keys = OFF")
+                names = [r[0] for r in cursor.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+                for name in names:
+                    if name in self.RESET_KEEP_TABLES:
+                        continue
+                    cursor.execute(f'DELETE FROM "{name}"')
+                # AUTOINCREMENT 카운터도 되돌린다
+                if "sqlite_sequence" in names:
+                    cursor.execute("DELETE FROM sqlite_sequence")
+                # 재시작 시 예시 데이터가 다시 채워지지 않도록 표시
+                cursor.execute(
+                    "INSERT OR REPLACE INTO app_metadata (key, value) VALUES ('seeded', 'Y')")
+                cursor.execute("PRAGMA foreign_keys = ON")
+                conn.commit()
+
+            # 지운 데이터가 파일에 남지 않도록 실제로 회수한다
+            vac = sqlite3.connect(DB_FILE)
+            vac.execute("VACUUM")
+            vac.close()
+
+            # 첨부파일 폴더 비우기
+            if os.path.isdir(attach_dir):
+                shutil.rmtree(attach_dir)
+            os.makedirs(attach_dir, exist_ok=True)
         except Exception as e:
             QApplication.restoreOverrideCursor()
-            msg = f"샘플 데이터 생성 중 오류가 발생했습니다.\n\n{e}"
-            if backup_path:
-                msg += f"\n\n기존 데이터는 아래에 백업되어 있습니다.\n{backup_path}"
+            msg = f"초기화 중 오류가 발생했습니다.\n\n{e}"
+            if backup_dir:
+                msg += f"\n\n기존 데이터는 아래에 백업되어 있습니다.\n{backup_dir}"
             QMessageBox.critical(self, "초기화 실패", msg)
             return
         finally:
             QApplication.restoreOverrideCursor()
 
-        msg = "기본 샘플 데이터로 초기화되었습니다."
-        if backup_path:
-            msg += f"\n\n초기화 전 데이터는 아래 파일로 백업했습니다.\n{os.path.basename(backup_path)}"
+        msg = "모든 데이터가 삭제되어 빈 상태가 되었습니다."
+        if backup_dir:
+            msg += f"\n\n초기화 전 데이터는 아래 폴더에 백업했습니다.\n{os.path.basename(backup_dir)}"
         msg += "\n\n변경 내용을 적용하려면 프로그램을 다시 시작해야 합니다.\n지금 다시 시작할까요?"
 
         answer = QMessageBox.question(

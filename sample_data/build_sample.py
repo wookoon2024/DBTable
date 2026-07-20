@@ -179,6 +179,9 @@ TABLES = [
     ("TB_PAYMENT",     "결제 내역",      "주문/결제", 0),
     ("TB_DELIVERY",    "배송 정보",      "배송관리", 0),
     ("TB_CLAIM",       "취소/반품/교환", "배송관리", 0),
+    # 공통코드 조회용 테이블 (앱의 '공통코드' 탭이 참조한다)
+    ("COMMON_CODE_MASTER", "공통코드마스터", "공통", 0),
+    ("COMMON_CODE_SUB",    "공통코드상세",   "공통", 0),
 ]
 
 # table_name -> [(col, 한글, 타입, 길이, nullable, pk, selected, where), ...]
@@ -301,6 +304,21 @@ COLUMNS = {
         ("REFUND_AMT",  "환불금액",     "NUMBER",   14,  "Y", "N", 1, 0),
         ("REQ_DT",      "접수일시",     "DATE",     None, "N", "N", 1, 1),
         ("COMPLETE_DT", "처리완료일시", "DATE",     None, "Y", "N", 1, 0),
+    ],
+    "COMMON_CODE_MASTER": [
+        ("CODE_GROUP_VAL",  "코드그룹값",  "VARCHAR2", 50,  "N", "Y", 1, 1),
+        ("COLUMN_NAME",     "컬럼명",     "VARCHAR2", 50,  "N", "N", 1, 1),
+        ("CODE_GROUP_NAME", "코드그룹명",  "VARCHAR2", 100, "Y", "N", 1, 0),
+        ("USE_YN",          "사용여부",   "VARCHAR2", 1,   "N", "N", 1, 1),
+        ("OWNER",           "소유자",     "VARCHAR2", 50,  "N", "N", 1, 0),
+    ],
+    "COMMON_CODE_SUB": [
+        ("CODE_GROUP_VAL", "코드그룹값", "VARCHAR2", 50,  "N", "Y", 1, 1),
+        ("CODE_VALUE",     "코드값",    "VARCHAR2", 50,  "N", "Y", 1, 1),
+        ("CODE_NAME",      "코드명",    "VARCHAR2", 100, "N", "N", 1, 0),
+        ("DESCRIPTION",    "설명",      "VARCHAR2", 200, "Y", "N", 1, 0),
+        ("USE_YN",         "사용여부",   "VARCHAR2", 1,   "N", "N", 1, 1),
+        ("SORT_ORDER",     "정렬순서",   "NUMBER",   5,   "Y", "N", 1, 0),
     ],
 }
 
@@ -1333,6 +1351,8 @@ def build():
 
     # 6. 앱 메타데이터 (샘플 표식)
     meta = [
+        # 앱의 기본 시딩(예시 테이블/쿼리)이 덧붙지 않도록 표시해 둔다
+        ("seeded", "Y"),
         ("is_sample_data", "Y"),
         ("sample_notice", SAMPLE_TAG),
         ("sample_domain", "가상 온라인 쇼핑몰 (SHOPDB)"),
