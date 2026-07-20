@@ -50,16 +50,19 @@
 ## 소스로 실행
 
 ```bash
-pip install PyQt6 pandas openpyxl pillow pywin32
+pip install PyQt6 pandas openpyxl pillow pywin32 python-hwpx
 python oracle_guide_app.py
 ```
 
-| 패키지 | 용도 |
-|---|---|
-| PyQt6 | GUI 프레임워크 |
-| pandas / openpyxl | 엑셀 명세서 읽기 |
-| pillow | 이미지 첨부 처리, 샘플 데이터 생성 |
-| pywin32 | DRM 적용 엑셀 로드 (선택) |
+| 패키지 | 용도 | 필수 |
+|---|---|---|
+| PyQt6 | GUI 프레임워크 | ✅ |
+| pandas / openpyxl | 엑셀·CSV 명세서 읽기 | ✅ |
+| pillow | 이미지 첨부 처리, 샘플 데이터 생성 | ✅ |
+| pywin32 | DRM 적용 엑셀 로드, 한글 COM 내보내기 | 선택 |
+| python-hwpx | 한글이 없어도 HWPX 파일 직접 생성 | 선택 |
+
+선택 항목이 없으면 해당 기능만 비활성화되고 나머지는 정상 동작합니다.
 
 `oracle_guide_app.py` 와 `metadata.db` 는 **항상 같은 폴더**에 있어야 합니다.
 
@@ -116,15 +119,13 @@ pyinstaller --noconfirm DB돋보기.spec
 
 ```
 oracle_guide_app.py      메인 애플리케이션
-biz_guide_app.py         업무 가이드 애플리케이션
 metadata.db              샘플 데이터 (SQLite)
 attachments/             업무 문서 첨부파일 · 이미지 (샘플)
 sample_data/
   build_sample.py        샘플 데이터 생성 스크립트
-dummy_csv/               명세서 가져오기 예시 CSV
-hwp_export/              HWP 내보내기 (Java + hwplib)
 DB돋보기.spec            PyInstaller 빌드 설정
 app_icon.ico             애플리케이션 아이콘
+run_app.bat              실행 배치 파일
 ```
 
 ---

@@ -1,9 +1,0 @@
-코드그룹,코드값,코드한글명,설명
-USER_STATUS_GRP,10,정상,정상 사용중인 사용자 상태
-USER_STATUS_GRP,20,정지,일시 정지된 사용자 상태
-USER_STATUS_GRP,30,휴면,장기 미접속 휴면 사용자 상태
-USER_STATUS_GRP,90,탈퇴,탈퇴한 사용자 상태
-BOARD_TYPE_GRP,NOTICE,공지사항,공지사항용 게시판
-BOARD_TYPE_GRP,FREE,자유게시판,일반 소통 및 피드백 자유게시판
-BOARD_TYPE_GRP,QNA,질문답변,Q&A 및 기술 문의 게시판
-BOARD_TYPE_GRP,GALLERY,갤러리,이미지 중심 갤러리 게시판
