@@ -10,15 +10,15 @@
 
 ## 다운로드
 
-### [⬇️ 실행 파일 내려받기 (Windows 64bit)](https://github.com/wookoon2024/DBTable/releases/latest)
+## ⬇️ [<ins>**DBTable_v1.0_win64.zip 내려받기 (76.1 MB)**</ins>](https://github.com/wookoon2024/DBTable/raw/main/release/DBTable_v1.0_win64.zip)
 
 파이썬 설치 없이 바로 실행할 수 있는 단독 실행 파일입니다.
+위 링크를 클릭하면 곧바로 다운로드가 시작됩니다.
 
 | | |
 |---|---|
-| 파일 | `DB돋보기_v1.0_win64.zip` |
-| 크기 | 75.9 MB (압축 해제 시 76.5 MB) |
-| 구성 | `DB돋보기.exe` 단일 파일 |
+| 파일 | `DBTable_v1.0_win64.zip` |
+| 크기 | 76.1 MB |
 | 요구 사항 | Windows 10 이상 64bit · 별도 설치 불필요 |
 
 **사용법**
@@ -27,21 +27,31 @@
 2. **원하는 폴더에 압축을 풉니다.** (zip 안에서 바로 실행하면 데이터가 저장되지 않습니다)
 3. `DB돋보기.exe` 를 실행합니다.
 
-**첫 실행 시 데이터가 비어 있습니다.** exe 만 들어 있으므로, 실행하면 옆에 빈 `metadata.db` 가 새로 만들어집니다.
-이 저장소의 샘플 데이터를 보시려면 [`metadata.db`](metadata.db) 와 [`attachments/`](attachments) 를
-내려받아 **exe 와 같은 폴더**에 두고 실행하세요.
+**샘플 데이터가 함께 들어 있어 실행하면 바로 화면이 채워집니다.**
+
+```
+DB돋보기.exe      실행 파일
+metadata.db       샘플 데이터
+attachments/      샘플 첨부파일 · 이미지
+```
+
+세 항목은 **같은 폴더**에 있어야 합니다. 옮기실 때는 폴더째 옮기세요.
+
+내 데이터로 처음부터 쓰시려면 앱에서 **⚙️ 설정 → 🗑️ 기본 정보 초기화** 를 선택하면
+샘플이 모두 지워지고 빈 상태가 됩니다. ([자세히](#전부-비우기))
 
 <details>
 <summary>파일 검증 (SHA-256)</summary>
 
 ```
+61b3918cc187f786726a8441304601f9051606e0685abf522a286a7331d8cc3e  DBTable_v1.0_win64.zip
 f1f403f3bf591a18522b43d5b74dd7b18fa6c9ecfed1302c4b0a0565c93b41ef  DB돋보기.exe
 ```
 
 PowerShell 에서 확인:
 
 ```powershell
-Get-FileHash .\DB돋보기.exe -Algorithm SHA256
+Get-FileHash .\DBTable_v1.0_win64.zip -Algorithm SHA256
 ```
 
 </details>
@@ -109,7 +119,7 @@ python oracle_guide_app.py
 ### 샘플로 되돌리기
 
 이 저장소의 [`metadata.db`](metadata.db) 와 [`attachments/`](attachments) 를 내려받아
-기존 파일에 덮어쓰면 됩니다.
+기존 파일에 덮어쓰면 됩니다. (배포 zip 을 다시 받아 풀어도 동일합니다)
 
 ### 전부 비우기
 
@@ -143,9 +153,11 @@ pyinstaller --noconfirm DB돋보기.spec
 
 배포용 zip 만들기 (PowerShell):
 
+배포 zip 은 실행 파일과 샘플 데이터를 함께 담습니다 (PowerShell):
+
 ```powershell
-Compress-Archive -Path dist\DB돋보기.exe `
-                 -DestinationPath release\DB돋보기_v1.0_win64.zip `
+Compress-Archive -Path dist\DB돋보기.exe, metadata.db, attachments `
+                 -DestinationPath release\DBTable_v1.0_win64.zip `
                  -CompressionLevel Optimal
 ```
 
@@ -161,6 +173,7 @@ metadata.db              샘플 데이터 (SQLite)
 attachments/             업무 문서 첨부파일 · 이미지 (샘플)
 DB돋보기.spec            PyInstaller 빌드 설정 (빌드 시 필수)
 app_icon.ico             exe 파일 아이콘 (빌드 시 사용)
+release/                 배포용 실행 파일 zip
 ```
 
 ---
