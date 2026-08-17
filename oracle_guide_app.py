@@ -8119,10 +8119,10 @@ class DatabaseManager:
                            SELECT 1 FROM common_codes cc
                            WHERE cc.code_group_id = r.ref_table_name
                        ) THEN '공통코드'
-                       WHEN r.code_slot IS NOT NULL AND r.code_slot > 0 AND (
-                           EXISTS (SELECT 1 FROM common_codes cc WHERE cc.column_name = c.column_name)
-                           OR (r.ref_table_name IS NOT NULL AND r.ref_table_name != '')
-                       ) THEN '공통코드'
+                       WHEN r.ref_table_name IS NOT NULL AND r.ref_table_name != '' AND EXISTS (
+                           SELECT 1 FROM tables t
+                           WHERE t.table_name = r.ref_table_name
+                       ) THEN '마스터테이블'
                        WHEN r.ref_table_name IS NOT NULL AND r.ref_table_name != '' THEN '마스터테이블'
                        ELSE NULL 
                    END AS mapping_type
@@ -12050,16 +12050,8 @@ class TableDetailWidget(QWidget):
                 self.table_widget.setItem(row_idx, 7, empty_item)
 
             # 8. 공통코드
-            code_grp = None
-            if col['mapping_type'] == '공통코드' or col.get('ref_table_name') or col.get('custom_query'):
-                if col.get('ref_table_name') and self.db_mgr.is_code_group(col['ref_table_name']):
-                    code_grp = col['ref_table_name']
-                elif col.get('ref_table_name') and not col.get('custom_query') and col.get('mapping_type') == '공통코드':
-                    code_grp = col['ref_table_name']
-                else:
-                    code_grp = self.db_mgr.get_code_group_for_column(col['column_name'])
-
-            if code_grp or col.get('custom_query'):
+            if col.get('mapping_type') == '공통코드' and (col.get('ref_table_name') or col.get('custom_query')):
+                code_grp = col.get('ref_table_name') or ""
                 disp_text = code_grp if code_grp else "수동쿼리"
                 code_item = QTableWidgetItem(disp_text)
                 code_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
