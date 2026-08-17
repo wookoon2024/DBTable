@@ -7089,11 +7089,15 @@ class DatabaseManager:
             )
             """)
             
-            # relations 테이블 custom_query 컬럼 추가 (마이그레이션)
+            # relations 테이블 custom_query, code_slot 컬럼 추가 (마이그레이션)
             try:
                 cursor.execute("ALTER TABLE relations ADD COLUMN custom_query TEXT")
             except sqlite3.OperationalError:
                 pass # 이미 컬럼이 존재하면 에러가 발생하므로 무시
+            try:
+                cursor.execute("ALTER TABLE relations ADD COLUMN code_slot INTEGER DEFAULT 1")
+            except sqlite3.OperationalError:
+                pass
 
             # columns 테이블 is_selected, is_where 컬럼 추가 (마이그레이션)
             try:
@@ -8108,11 +8112,16 @@ class DatabaseManager:
             SELECT c.column_name, c.column_ko_name, c.data_type, c.length, c.is_nullable, c.is_pk,
                    c.is_selected, c.is_where,
                    r.ref_table_name, r.custom_query,
+                   COALESCE(r.code_slot, 1) AS code_slot,
                    CASE 
                        WHEN r.custom_query IS NOT NULL AND r.custom_query != '' THEN '공통코드'
                        WHEN r.ref_table_name IS NOT NULL AND EXISTS (
                            SELECT 1 FROM common_codes cc
                            WHERE cc.code_group_id = r.ref_table_name
+                       ) THEN '공통코드'
+                       WHEN r.code_slot IS NOT NULL AND r.code_slot > 0 AND (
+                           EXISTS (SELECT 1 FROM common_codes cc WHERE cc.column_name = c.column_name)
+                           OR (r.ref_table_name IS NOT NULL AND r.ref_table_name != '')
                        ) THEN '공통코드'
                        WHEN r.ref_table_name IS NOT NULL THEN '마스터테이블'
                        ELSE NULL 
@@ -8124,6 +8133,21 @@ class DatabaseManager:
             ORDER BY c.is_pk DESC, c.id ASC
             """, (table_name,))
             return [dict(row) for row in cursor.fetchall()]
+
+    def is_code_group(self, name):
+        if not name: return False
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM common_codes WHERE code_group_id = ? LIMIT 1", (name,))
+            return cursor.fetchone() is not None
+
+    def get_code_group_for_column(self, column_name):
+        if not column_name: return None
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT code_group_id FROM common_codes WHERE column_name = ? LIMIT 1", (column_name,))
+            r = cursor.fetchone()
+            return r['code_group_id'] if r else None
 
     def get_common_codes_list(self, code_group):
         """특정 공통코드 그룹의 코드 리스트 조회"""
@@ -8237,7 +8261,7 @@ class DatabaseManager:
                 cursor.execute(base_query + " ORDER BY src_table_name ASC, src_column_name ASC")
             return [dict(row) for row in cursor.fetchall()]
 
-    def upsert_relation(self, src_table, src_column, ref_table, mapping_type, custom_query=None):
+    def upsert_relation(self, src_table, src_column, ref_table, mapping_type, custom_query=None, code_slot=1):
         """수동으로 관계 정보를 등록하거나 수정함"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -8252,15 +8276,15 @@ class DatabaseManager:
                 # 존재하면 기존 레코드를 UPDATE
                 cursor.execute("""
                 UPDATE relations 
-                SET ref_table_name = ?, custom_query = ? 
+                SET ref_table_name = ?, custom_query = ?, code_slot = ? 
                 WHERE src_table_name = ? AND src_column_name = ?
-                """, (ref_table, custom_query, src_table, src_column))
+                """, (ref_table, custom_query, code_slot, src_table, src_column))
             else:
                 # 없으면 새롭게 INSERT
                 cursor.execute("""
-                INSERT INTO relations (src_table_name, src_column_name, ref_table_name, custom_query)
-                VALUES (?, ?, ?, ?)
-                """, (src_table, src_column, ref_table, custom_query))
+                INSERT INTO relations (src_table_name, src_column_name, ref_table_name, custom_query, code_slot)
+                VALUES (?, ?, ?, ?, ?)
+                """, (src_table, src_column, ref_table, custom_query, code_slot))
             conn.commit()
 
     def delete_relation(self, src_table, src_column):
@@ -12026,8 +12050,16 @@ class TableDetailWidget(QWidget):
                 self.table_widget.setItem(row_idx, 7, empty_item)
 
             # 8. 공통코드
-            if col['mapping_type'] == '공통코드' and (col['ref_table_name'] or col['custom_query']):
-                code_grp = col['ref_table_name'] or ""
+            code_grp = None
+            if col['mapping_type'] == '공통코드' or col.get('ref_table_name') or col.get('custom_query'):
+                if col.get('ref_table_name') and self.db_mgr.is_code_group(col['ref_table_name']):
+                    code_grp = col['ref_table_name']
+                elif col.get('ref_table_name') and not col.get('custom_query') and col.get('mapping_type') == '공통코드':
+                    code_grp = col['ref_table_name']
+                else:
+                    code_grp = self.db_mgr.get_code_group_for_column(col['column_name'])
+
+            if code_grp or col.get('custom_query'):
                 disp_text = code_grp if code_grp else "수동쿼리"
                 code_item = QTableWidgetItem(disp_text)
                 code_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -12036,7 +12068,7 @@ class TableDetailWidget(QWidget):
                 font.setUnderline(True)
                 code_item.setFont(font)
                 
-                if col['custom_query']:
+                if col.get('custom_query'):
                     code_item.setToolTip(f"💡 수동 변환 쿼리 적용됨:\n{col['custom_query']}")
                 else:
                     codes = self.db_mgr.get_common_codes_list(code_grp)
@@ -12045,15 +12077,17 @@ class TableDetailWidget(QWidget):
                         tooltip_text = f"💡 공통코드 리스트 ({code_grp})\n" + "\n".join(tooltip_lines)
                         code_item.setToolTip(tooltip_text)
                     else:
-                        code_item.setToolTip(f"공통코드 데이터 없음 ({code_grp})")
+                        code_item.setToolTip(f"공통코드 ({code_grp})")
                 
                 code_item.setData(Qt.ItemDataRole.UserRole, code_grp)
-                code_item.setData(Qt.ItemDataRole.UserRole + 1, col['custom_query'] or "")
+                code_item.setData(Qt.ItemDataRole.UserRole + 1, col.get('custom_query') or "")
+                code_item.setData(Qt.ItemDataRole.UserRole + 2, col.get('code_slot', 1))
                 self.table_widget.setItem(row_idx, 8, code_item)
             else:
                 empty_item = QTableWidgetItem("-")
                 empty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 empty_item.setForeground(QColor("#94A3B8"))
+                empty_item.setData(Qt.ItemDataRole.UserRole + 2, col.get('code_slot', 1))
                 self.table_widget.setItem(row_idx, 8, empty_item)
 
             # 9. WHERE (체크박스, DB 저장값 로드)
@@ -12553,63 +12587,31 @@ class TableDetailWidget(QWidget):
         menu.exec(self.table_widget.viewport().mapToGlobal(pos))
 
     def apply_common_code_slot(self, col_name, slot_num):
-        # 1. 컬럼의 한글명 조회
-        col_ko = ""
-        for row in range(self.table_widget.rowCount()):
-            c_item = self.table_widget.item(row, 3)
-            if c_item and c_item.text() == col_name:
-                ko_item = self.table_widget.item(row, 4)
-                if ko_item:
-                    col_ko = ko_item.text().strip()
-                break
-
-        # 2. 해당 슬롯의 공통코드 설정 조회
-        slot_tbl = self.db_mgr.get_setting(f'common_code_table_{slot_num}', self.db_mgr.get_setting('common_code_table', 'COMMON_CODE_SUB') if slot_num == 1 else '')
-        slot_grp = self.db_mgr.get_setting(f'common_code_group_col_{slot_num}', self.db_mgr.get_setting('common_code_group_col', 'CODE_GROUP_VAL') if slot_num == 1 else '')
-        slot_val = self.db_mgr.get_setting(f'common_code_val_col_{slot_num}', self.db_mgr.get_setting('common_code_val_col', 'CODE_VALUE') if slot_num == 1 else '')
-        slot_name = self.db_mgr.get_setting(f'common_code_name_col_{slot_num}', self.db_mgr.get_setting('common_code_name_col', 'CODE_NAME') if slot_num == 1 else '')
-        slot_temp = self.db_mgr.get_setting(f'common_code_template_{slot_num}', self.db_mgr.get_setting('common_code_template', '') if slot_num == 1 else '')
-
-        if not slot_tbl:
-            slot_tbl = "COMMON_CODE_SUB"
-        if not slot_grp:
-            slot_grp = "CODE_GROUP_VAL"
-        if not slot_val:
-            slot_val = "CODE_VALUE"
-        if not slot_name:
-            slot_name = "CODE_NAME"
-        if not slot_temp:
-            slot_temp = '(SELECT {code_name_col} FROM {code_table} WHERE {code_group_col} = \'{code_group}\' AND {code_value_col} = {col_name}) AS "{alias}"'
-
-        # 3. 매핑 코드그룹 추출 (DB common_codes 조회 또는 기본 컬럼명)
-        code_grp = col_name
+        # 기존 relations 정보 확인
+        current_ref = ""
+        current_cq = None
         with self.db_mgr.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT code_group_id FROM common_codes WHERE column_name = ? LIMIT 1", (col_name,))
+            cursor.execute("SELECT ref_table_name, custom_query FROM relations WHERE src_table_name = ? AND src_column_name = ?", (self.table_name, col_name))
             r = cursor.fetchone()
-            if r and r['code_group_id']:
-                code_grp = r['code_group_id']
+            if r:
+                current_ref = r['ref_table_name'] or ""
+                current_cq = r['custom_query']
+            
+            # 만약 current_ref가 비어있거나 테이블명이면 common_codes에서 일치하는 코드그룹 찾기
+            if not current_ref or not self.db_mgr.is_code_group(current_ref):
+                cursor.execute("SELECT code_group_id FROM common_codes WHERE column_name = ? LIMIT 1", (col_name,))
+                cr = cursor.fetchone()
+                if cr and cr['code_group_id']:
+                    current_ref = cr['code_group_id']
 
-        alias = f"{col_ko}명" if col_ko else f"{col_name}_NM"
-        if len(alias) > 10:
-            alias = alias[:9] + "~"
+        slot_tbl = self.db_mgr.get_setting(f'common_code_table_{slot_num}', self.db_mgr.get_setting('common_code_table', 'COMMON_CODE_SUB') if slot_num == 1 else '')
+        if not slot_tbl:
+            slot_tbl = f"공통코드 {slot_num}"
 
-        try:
-            rendered = slot_temp.format(
-                code_table=slot_tbl,
-                code_group_col=slot_grp,
-                code_value_col=slot_val,
-                code_name_col=slot_name,
-                code_group=code_grp,
-                col_name=col_name,
-                alias=alias
-            )
-            subquery = f", {rendered}"
-        except Exception:
-            subquery = f", (SELECT {slot_name} FROM {slot_tbl} WHERE {slot_grp} = '{code_grp}' AND {slot_val} = {col_name}) AS \"{alias}\""
-
-        self.db_mgr.upsert_relation(self.table_name, col_name, slot_tbl, "공통코드", subquery)
-        show_copy_message(f"✅ [{col_name}] 컬럼에 공통코드 {slot_num} ({slot_tbl}) 설정이 즉시 적용되었습니다.", self)
+        # relations에 code_slot 업데이트 (ref_table_name은 코드그룹 유지, 화면에 테이블명으로 덮어쓰지 않음!)
+        self.db_mgr.upsert_relation(self.table_name, col_name, current_ref, "공통코드", custom_query=current_cq, code_slot=slot_num)
+        show_copy_message(f"✅ [{col_name}] 컬럼의 공통코드 참조가 [공통코드 {slot_num}: {slot_tbl}] 로 지정되었습니다.", self)
         self.load_columns_data()
         self.relation_changed.emit()
 
@@ -12672,16 +12674,21 @@ class TableDetailWidget(QWidget):
             code_item = self.table_widget.item(row, 8)
             code_group = None
             custom_query = None
-            if code_item and code_item.text() != "-":
+            code_slot = 1
+            if code_item:
                 code_group = code_item.data(Qt.ItemDataRole.UserRole)
                 custom_query = code_item.data(Qt.ItemDataRole.UserRole + 1)
+                code_slot = code_item.data(Qt.ItemDataRole.UserRole + 2) or 1
+                if not code_group and code_item.text() not in ["-", "수동쿼리", ""]:
+                    code_group = code_item.text()
             
             col_info = {
                 'name': col_name,
                 'ko_name': col_ko,
                 'data_type': data_type,
                 'code_group': code_group,
-                'custom_query': custom_query
+                'custom_query': custom_query,
+                'code_slot': code_slot
             }
             
             if is_pk:
@@ -12698,13 +12705,20 @@ class TableDetailWidget(QWidget):
             show_copy_message("⚠️ 선택된 컬럼이 없습니다.", self)
             return
 
-        code_table = self.db_mgr.get_setting('common_code_table', 'COMMON_CODE_SUB')
-        code_group_col = self.db_mgr.get_setting('common_code_group_col', 'CODE_GROUP_VAL')
-        code_value_col = self.db_mgr.get_setting('common_code_val_col', 'CODE_VALUE')
-        code_name_col = self.db_mgr.get_setting('common_code_name_col', 'CODE_NAME')
-        
-        default_temp = '(SELECT {code_name_col} FROM {code_table} WHERE {code_group_col} = \'{code_group}\' AND {code_value_col} = {col_name}) AS "{alias}"'
-        code_template = self.db_mgr.get_setting('common_code_template', default_temp)
+        def get_slot_settings(slot_num):
+            tbl = self.db_mgr.get_setting(f'common_code_table_{slot_num}', self.db_mgr.get_setting('common_code_table', 'COMMON_CODE_SUB') if slot_num == 1 else '')
+            grp = self.db_mgr.get_setting(f'common_code_group_col_{slot_num}', self.db_mgr.get_setting('common_code_group_col', 'CODE_GROUP_VAL') if slot_num == 1 else '')
+            val = self.db_mgr.get_setting(f'common_code_val_col_{slot_num}', self.db_mgr.get_setting('common_code_val_col', 'CODE_VALUE') if slot_num == 1 else '')
+            name = self.db_mgr.get_setting(f'common_code_name_col_{slot_num}', self.db_mgr.get_setting('common_code_name_col', 'CODE_NAME') if slot_num == 1 else '')
+            temp = self.db_mgr.get_setting(f'common_code_template_{slot_num}', self.db_mgr.get_setting('common_code_template', '') if slot_num == 1 else '')
+
+            if not tbl: tbl = "COMMON_CODE_SUB"
+            if not grp: grp = "CODE_GROUP_VAL"
+            if not val: val = "CODE_VALUE"
+            if not name: name = "CODE_NAME"
+            if not temp:
+                temp = '(SELECT {code_name_col} FROM {code_table} WHERE {code_group_col} = \'{code_group}\' AND {code_value_col} = {col_name}) AS "{alias}"'
+            return tbl, grp, val, name, temp
 
         def get_literal_value(col_name, data_type):
             dt = data_type.upper()
@@ -12751,6 +12765,8 @@ class TableDetailWidget(QWidget):
         def build_code_subquery(col):
             alias = f"{col['ko_name']}명" if col['ko_name'] else f"{col['name']}_NM"
             alias = truncate_alias(alias)
+            slot_num = col.get('code_slot', 1) or 1
+            code_table, code_group_col, code_value_col, code_name_col, code_template = get_slot_settings(slot_num)
             try:
                 return code_template.format(
                     code_table=code_table,
@@ -12777,6 +12793,8 @@ class TableDetailWidget(QWidget):
             alias = f"{col['ko_name']}명" if col['ko_name'] else f"{col['name']}_NM"
             alias = truncate_alias(alias)
             col_ref = f"{prefix}.{col['name']}"
+            slot_num = col.get('code_slot', 1) or 1
+            code_table, code_group_col, code_value_col, code_name_col, code_template = get_slot_settings(slot_num)
             try:
                 return code_template.format(
                     code_table=code_table,
