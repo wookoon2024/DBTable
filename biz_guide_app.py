@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QSplitter, QLineEdit, QListWidget, QListWidgetItem, QTabWidget, 
     QTabBar, QTableWidget, QTableWidgetItem, QHeaderView, QPushButton, QLabel, 
-    QFileDialog, QMessageBox, QDialog, QInputDialog, QFormLayout, QFrame, QToolTip, QScrollArea,
+    QFileDialog, QMessageBox, QDialog, QInputDialog, QFormLayout, QFrame, QToolTip,
     QStatusBar, QAbstractItemView, QMenu, QRadioButton, QButtonGroup, QComboBox, QCheckBox,
     QTextEdit, QTreeWidget, QTreeWidgetItem, QStackedWidget, QTreeWidgetItemIterator,
     QStyledItemDelegate, QStyle, QStyleOptionViewItem, QGridLayout, QSpinBox
@@ -25,125 +25,76 @@ else:
 
 DB_FILE = os.path.normpath(os.path.join(base_dir, "metadata.db"))
 
-class ToastNotification(QFrame):
-    """프로그램 중앙에 플로팅으로 안내 메시지를 띄워주는 토스트 위젯"""
+class ToastNotification(QLabel):
+    """클립보드 복사 등 알림을 화면 중앙/하단에 띄워주는 미려한 토스트 메시지 위젯"""
     def __init__(self, text, parent=None):
-        super().__init__(parent)
+        # parent를 None으로 전달하여 부모 창의 클리핑이나 오프셋 영향을 받지 않도록 함
+        super().__init__(None)
+        self.setText(text)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # 닫힐 때 자동으로 메모리 해제
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         
-        # parent가 없을 경우 독립 윈도우 플래그 설정
-        if not parent:
-            self.setWindowFlags(
-                Qt.WindowType.FramelessWindowHint |
-                Qt.WindowType.WindowStaysOnTopHint |
-                Qt.WindowType.Tool
-            )
-            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        
         self.setStyleSheet("""
-            ToastNotification {
-                background-color: #0F172A;
-                border: none;
-                border-radius: 8px;
-            }
-            QLabel {
-                background: transparent;
-                color: #FFFFFF;
-                font-size: 13px;
-                font-family: 'Malgun Gothic', sans-serif;
-                font-weight: bold;
-                padding: 12px 28px;
-            }
+            background-color: #1E293B;
+            color: #FFFFFF;
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-size: 13px;
+            font-family: 'Malgun Gothic', sans-serif;
+            font-weight: bold;
+            border: 1px solid #334155;
         """)
+        # ToolTip 플래그 대신 Tool 플래그와 최상위 속성을 조합하여 QToolTip 스타일 시트 충돌 우회
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | 
+            Qt.WindowType.WindowStaysOnTopHint | 
+            Qt.WindowType.WindowDoesNotAcceptFocus | 
+            Qt.WindowType.Tool
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        self.label = QLabel(text, self)
-        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.label)
-        self.adjustSize()
-        
-        # 투명도 조절 효과
+        # 투명도 조절 효과 추가
         from PyQt6.QtWidgets import QGraphicsOpacityEffect
         self.opacity_effect = QGraphicsOpacityEffect(self)
-        self.opacity_effect.setOpacity(1.0)
         self.setGraphicsEffect(self.opacity_effect)
-
-    def show_toast(self, parent_window=None, duration=1500):
         self.adjustSize()
         
-        # 부모 윈도우 내부 또는 화면 중앙 좌표 계산
-        if self.parent():
-            p_rect = self.parent().rect()
-            x = (p_rect.width() - self.width()) // 2
-            y = (p_rect.height() - self.height()) // 2
-            self.move(max(0, x), max(0, y))
-        else:
-            if parent_window:
-                rect = parent_window.geometry()
-                c = rect.center()
-                self.move(c.x() - self.width() // 2, c.y() - self.height() // 2)
-            else:
-                screen = QApplication.primaryScreen()
-                if screen:
-                    c = screen.geometry().center()
-                    self.move(c.x() - self.width() // 2, c.y() - self.height() // 2)
-
+    def show_toast(self, pos, duration=2000):
+        from PyQt6.QtCore import QPropertyAnimation
+        # 전달받은 중심 좌표 기준 배치
+        self.move(pos.x() - self.width() // 2, pos.y() - self.height() // 2)
         self.show()
-        self.raise_()
+        
+        # 페이드인 애니메이션
+        self.anim = QPropertyAnimation(self.opacity_effect, b"opacity")
+        self.anim.setDuration(150)
+        self.anim.setStartValue(0.0)
+        self.anim.setEndValue(1.0)
+        self.anim.start()
         
         # 대기 후 페이드아웃
         from PyQt6.QtCore import QTimer
         QTimer.singleShot(duration, self.fade_out)
         
     def fade_out(self):
-        try:
-            from PyQt6.QtCore import QPropertyAnimation
-            self.anim = QPropertyAnimation(self.opacity_effect, b"opacity")
-            self.anim.setDuration(250)
-            self.anim.setStartValue(1.0)
-            self.anim.setEndValue(0.0)
-            self.anim.finished.connect(self.close)
-            self.anim.start()
-        except:
-            self.close()
+        from PyQt6.QtCore import QPropertyAnimation
+        self.anim = QPropertyAnimation(self.opacity_effect, b"opacity")
+        self.anim.setDuration(300)
+        self.anim.setStartValue(1.0)
+        self.anim.setEndValue(0.0)
+        self.anim.finished.connect(self.close)
+        self.anim.start()
 
 
 _active_toasts = []
 
-def show_copy_message(text, widget=None):
-    clean_text = text
-    # 아이콘 및 이모지 완전 제거
-    emojis = ["📋", "💾", "✨", "✏️", "🔓", "📁", "✅", "❌", "⚠️", "🧼", "🧹", "⭐", "🔗", "💡", "🖥️", "🗑️", "📝"]
-    for emoji in emojis:
-        clean_text = clean_text.replace(emoji, "")
-    clean_text = clean_text.strip()
-
-    # 현재 활성 윈도우(메인 윈도우 또는 활성 대화상자) 찾기
-    target_win = None
-    if widget and hasattr(widget, 'window'):
-        try:
-            target_win = widget.window()
-        except:
-            pass
-    if not target_win:
-        target_win = QApplication.activeWindow()
-
-    if target_win and hasattr(target_win, 'status_bar') and target_win.status_bar:
-        target_win.status_bar.showMessage(clean_text, 3000)
-
-    global _active_toasts
-    for t in _active_toasts:
-        try:
-            t.close()
-        except:
-            pass
-    _active_toasts.clear()
-
-    # 대상 윈도우의 직속 자식 오버레이로 생성하여 프로그램 정중앙에 100% 확실히 표시
-    toast = ToastNotification(clean_text, parent=target_win)
-    _active_toasts.append(toast)
-    toast.show_toast(parent_window=target_win, duration=1500)
+def show_copy_message(text, widget):
+    main_win = widget.window()
+    if main_win and hasattr(main_win, 'status_bar') and main_win.status_bar:
+        main_win.status_bar.showMessage(text, 3000)
 
 
 import shutil
@@ -179,27 +130,6 @@ class AttachmentListWidget(QListWidget):
             event.accept()
         else:
             event.ignore()
-
-
-class DragDropTableListWidget(QListWidget):
-    """테이블 목록에서 드래그 시 테이블명을 plain text로 전달하는 QListWidget"""
-    def mimeData(self, items):
-        mime_data = super().mimeData(items)
-        if items:
-            item = items[0]
-            widget = self.itemWidget(item)
-            if widget and hasattr(widget, 'table_name') and widget.table_name:
-                mime_data.setText(widget.table_name)
-            else:
-                t_name = item.data(Qt.ItemDataRole.UserRole)
-                if t_name:
-                    mime_data.setText(t_name)
-                else:
-                    text = item.text()
-                    if " (" in text:
-                        text = text.split(" (")[0]
-                    mime_data.setText(text.strip())
-        return mime_data
 
 
 class ImageResizeDialog(QDialog):
@@ -1691,7 +1621,7 @@ class RichTextEdit(QTextEdit):
         for t in tables:
             obj_idx = t.objectIndex()
             table_cell_bounds[obj_idx] = self.table_visual_bounds(layout, t)
-            
+
         block = document.begin()
         block_number = 1
         numbered_tables = set()
@@ -1729,8 +1659,8 @@ class RichTextEdit(QTextEdit):
                 t_bounds = table_cell_bounds.get(t.objectIndex())
                 if t_bounds:
                     t_top, t_bottom = t_bounds
-                    # 표 앞뒤에 빈 블록이 존재할 때 표 외부 블록(구분선)으로
-                    # 인식하므로 여유(-3px)를 두고 표 내부인지 확인을 필터링한다
+                    # 표 앞에 남은 분할 잔여 빈 블록은 표 상단보다 살짝(패딩만큼) 위에서
+                    # 시작하므로 여유(-3px)를 두고 표 영역에 포함시켜 번호를 생략한다
                     if t_top - 3 <= y_top < t_bottom - 1 and (table_idx is not None or block.text() == ''):
                         is_inside_table_span = True
                         break
@@ -1758,7 +1688,7 @@ class RichTextEdit(QTextEdit):
             block = block.next()
             if should_increment:
                 block_number += 1
- 
+
     def paintEvent(self, event):
         super().paintEvent(event)
         
@@ -1782,7 +1712,7 @@ class RichTextEdit(QTextEdit):
         for t in tables:
             obj_idx = t.objectIndex()
             table_cell_bounds[obj_idx] = self.table_visual_bounds(layout, t)
-            
+
         block = document.begin()
         numbered_tables = set()
         drawn_segment_ys = set()
@@ -1835,8 +1765,8 @@ class RichTextEdit(QTextEdit):
                 t_bounds = table_cell_bounds.get(t.objectIndex())
                 if t_bounds:
                     t_top, t_bottom = t_bounds
-                    # 표 앞뒤에 빈 블록이 존재할 때 표 외부 블록(구분선)으로
-                    # 인식하므로 여유(-3px)를 두고 표 내부인지 확인을 필터링한다
+                    # 표 앞에 남은 분할 잔여 빈 블록은 표 상단보다 살짝(패딩만큼) 위에서
+                    # 시작하므로 여유(-3px)를 두고 표 영역에 포함시켜 번호를 생략한다
                     if t_top - 3 <= y_top < t_bottom - 1 and (table_idx is not None or block.text() == ''):
                         is_inside_table_span = True
                         break
@@ -2964,7 +2894,7 @@ class RichTextEditor(QWidget):
             cols = spin_cols.value()
             
             cursor = self.text_edit.textCursor()
-            from PyQt6.QtGui import QTextTableFormat, QTextLength, QBrush, QColor
+            from PyQt6.QtGui import QTextTableFormat, QTextLength, QBrush, QColor, QTextCursor
             table_format = QTextTableFormat()
             table_format.setCellPadding(8)
             table_format.setCellSpacing(0)
@@ -2974,11 +2904,11 @@ class RichTextEditor(QWidget):
             # Initialize equal column width constraints
             constraints = [QTextLength(QTextLength.Type.PercentageLength, 100.0 / cols)] * cols
             table_format.setColumnWidthConstraints(constraints)
-            
+
             cursor.beginEditBlock()
             try:
                 table = cursor.insertTable(rows, cols, table_format)
-                
+
                 # 개별 셀에도 흰색 배경 적용하여 에디터 가이드라인 비침 차단
                 for r_idx in range(table.rows()):
                     for c_idx in range(table.columns()):
@@ -2986,6 +2916,10 @@ class RichTextEditor(QWidget):
                         cell_fmt = cell.format()
                         cell_fmt.setBackground(QBrush(QColor("#FFFFFF")))
                         cell.setFormat(cell_fmt)
+
+                # 참고: insertTable은 커서 단락 앞에 빈 블록을 남기지만 Qt가 그 블록의
+                # 줄 상자를 표가 덮도록 배치하므로(화면에 안 보임) 문서 구조는 그대로 두고,
+                # 줄번호 쪽(line_number_area_paint_event)에서 해당 블록을 건너뛰어 처리한다.
             finally:
                 cursor.endEditBlock()
 
@@ -4858,8 +4792,7 @@ class TaskDetailTabWidget(QWidget):
                 file_size = os.path.getsize(dst_path)
                 rel_path = f"attachments/task_{self.task_id}/{file_name}"
                 att_id = self.db_mgr.add_task_attachment(self.task_id, rel_path, file_name, file_size, is_embed=is_embed)
-                if hasattr(self, 'track_added_attachment'):
-                    self.track_added_attachment(att_id, rel_path)
+                self.track_added_attachment(att_id, rel_path)
             except Exception as e:
                 errors.append(f"파일 저장 실패 ({file_name}): {str(e)}")
         if errors:
@@ -4987,8 +4920,7 @@ class TaskDetailTabWidget(QWidget):
                     w_val = 650
                 self.editor.text_edit.insertHtml(f'<br><img src="{rel_path}" width="{w_val}" height="{h_val}" /><br>')
                 att_id = self.db_mgr.add_task_attachment(self.task_id, rel_path, file_name, file_size, is_embed=1)
-                if hasattr(self, 'track_added_attachment'):
-                    self.track_added_attachment(att_id, rel_path)
+                self.track_added_attachment(att_id, rel_path)
                 self.load_attachments()
                 self.set_dirty()
                 return True
@@ -5807,6 +5739,7 @@ class TaskInfoSidebarWidget(QWidget):
             skeleton_b64 = "UEsDBBQAAAAAAAAAIQCC8EFHEwAAABMAAAAIAAAAbWltZXR5cGVhcHBsaWNhdGlvbi9od3AremlwUEsDBBQAAAAIAAq0mVycjEu+5AAAADYBAAALAAAAdmVyc2lvbi54bWxNT1tLwzAU/iuH8+yaZFMYZd2QXZggq3S6PkrWZm00TUqTtvrvzaIw4Tx85/JdzmL11SgYRGel0QmyiCIIXZhS6irBt9fdZI5gHdclV0aLBL+FRVgtF/UQ79e70y8RvIi2cT0kWDvXxoSM4xjV3As1UWGiz47UY9soMqWMkT83BMcr4R7bVsmCu+Cfp9nmJUvX2+MxzRAa/mG6BB88kvqK2BUVnQno3EtVHvrmLPzG5zY2jH2W0+0fz+X/HfYhFKSXiywE+K7qVTi5cWZ3QEOxezqH/Okwmz5vc6lLM9p3RpEsfwBQSwMEFAAAAAgACrSZXLlrgEdIDAAAgaYAABMAAABDb250ZW50cy9oZWFkZXIueG1s7V1Pj9vGFf8qBHNJD16J1L/VIptAq9V6ZWslY6Wt44uNETUSmSU5DDnyehMUSJEWCNBDe3CAoM2hQYvWMQzUaHswivYLRevv0PlDUhRNS6Ij70rUOIflkPNmfu+9eT++Gc5EH33yxDKlx9D1DGTvy8pOXpagraGBYY/25bPe0a1dWfIwsAfARDbcly+hJ0uffPyRru/pEAwkIm57ezrYl3WMnb1c7uLiYkcHpAlrR0M7525Ov3AsM6fmFSUHHEcOJJylJBzggpELHH0qp+SXkCwnSHpL9ehBDRNbhFLaUlIacmEooi8lQs03FVkOnG54GLmXoZi1lJQFPAzdWw4YTTE6w7eLepoOLeD36AwDmcHUFM7YNXeQO8oNtBw0oQVt7OWUHSUX1EWx9o2BM2QCaj5fyZGn05qI/NV04OKl3DqtHqpy4YxtA9N7S7VwfOGckfp1Uj9oAjrj/ly4XlBTQ/bQIJExdu09BDzD27OBBb09rBGVoT1A2pgaYy9ae49FVSTGSiSkoFa3icaKzEKpD0eG3R5bEvURvSsNEcI2wrxAGg6vHUNjf3Hf5M8+HwPMG5ZzrDEXDltknLDrIbLxEGjQkwwMLdZlRZ55IpmAhvpxrX37rEX7tTGrpk6rScZgXyYq0Or78utvn139+5vJDy8mv//d1Z++IkguHXK71zuSJcNrWH04GEAmwBqgT5v2EBFpyzAve6zyUb3We3S70ztu1mXpAhojnfRYJsq5yEEuV6coS8R+2CWDl/XuYRedw18C1wj1lYBrdfGlyS1jQkyG+RC5FitaxsA0bP7oybHfB7NRztdrVkHlTQVfPn399bcbrWAu4ukkt7dqvWZbeH3LvE6C/U5NeH3LvH6ndq/WbnQbwvFb5niCsHEqvL5lXu8+ODnoiIxu29x+1hWxnnGnR0senz8idwDdI8M0IxM93/XTZ4F9sO5CeMjB6mCALtilRuat0G0xKO1Om6QJfReC8zo0zS6kqykY8oe+wTwTeLpvVF6/7iKiOR9khldHY9ogLfF5aR9o5920QiYc4gOmwYzUhTHAOqm1o0iWRR1gIiL0QZ79C+bB1JTvKIuR846SfYQxst5ReGCAEbKB6Qt2O63m4RKSuRk3J3ldFV7PnNd1bW9I/Hvgjj2dlS4MmxUYAdZ5fRvZUJZ0gDXdv/NBlf0jpGQ6dN3WH0EzjcUH1GyZcw5dcLtHeBASHkxYX+KPg3eOHvAaxS5h+ATXZ/VhY3IW9NiDR4Tlug6j8zy7cRe6NluaphKX1glwz8NxG+JrHp7C4cyrj5SJDezRmK+ZmYSZOTGTm58BdvUZcIANPc7DCOt0OCqskz7iUqR7N7LKRtl92ihVIWiWXgcN0+tI07QYNJ7PR5rP58MOwnHhEc2JsmEn0y6mHcw0P2080nTYcBgh0Ox+8X6Ro+HQg3jVwMc2cTB9V85EGBk4kahJDDDySjbOIRrjoDKXTKxLasW78BthpDnTddBAPU//IzowtT+llggKD1jB52geE/HwUNYqPFY1yER4iPBYSXio0/CoiugQ0SGiIxodhXWKDpFaiehYq+gorlN0bO6741Yp7INe+l3Qy2kPtOR3QC+D9uk1b55ciSBZxyApReYf5XiUqI1K8aAkokS8Q7Y1PMqR8FDES0SEx7aHx/Q6WPzli+egn7QcXJCnT4PVYDDGqAf6LTjE0fIpj7JwNT4UUWIiymIRdVEv4Re2GdysFXts9aFLxm5EDX+jZvgowOVhtnPV/zpCP5gc023R/m32te8x5JMcYBojMohajaMeGxtN28P3+SK/r1CTDBHeGV/9rw0+G/tfFSnpdJhP+JfJe43TeqPdiz4gb3JSkSA8Qq4FSPGwebtJanBf+bRSVKvFarmiVkv0AdTOQd/kX3ceKjvMHoEOCxRSb0Ahvkn1UfdBq1U7aDWWV01NpVph/X1V+EUahYqb5KtiKtVKa++rDx+WUmlU3iBnffiwnEq3yg3oVm+e1luNw0cpvEbI/mEljV67N6jXO/mOaribRsPqzY3KO7WTzrIjMrfoNZy/AT1OOye19qPuSa3VWtY7fm4SphuxoheqmZRyqZFsZJp0sTzH7zfP9iwRJf30lc4y6DaPYPsRzWNt4PTQbTfIc8aO40LPo7XaDIbHm6Go/Y0c1ASHBkkpW71TjoCZWtKRa3xBegDEAXfOur3m0QN2HgYbGr11UOs2Ws0wU6XnomiCFU1VjUEA2/djuO+CblbpQoypBCu0aKp+n8ym9uW7jca9R/c7p4f+ppY2siNPD04btbv+Y+JldNFxHZLds17OIXTuG1hvE43CG1R1rjQ9pXNAWzyAQ+RyE9K0+74LHL9hHx8dTV1/IgRrngHshj//4yViykAZZ8+7oMeY2KUGPCiRvy78fGy4cHCLHTPic8mUZ5wYDgu4I8Nmu0QMG5PBLT0G5tifmJKaJNju3ztrE4LkG0voBpwFVdhGmwV1yJB5vKCKTUw8r0ouil7fo2YODIpnI9BvRCknN8ONyqw7gEMwNrGwTGCZ0CC56DAM9vwkLU74E8RwcsWL4XTML/eQEykdsE1SAfvYUONVCUWQIDphmvjBkAvZK05kiiCyOJFFngoemxOtSimfmYBdOZUV8tkxzuawmTrLZkqUzdS1prPOWY89E4x2k4yWoaBdOaOpGTLO5jBaIYOMpghGuy5Gy1LQrpzRihkyzuYwWjGDjKYKRrsuRsvSxGrljFbOkHE2h9FKGWS0gmC062K0LKUhK2e03QwZZ3MYrZxBRisKRrsuRitlKGhXzmhKPkPW2RxKq2SQ0kqC0q6L0rI0s1o9pWVpmXFzKG03g5RWFpR2XZRWyVDQrp7SsjQr3xxKq4rtaGJf7ZbsHi1dG5llxjKbQ2T0YIRgMpGYvRGut5SCksGQLayGzG6pZXWbrLNBhLY2JwX4QbMbZzORl2U0+1gRlW2TZTaIxtbniIDgsa3kMbpYvjhgC4mV1nnFbEXmUYvLmKf8vs2zQYwWOyKgisRMENqapR+VbWWzJWyjJBPednJZUXCZ4LJ3+l6nXOPnus2jM/WtSadgtPfLaCXBaILR1j5kN4/Rim+dJwpGe7+MNu9wwLUy2qIvm6sMbWqAEeEZXU5gy7dvZ9udO/6X59y5Q0R8kX3fXFzN0Gaw1W+VE2e0boSH551oEDw8S6JVwcNZ4OFMnZ16L/+HpsxYZ4OIeN45DEHEsyxaEUScBSLOUsq3+oQ4S4cFN4iHxeERwWdr/7l3d0UriVk8PaKsalvPRh4gmV7P/HqWhy/NmV+j8H8BjN0Pf4yC26F2WpMlGkb78uTl09dff/vTq69IGNqjNrvXpj+gYdLYpr1EaDL6GxqkTH3Spc1Pb5nAHjUP6QysSGxiIu2c/hrHlKOmaJRENP96NXnxKgLlAA0uY0CUxUCUNEDUJCA/vfz+6o9PJSUCpeP/xpsSw6MuxqOmwVOYg0dNwKPG8BQW4ymkwVOcg6eQgKcQw1NcjKeYBk9pDp5iAp5iDE9pMZ5SGjzlOXhKCXhKMTzlxXjKafBU5uApJ+Apx/BUFuOppMGzOwdPJQFPJYZndzGe3TR4qnPw7Cbg2Y3zzxKAqqmYMJGYfUTVBETVOKIlhpCSjpwT2TkgxXwSK+bjoJYYR0oqolZCpq4f104DUFfP/ydN/vnN6++ir417JCuVeGq+4DWm/NzXWCER1F9/8yYomjQvB+pnv1sTOXvy7NXkby8mf/9DBBP9ua434FRjcNQEz6WibOUtnP3rq7/8NwLmCCFsIwzjIylunkICnlSUrSRy9uQfr2bxNOzBu8JJxdhKImVPfnw6ef4sAucEWiiOJZ4MFROwpGJrJZGur14+m/zwlXT15+8nz3+MQOp16tIxn6PGkcXTolICslS8rSQSt49MiYGKJ2lKPCsqJ8BJxdpqImv7cNQYnHiOpsSTogQ4aqqQVxMZ24dTiMGJp2hKPCdKgpMuqU7Mqq/+88PVb7+LgKkDBxvIjsOJE1BSSr0op86FcyJ+7cJhy/D4NFdDlgOw0TfhIdLGFp3nYjLdgpjMqUYusNh8UM0rn/IplAku0RjXfSHDNPCl38GbDTGBAdI6TLFgInpu2ENElKQ/dsjXTJq2Dl0D+ytOnPci9/z2ZxuyIAY9MPr4S5maU96T5V/xSa9/n9bBLtDOifFGsI7soTGShiYYeST8ykGbdE3p4/8DUEsDBBQAAAAIAAq0mVx2fXaPowQAAG4NAAAVAAAAQ29udGVudHMvc2VjdGlvbjAueG1s3Vffc+I2EP5XPO5TH4JtQghhjrtJ+BGYITYTIJn2JSNsYatnS6okh5C/vivJNnB3ueGh007Li72L9tvdT7sr+dOXtyJ3XrGQhNGBG7R818E0Zgmh6cBdryYXPdeRCtEE5YzigbvH0nW+fP6Uyb7EsQPWVPYzNHAzpXjf83a7XStDgFC0Ytb6Krxsx4vca/tB4CHO3dqCn2XBkUCpQDw72AX+GZbdH1jKszxCUgqoaKzis6xiJnBjkp1lkmGUHEzOCy4jUjGxb8yKs6wKJBUWFxylhxj59mNTGWe4QJVHvq1tkgMVvBR5i4nUS2IP57jAVEkvaAVevZZ9g08SvjUGbd+/9uDfw0oGzzhDQp21rYflTSo7XlKitO4shOmOr2H9ENbXEJiXm5+GK+uVMaNbAo1RCtpnSBLZp6jAsq9iSBnThMWlJqN/vLqvmwoahve5Q5KBCx2mi3MhZqNHvDWyVPscH0S9U3cCo69GilleFvQgF1ik2OAYUFFSRyd/hGf0UMgLYRy6jsJvakSELe2BO40eZ79H4ep2Dq45ivHQuIAaDILLDixHm6Vi0KE93/cb8QnlA7dzrNE8AtrzYh3OVq7DSpUTipcZ4nUygQ63YMcq34bzhIUiMcqfSaKyKfSCzc2U6gLyH1LVpJIKkjga+l5UBOqEG2HHaJqyP8iEiQIZK88yoKBMwrIwfC61ICPI/i5aTS3HlmwS26A2uXniP0tkaapxXokkG5ITtXcykuAJEVLpiLEwBo1uwpj6VvfQJGT0GyaM2XIaPb/czoH/LcnzY7mx1DYQ/CncuOBqPyfUosmM7bQAyzbWsQ04b3SGeEdgQ8Vqz3FVUSVVd3vznhA93eMKsGLsBE0zBZWUwxkgY6Qhnmej8fw3IF7v3cC9urlqwymRYZJmQH+vE/S6rpOWCjK3PufjyeolCsHGIBZIpIQ6WcVhp33VBiIq9qxkrU1QOd5q1CsfKlNULoxgSvSq2+1pXpViRWUMYXtN3Mahxg4BvhJRqRhkaevFUSbE0exe13ApsRiaUQKVIfCWvNWSLLeN9KsWuYwF4Uf1RsGD3g6ImKaamAsof4u+jOazUUOY3wraTlGY1mYA94tvfkcwS+hKOIGdDVY7jKmOHbqz3buEVHFud13nfu06aMNesZWBlhrD7KFGsP6H0O2zcB2tl65D8c7UVVDvbw4TQE8tx7wN3PHtcPoyjObrh1C7oxipbAUtW2XqfU8oTL5/gd6g071pX3Y6fy/J/j9CcTh6iSYvo2i4fhiHq49oPuXVHAtmgExgaFRu7TTbNOrD4NVT9q6aN4vbxfjRrTpuRiXME5OpbbpjBUDcwlFTmxjHbLuVWFWNGHSC66YRrWAa0b7WjWiko0Y8xP1xKuOncfg/SSUajf5jmXj1lcGAx0rY7KB5DrcIk1o4fl5WkedoD2e+He+mz4b6YDF5SrgWLd+b13vEj8raonv28vLTS4zyTtfpk03iFAmB9scKwytntn3ha+bkXZJ3iDuwNxdYVx9UVrNBEudNb5v7kPn26eo/Mybeayj9bqH0KaO3JUcp/HV5c9kOunVupxEapvXDfC19/gtQSwMEFAAAAAgACrSZXKyFohQEAAAAAgAAABMAAABQcmV2aWV3L1BydlRleHQudHh04+UCAFBLAwQUAAAACAAKtJlclVn1ZcUAAAAXAQAADAAAAHNldHRpbmdzLnhtbHWPTUsDMRCG/0qYu5uuB5Gw2SIW0VvxA89DdmpCk0lIpq7+e1Px0IvHgXnf93mm7VeK6pNqC5ktjMMGFLHLS+APC2+vD1e3oJogLxgzk4VvaqC28+TRPL7v70qJwaH08AuJ9JDqfdyMRwtepBit13UdPPbONLg8HKv2a0lRX2/GUWMp8JdwmQ+hb54qm4wtNMOYqBlxJhfiJbtTIhZz+W3OvL8s91hJ9rmFM4qKocnT7pkOFrpPwYoXV27d8wb0POn/JOYfUEsDBBQAAAAIAAq0mVxxV3F5vgAAAIURAAAUAAAAUHJldmlldy9QcnZJbWFnZS5wbmfrDPBz5+WS4mJgYOD19HAJYmBgusLAwMLAwQQU8TOIXAKkGIuD3J0Y1p2TeQnksKQ7+joyMGzs5/6TyArkcxZ4RBYzMMi2gzBj/9OPqQwMglKeLo4hFXFvry1kZDDgadjw73/J6+ftXiriBtwMArPMGRj+pNgxNEz5ycAQ9IyZwWMmP4NC6qjAqMCowKjAqMCowKjAqMCowKjAqMCowKjAqMCowKjA8BBg/17Obfg3KjKNAQg8Xf1c1jklNAEAUEsDBBQAAAAIAAq0mVwnlsLdCQEAAGMDAAAWAAAATUVUQS1JTkYvY29udGFpbmVyLnJkZrWTy26DMBBFf8Vy1niASlVBgSyKUJdVHx/gmimggI08poS/rxOySRRVSpsu/Zhzj6/k9WbXd+wLLbVGZzwSIWeolalaXWf8/a0MHjgjJ3UlO6Mx4zMSZ5t8bavP9KUomR/XlPpVxhvnhhRgmiYx3Qlja4iSJIEwhjgO/I2AZu3kLtC04gugQFK2HZzPZvu1/DCjy7g/1RSmjaRnad0xwu+cRDTSa/ZCGbG10ExD30EcRvfQo5MwbOsVPyAtkhmt8uaPRjvUjqBBWaEVHsshX8OZyI9mlxjLgJsHPAu8RvbpwCvbDq92+ue2CNU+MfxbXyeUmzT2uhB/W9kNDAqjxt6/7nI8HH9I/g1QSwMEFAAAAAgACrSZXNyQHIRsAgAARAcAABQAAABDb250ZW50cy9jb250ZW50LmhwZp1VTXLTMBS+ikb7WHZKKfUk7aIMw4Zdu2GnSs+xiC0JSa6bfZnhAF106LDjGNyo4Q48x3UckjQYNrIlfd/3fqT3NDm/LQtyA84ro6c0iWJKQAsjlZ5N6dXlu9EbSnzgWvLCaJjSBXhKzs8mxmap5WLOZ0BQQvs051Oah2BTxuq6jnKOMmUkTDR3LK9tWbBxnCSMW0s7hh3EsNzxmeM273lJPID5eg/TD7LoQQTMx5olBrGEcbCm5IMoOXDZU4Y5lysfjFusaeUgVsl9ADeyeF59GrOXqV7kUPJnizbrOLJPha1cERk3Y1IwKKAEHTxLooR1WLOlr6TNVoRxHJ8w3O2RBr8i5y4MOtYevg6ltpVWoVkbpPC+tleIv0B8JwG2uj7oru+QwuhMYXVUTqeGe+VTzUvwaRAYMmhpRNUkI91Ep6vKWtcZJeju5wpGSiJSZQpcs6gkjm1tlRC45IG3s6BCAaz9L7ieVXiMZ3MzYX8srImkcWhKhQOOV4US9CGgnSkNcBsoEueLquU26B2er64/YQVs89gOUIIXTtm2Vv4GLvAGen4D14t/duiiCQTkWxx2uON4fDyKT0fJyWX8Kj0ap8fxxwNSH7C1YboHaR2lydEhLfmSxtOXO3K6fLwnycny+0+y/Pqw/Ha/+nv48evxjiStnwek57CojZN7ssp2b0fJtcrAh3amApSrm9Q0F8DTzx1gIV60Qp61yxHeTkpKkIqPwsKiSWzMhRK8OUzWbLItueemGO8Idhv/IxkCPjS+k+zmg5TYbujeKg29DdREMyvlLhcFApoe0TxjbC+yD3MLyzYssI3n7+w3UEsDBBQAAAAIAAq0mVwfmCXUAwEAANsBAAAWAAAATUVUQS1JTkYvY29udGFpbmVyLnhtbH1RzWoCMRB+lZBr2Yz2VIKrSKnQQ4sH+wAhO7rB/JHM7urbd8RWsFBvk8l8fzOL1Sl4MWKpLsVWztVMCow2dS4eWvm12zQvUlQysTM+RWzlGasUq+Ui2b22KZJxEYtgklg191o5lKiTqa7qaAJWTVanjLFLdggYSV9Hb1D5g+0zY3uirAGmaVK9YRdB2aSOBartMRh4ns3nwIPyKl9Sor3zWO+fYj9432RDfStfWYZFK9hroS5oEbBzpqFz5jwmZ++sIY4P/ZTDBWmP5oBP7EvC/9TbgqPDCbZl3OGJFJ3onpm4C9lzykc0H2+7dfP+uYHbRlTpHnjkz19n8GcJcHeT5TdQSwMEFAAAAAgACrSZXG8r4FxxAAAAhgAAABUAAABNRVRBLUlORi9tYW5pZmVzdC54bWw1jUsKwzAMBa8itO9vF0Sc7HqC9gDGVoohfiqRU9rbJ6V0+5iZ14/vOtNLFy+GwJfjmUmRLBc8At9v10PH5C0ix9mggT/qTOPQW56kRpRJvdHegMs+BV4XiEUvLohVXVoSeyqypbUqmvzQvynfw9OwAVBLAQIUAxQAAAAAAAAAIQCC8EFHEwAAABMAAAAIAAAAAAAAAAAAAACAAQAAAABtaW1ldHlwZVBLAQIUAxQAAAAIAAq0mVycjEu+5AAAADYBAAALAAAAAAAAAAAAAACkgTkAAAB2ZXJzaW9uLnhtbFBLAQIUAxQAAAAIAAq0mVy5a4BHSAwAAIGmAAATAAAAAAAAAAAAAACkgUYBAABDb250ZW50cy9oZWFkZXIueG1sUEsBAhQDFAAAAAgACrSZXHZ9do+jBAAAbg0AABUAAAAAAAAAAAAAAKSBvw0AAENvbnRlbnRzL3NlY3Rpb24wLnhtbFBLAQIUAxQAAAAIAAq0mVyshaIUBAAAAAIAAAATAAAAAAAAAAAAAACkgZUSAABQcmV2aWV3L1BydlRleHQudHh0UEsBAhQDFAAAAAgACrSZXJVZ9WXFAAAAFwEAAAwAAAAAAAAAAAAAAKSByhIAAHNldHRpbmdzLnhtbFBLAQIUAxQAAAAIAAq0mVxxV3F5vgAAAIURAAAUAAAAAAAAAAAAAACkgbkTAABQcmV2aWV3L1BydkltYWdlLnBuZ1BLAQIUAxQAAAAIAAq0mVwnlsLdCQEAAGMDAAAWAAAAAAAAAAAAAACkgakUAABNRVRBLUlORi9jb250YWluZXIucmRmUEsBAhQDFAAAAAgACrSZXNyQHIRsAgAARAcAABQAAAAAAAAAAAAAAKSB5hUAAENvbnRlbnRzL2NvbnRlbnQuaHBmUEsBAhQDFAAAAAgACrSZXB+YJdQDAQAA2wEAABYAAAAAAAAAAAAAAKSBhBgAAE1FVEEtSU5GL2NvbnRhaW5lci54bWxQSwECFAMUAAAACAAKtJlcbyvgXHEAAACGAAAAFQAAAAAAAAAAAAAApIG7GQAATUVUQS1JTkYvbWFuaWZlc3QueG1sUEsFBgAAAAALAAsAvQIAAF8aAAAAAA=="
             hwpx.templates.blank_document_bytes = lambda: base64.b64decode(skeleton_b64)
             hwpx.document.blank_document_bytes = lambda: base64.b64decode(skeleton_b64)
+
             # python-hwpx 보정 패치 (그림 매핑 정보 수정):
             # 한글이 직접 저장한 hwpx 기준, section0.xml의 binaryItemIDRef는
             # content.hpf의 <opf:item id>를 참조하고 해당 item에 isEmbeded="1"이
@@ -7023,43 +6956,12 @@ class DatabaseManager:
             # table_categories 테이블 생성 (다대다 및 순서 지원)
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS table_categories (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 table_name TEXT,
                 task_category TEXT DEFAULT '기타',
                 task_order INTEGER DEFAULT 0,
-                display_name TEXT,
-                joins_json TEXT
+                PRIMARY KEY (table_name, task_category)
             )
             """)
-            
-            # Migration check: migrate old table_categories if needed
-            try:
-                cursor.execute("SELECT id, display_name, joins_json FROM table_categories LIMIT 1")
-            except sqlite3.OperationalError:
-                try:
-                    cursor.execute("ALTER TABLE table_categories RENAME TO table_categories_old")
-                    cursor.execute("""
-                    CREATE TABLE table_categories (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        table_name TEXT,
-                        task_category TEXT DEFAULT '기타',
-                        task_order INTEGER DEFAULT 0,
-                        display_name TEXT,
-                        joins_json TEXT
-                    )
-                    """)
-                    cursor.execute("""
-                    INSERT INTO table_categories (table_name, task_category, task_order)
-                    SELECT table_name, task_category, task_order FROM table_categories_old
-                    """)
-                    cursor.execute("DROP TABLE table_categories_old")
-                    conn.commit()
-                except Exception as e:
-                    for col_name in ['display_name', 'joins_json']:
-                        try:
-                            cursor.execute(f"ALTER TABLE table_categories ADD COLUMN {col_name} TEXT")
-                        except sqlite3.OperationalError:
-                            pass
             
             # 2. columns 테이블 생성
             cursor.execute("""
@@ -7128,21 +7030,9 @@ class DatabaseManager:
             )
             """)
             
-            # app_metadata 를 먼저 만들어 둔다 (기본 시딩 여부 판단에 사용)
-            cursor.execute("""
-            CREATE TABLE IF NOT EXISTS app_metadata (
-                key TEXT PRIMARY KEY,
-                value TEXT
-            )
-            """)
-            # '기본 정보 초기화'로 비운 DB에 예시 데이터가 되살아나지 않도록,
-            # 기본 시딩은 seeded 플래그가 없을 때(최초 1회)만 수행한다.
-            cursor.execute("SELECT 1 FROM app_metadata WHERE key = 'seeded'")
-            already_seeded = cursor.fetchone() is not None
-
-            # 카테고리 & 쿼리 샘플 시딩 (최초 1회, 비어 있는 경우)
+            # 카테고리 & 쿼리 샘플 시딩 (비어 있는 경우)
             cursor.execute("SELECT COUNT(*) FROM query_categories")
-            if not already_seeded and cursor.fetchone()[0] == 0:
+            if cursor.fetchone()[0] == 0:
                 now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 cursor.execute("INSERT OR IGNORE INTO query_categories (category_name, created_at) VALUES (?, ?)", ("기본 조회 쿼리", now_str))
                 cursor.execute("INSERT OR IGNORE INTO query_categories (category_name, created_at) VALUES (?, ?)", ("자주 쓰는 DML", now_str))
@@ -7283,18 +7173,18 @@ class DatabaseManager:
             )
             """)
             
-            # COMMON_CODE_MASTER 데이터 시딩 (최초 1회)
+            # COMMON_CODE_MASTER 데이터 시딩
             cursor.execute("SELECT COUNT(*) FROM COMMON_CODE_MASTER")
-            if not already_seeded and cursor.fetchone()[0] == 0:
+            if cursor.fetchone()[0] == 0:
                 master_data = [
                     ('USER_STATUS_GRP', 'USER_STATUS', '사용자상태그룹', 'Y', 'SCOTT'),
                     ('BOARD_TYPE_GRP', 'BOARD_TYPE', '게시판유형그룹', 'Y', 'SCOTT')
                 ]
                 cursor.executemany("INSERT INTO COMMON_CODE_MASTER VALUES (?, ?, ?, ?, ?)", master_data)
                 
-            # COMMON_CODE_SUB 데이터 시딩 (최초 1회)
+            # COMMON_CODE_SUB 데이터 시딩
             cursor.execute("SELECT COUNT(*) FROM COMMON_CODE_SUB")
-            if not already_seeded and cursor.fetchone()[0] == 0:
+            if cursor.fetchone()[0] == 0:
                 sub_data = [
                     ('USER_STATUS_GRP', '10', '정상', '정상 사용중', 'Y', 1),
                     ('USER_STATUS_GRP', '20', '정지', '일시 정지', 'Y', 2),
@@ -7306,7 +7196,7 @@ class DatabaseManager:
                     ('BOARD_TYPE_GRP', 'GALLERY', '갤러리', '이미지 게시판', 'Y', 4)
                 ]
                 cursor.executemany("INSERT INTO COMMON_CODE_SUB VALUES (?, ?, ?, ?, ?, ?)", sub_data)
-
+            
             # 8. 기본 쿼리 템플릿 초기화 (app_metadata 테이블 활용)
             default_query_columns = """SELECT A.TABLE_NAME AS "테이블명", C.COMMENTS AS "테이블한글명", A.COLUMN_NAME AS "컬럼명", B.COMMENTS AS "컬럼한글명", A.DATA_TYPE AS "데이터타입", A.DATA_LENGTH AS "길이", A.NULLABLE AS "정널여부", CASE WHEN D.COLUMN_NAME IS NOT NULL THEN 'Y' ELSE 'N' END AS "pk여부" FROM ALL_TAB_COLUMNS A LEFT JOIN ALL_COL_COMMENTS B ON A.OWNER = B.OWNER AND A.TABLE_NAME = B.TABLE_NAME AND A.COLUMN_NAME = B.COLUMN_NAME LEFT JOIN ALL_TAB_COMMENTS C ON A.OWNER = C.OWNER AND A.TABLE_NAME = C.TABLE_NAME LEFT JOIN (SELECT DISTINCT CC.OWNER, CC.TABLE_NAME, CC.COLUMN_NAME FROM ALL_CONSTRAINTS C JOIN ALL_CONS_COLUMNS CC ON C.OWNER = CC.OWNER AND C.CONSTRAINT_NAME = CC.CONSTRAINT_NAME WHERE C.CONSTRAINT_TYPE = 'P') D ON A.OWNER = D.OWNER AND A.TABLE_NAME = D.TABLE_NAME AND A.COLUMN_NAME = D.COLUMN_NAME WHERE A.OWNER = '{schema_name}' ORDER BY A.TABLE_NAME, A.COLUMN_ID;"""
             
@@ -7336,9 +7226,9 @@ class DatabaseManager:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_common_codes_group ON common_codes(code_group_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_common_codes_col ON common_codes(column_name)")
 
-            # 명세표 테이블(tables)에 공통코드 테이블이 없는 경우 수동 시딩 보장 (최초 1회)
+            # 명세표 테이블(tables)에 공통코드 테이블이 없는 경우 수동 시딩 보장
             cursor.execute("SELECT COUNT(*) FROM tables WHERE table_name = 'COMMON_CODE_MASTER'")
-            if not already_seeded and cursor.fetchone()[0] == 0:
+            if cursor.fetchone()[0] == 0:
                 now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 cursor.execute("INSERT OR IGNORE INTO tables (table_name, table_ko_name, is_favorite, updated_at) VALUES ('COMMON_CODE_MASTER', '공통코드마스터', 0, ?)", (now_str,))
                 cursor.execute("INSERT OR IGNORE INTO tables (table_name, table_ko_name, is_favorite, updated_at) VALUES ('COMMON_CODE_SUB', '공통코드상세', 0, ?)", (now_str,))
@@ -7383,10 +7273,10 @@ class DatabaseManager:
             """)
             conn.commit()
 
-            # 테이블 목록이 비어 있으면 자동 샘플 데이터 시딩 (최초 1회)
+            # 테이블 목록이 비어 있으면 자동 샘플 데이터 시딩
             cursor.execute("SELECT COUNT(*) FROM tables")
             count = cursor.fetchone()[0]
-            if not already_seeded and count == 0:
+            if count == 0:
                 now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 # 1. tables
                 sample_tables = [
@@ -7455,13 +7345,6 @@ class DatabaseManager:
                 )
                 conn.commit()
 
-            # 기본 시딩을 마쳤음을 표시한다.
-            # '기본 정보 초기화'로 비운 DB에는 이 플래그가 남아 있으므로
-            # 재기동해도 위의 예시 데이터가 다시 채워지지 않는다.
-            cursor.execute(
-                "INSERT OR REPLACE INTO app_metadata (key, value) VALUES ('seeded', 'Y')")
-            conn.commit()
-
             # 9. 컬럼명 매핑 자동 마이그레이션 (동일 컬럼명 공통코드 자동 연동)
             cursor.execute("""
             INSERT OR IGNORE INTO relations (src_table_name, src_column_name, ref_table_name)
@@ -7511,6 +7394,40 @@ class DatabaseManager:
             )
             """)
             
+            # Migration check: Add is_embed column to task_doc_attachments if not exists
+            try:
+                cursor.execute("ALTER TABLE task_doc_attachments ADD COLUMN is_embed INTEGER DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass
+            
+            # 11. 주소록 관련 테이블 생성
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS contact_categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category_name TEXT NOT NULL,
+                parent_id INTEGER DEFAULT NULL,
+                sort_order INTEGER DEFAULT 0,
+                created_at TEXT
+            )
+            """)
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS contacts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category_id INTEGER DEFAULT NULL,
+                name TEXT NOT NULL,
+                phone TEXT,
+                company TEXT,
+                notes TEXT,
+                created_at TEXT,
+                FOREIGN KEY(category_id) REFERENCES contact_categories(id) ON DELETE CASCADE
+            )
+            """)
+            # contacts 테이블 category_id 컬럼 추가 (마이그레이션)
+            try:
+                cursor.execute("ALTER TABLE contacts ADD COLUMN category_id INTEGER DEFAULT NULL")
+            except sqlite3.OperationalError:
+                pass
+
             # task_documents 테이블 반복 주기 관련 컬럼 추가 (마이그레이션)
             migration_columns = [
                 ("is_repeating", "INTEGER DEFAULT 0"),
@@ -7525,12 +7442,157 @@ class DatabaseManager:
                     cursor.execute(f"ALTER TABLE task_documents ADD COLUMN {col_name} {col_type}")
                 except sqlite3.OperationalError:
                     pass
+            conn.commit()
+
+    def get_contact_categories(self):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM contact_categories ORDER BY sort_order ASC, category_name ASC")
+            return [dict(row) for row in cursor.fetchall()]
+
+    def add_contact_category(self, category_name, parent_id=None):
+        import datetime
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM contact_categories WHERE COALESCE(parent_id, 0) = COALESCE(?, 0)", (parent_id,))
+            max_order = cursor.fetchone()[0]
+            cursor.execute("""
+                INSERT INTO contact_categories (category_name, parent_id, sort_order, created_at)
+                VALUES (?, ?, ?, ?)
+            """, (category_name, parent_id, max_order, now_str))
+            conn.commit()
+            return cursor.lastrowid
+
+    def update_contact_category(self, category_id, category_name):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE contact_categories
+                SET category_name = ?
+                WHERE id = ?
+            """, (category_name, category_id))
+            conn.commit()
+
+    def delete_contact_category(self, category_id):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                WITH RECURSIVE subcategories(id) AS (
+                    SELECT ?
+                    UNION ALL
+                    SELECT c.id FROM contact_categories c
+                    JOIN subcategories s ON c.parent_id = s.id
+                )
+                SELECT id FROM subcategories
+            """, (category_id,))
+            cat_ids = [row[0] for row in cursor.fetchall()]
             
-            # Migration check: Add is_embed column to task_doc_attachments if not exists
-            try:
-                cursor.execute("ALTER TABLE task_doc_attachments ADD COLUMN is_embed INTEGER DEFAULT 0")
-            except sqlite3.OperationalError:
-                pass
+            placeholders = ",".join("?" for _ in cat_ids)
+            cursor.execute(f"DELETE FROM contacts WHERE category_id IN ({placeholders})", cat_ids)
+            cursor.execute(f"DELETE FROM contact_categories WHERE id IN ({placeholders})", cat_ids)
+            conn.commit()
+
+    def get_contacts_by_category(self, category_id=None):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            if category_id is None:
+                cursor.execute("SELECT * FROM contacts WHERE category_id IS NULL ORDER BY name ASC")
+            else:
+                cursor.execute("SELECT * FROM contacts WHERE category_id = ? ORDER BY name ASC", (category_id,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_contacts_by_category_recursive(self, category_id=None):
+        if category_id is None:
+            return self.get_contacts_by_category(None)
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                WITH RECURSIVE subcategories(id) AS (
+                    SELECT ?
+                    UNION ALL
+                    SELECT c.id FROM contact_categories c
+                    JOIN subcategories s ON c.parent_id = s.id
+                )
+                SELECT id FROM subcategories
+            """, (category_id,))
+            cat_ids = [row[0] for row in cursor.fetchall()]
+            
+            placeholders = ",".join("?" for _ in cat_ids)
+            query = f"""
+                SELECT c.*, cat.category_name 
+                FROM contacts c
+                LEFT JOIN contact_categories cat ON c.category_id = cat.id
+                WHERE c.category_id IN ({placeholders})
+                ORDER BY c.name ASC
+            """
+            cursor.execute(query, cat_ids)
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_all_contacts(self, search_text=None, search_type="이름"):
+        query = "SELECT * FROM contacts"
+        params = []
+        if search_text:
+            if search_type == "이름":
+                query += " WHERE name LIKE ?"
+            elif search_type == "회사명":
+                query += " WHERE company LIKE ?"
+            elif search_type == "전화번호":
+                query += " WHERE phone LIKE ?"
+            else:
+                query += " WHERE name LIKE ?"
+            params.append(f"%{search_text}%")
+        query += " ORDER BY name ASC"
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            return [dict(row) for row in cursor.fetchall()]
+
+    def add_contact(self, name, phone, company, notes, category_id=None):
+        import datetime
+        created_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO contacts (name, phone, company, notes, created_at, category_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (name, phone, company, notes, created_at, category_id))
+            conn.commit()
+            return cursor.lastrowid
+
+    def update_contact(self, contact_id, name, phone, company, notes, category_id=None):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE contacts
+                SET name = ?, phone = ?, company = ?, notes = ?, category_id = ?
+                WHERE id = ?
+            """, (name, phone, company, notes, category_id, contact_id))
+            conn.commit()
+
+    def delete_contact(self, contact_id):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM contacts WHERE id = ?", (contact_id,))
+            conn.commit()
+
+    def update_contact_category_id(self, contact_id, category_id):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE contacts SET category_id = ? WHERE id = ?", (category_id, contact_id))
+            conn.commit()
+
+    def update_contact_category_parent(self, category_id, parent_id):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE contact_categories SET parent_id = ? WHERE id = ?", (parent_id, category_id))
+            conn.commit()
+
+    def update_contact_category_sort_order(self, category_id, sort_order):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE contact_categories SET sort_order = ? WHERE id = ?", (sort_order, category_id))
             conn.commit()
 
     def _read_file_via_com(self, file_path):
@@ -7633,8 +7695,8 @@ class DatabaseManager:
                 except Exception:
                     continue
             raise ValueError(f"텍스트/CSV 파일을 읽을 수 없습니다. (인코딩 변환 실패) 파일 경로: {file_path}")
-    def import_csv_data(self, columns_path=None, relations_path=None, common_codes_path=None, clear_existing=True):
-        """Excel(.xlsx, .xls) 또는 CSV/TXT 파일들을 선택적으로 읽어 SQLite DB 테이블에 반영 (clear_existing에 따라 초기화 후 적재 또는 병합)"""
+    def import_csv_data(self, columns_path=None, relations_path=None, common_codes_path=None):
+        """Excel(.xlsx, .xls) 또는 CSV/TXT 파일들을 선택적으로 읽어 해당하는 SQLite DB 테이블만 새로 고침 (Replace)"""
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         def clean_str(val):
@@ -7666,11 +7728,10 @@ class DatabaseManager:
                     cursor.execute("SELECT table_name, is_favorite FROM tables WHERE is_favorite = 1")
                     favs = {row['table_name'].upper() for row in cursor.fetchall()}
                     
-                    if clear_existing:
-                        # tables, columns, recent_tables 비우기
-                        cursor.execute("DELETE FROM tables")
-                        cursor.execute("DELETE FROM columns")
-                        cursor.execute("DELETE FROM recent_tables")
+                    # tables, columns, recent_tables 비우기
+                    cursor.execute("DELETE FROM tables")
+                    cursor.execute("DELETE FROM columns")
+                    cursor.execute("DELETE FROM recent_tables")
                     # table_categories는 사용자 커스터마이징이므로 지우지 않음!
                     
                     # tables 테이블 데이터 삽입
@@ -7683,9 +7744,10 @@ class DatabaseManager:
                         task_cat = ""  # 자동 카테고리 추출 없음!
                         
                         cursor.execute(
-                            "INSERT OR REPLACE INTO tables (table_name, table_ko_name, task_category, is_favorite, updated_at) VALUES (?, ?, ?, ?, ?)",
+                            "INSERT INTO tables (table_name, table_ko_name, task_category, is_favorite, updated_at) VALUES (?, ?, ?, ?, ?)",
                             (t_name, t_ko, task_cat, is_fav, now_str)
                         )
+                        # table_categories 에 자동 인서트 없음!
 
                     # columns 테이블 데이터 삽입
                     for _, row in df_cols.iterrows():
@@ -7698,7 +7760,7 @@ class DatabaseManager:
                         is_pk = clean_str(row['pk여부'])
                         
                         cursor.execute("""
-                        INSERT OR REPLACE INTO columns (table_name, column_name, column_ko_name, data_type, length, is_nullable, is_pk)
+                        INSERT INTO columns (table_name, column_name, column_ko_name, data_type, length, is_nullable, is_pk)
                         VALUES (?, ?, ?, ?, ?, ?, ?)
                         """, (
                             t_name,
@@ -7709,6 +7771,9 @@ class DatabaseManager:
                             is_null,
                             is_pk
                         ))
+                    
+                    # 삭제된 테이블에 매핑되어 있는 카테고리 관계 정리 (폴더 구조 유지를 위해 주석 처리)
+                    # cursor.execute("DELETE FROM table_categories WHERE table_name NOT IN (SELECT table_name FROM tables)")
                 else:
                     raise ValueError("기본 컬럼 파일을 읽을 수 없습니다.")
 
@@ -7727,9 +7792,8 @@ class DatabaseManager:
                     df_rels = df_rels[(df_rels['본래테이블명'] != "") & (df_rels['컬럼명'] != "")]
                     df_rels = df_rels.drop_duplicates(subset=['본래테이블명', '컬럼명'])
                     
-                    if clear_existing:
-                        # relations 비우기
-                        cursor.execute("DELETE FROM relations")
+                    # relations 비우기
+                    cursor.execute("DELETE FROM relations")
                     
                     # relations 테이블 데이터 삽입
                     for _, row in df_rels.iterrows():
@@ -7738,7 +7802,7 @@ class DatabaseManager:
                         ref_table = clean_str(row['참조코드테이블명']).upper()
                         
                         cursor.execute("""
-                        INSERT OR REPLACE INTO relations (src_table_name, src_column_name, ref_table_name)
+                        INSERT INTO relations (src_table_name, src_column_name, ref_table_name)
                         VALUES (?, ?, ?)
                         """, (
                             src_table,
@@ -7752,9 +7816,8 @@ class DatabaseManager:
             if common_codes_path:
                 df_codes = self._read_file_to_df(common_codes_path)
                 if df_codes is not None:
-                    if clear_existing:
-                        # common_codes 비우기
-                        cursor.execute("DELETE FROM common_codes")
+                    # common_codes 비우기
+                    cursor.execute("DELETE FROM common_codes")
                     
                     # Columns to read: 컬럼명, 코드그룹id, 코드그룹 한글명칭, 코드값, 코드한글명
                     col_mapping = {
@@ -7800,7 +7863,7 @@ class DatabaseManager:
                         c_ko = str(row[resolved_cols['code_ko_name']]) if resolved_cols['code_ko_name'] in df_codes.columns and pd.notna(row[resolved_cols['code_ko_name']]) else ""
                         
                         cursor.execute("""
-                        INSERT OR REPLACE INTO common_codes (column_name, code_group_id, code_group_name, code_value, code_ko_name, description)
+                        INSERT INTO common_codes (column_name, code_group_id, code_group_name, code_value, code_ko_name, description)
                         VALUES (?, ?, ?, ?, ?, '')
                         """, (c_name.strip(), cg_id.strip(), cg_name.strip(), c_val.strip(), c_ko.strip()))
                 else:
@@ -7868,15 +7931,15 @@ class DatabaseManager:
                 lk = f"%{search_text.strip()}%"
                 if search_type == "테이블명":
                     cursor.execute("""
-                    SELECT tc.id, tc.table_name, t.table_name AS db_table_name, t.table_ko_name, tc.task_category, tc.task_order, tc.display_name, tc.joins_json
+                    SELECT tc.table_name, t.table_name AS db_table_name, t.table_ko_name, tc.task_category, tc.task_order
                     FROM table_categories tc
                     LEFT JOIN tables t ON tc.table_name = t.table_name
-                    WHERE tc.table_name LIKE ? OR t.table_ko_name LIKE ? OR tc.display_name LIKE ?
+                    WHERE tc.table_name LIKE ? OR t.table_ko_name LIKE ?
                     ORDER BY tc.task_order ASC, tc.table_name ASC
-                    """, (lk, lk, lk))
+                    """, (lk, lk))
                 else:  # "업무분류명"
                     cursor.execute("""
-                    SELECT tc.id, tc.table_name, t.table_name AS db_table_name, t.table_ko_name, tc.task_category, tc.task_order, tc.display_name, tc.joins_json
+                    SELECT tc.table_name, t.table_name AS db_table_name, t.table_ko_name, tc.task_category, tc.task_order
                     FROM table_categories tc
                     LEFT JOIN tables t ON tc.table_name = t.table_name
                     WHERE tc.task_category LIKE ?
@@ -7884,57 +7947,12 @@ class DatabaseManager:
                     """, (lk,))
             else:
                 cursor.execute("""
-                SELECT tc.id, tc.table_name, t.table_name AS db_table_name, t.table_ko_name, tc.task_category, tc.task_order, tc.display_name, tc.joins_json
+                SELECT tc.table_name, t.table_name AS db_table_name, t.table_ko_name, tc.task_category, tc.task_order
                 FROM table_categories tc
                 LEFT JOIN tables t ON tc.table_name = t.table_name
                 ORDER BY tc.task_order ASC, tc.table_name ASC
                 """)
             return cursor.fetchall()
-
-    def add_custom_table_category(self, table_name, category_name, display_name, joins_json):
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO table_categories (table_name, task_category, task_order, display_name, joins_json) VALUES (?, ?, 999999, ?, ?)",
-                (table_name, category_name, display_name, joins_json)
-            )
-            conn.commit()
-
-    def update_task_item_display_name(self, record_id, new_name):
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE table_categories SET display_name = ? WHERE id = ?",
-                (new_name, record_id)
-            )
-            conn.commit()
-
-    def update_table_category_by_id(self, record_id, category_name):
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE table_categories SET task_category = ? WHERE id = ?",
-                (category_name, record_id)
-            )
-            conn.commit()
-
-    def duplicate_table_category_by_id(self, record_id, category_name):
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT table_name, task_order, display_name, joins_json FROM table_categories WHERE id = ?", (record_id,))
-            row = cursor.fetchone()
-            if row:
-                cursor.execute(
-                    "INSERT INTO table_categories (table_name, task_category, task_order, display_name, joins_json) VALUES (?, ?, ?, ?, ?)",
-                    (row['table_name'], category_name, row['task_order'], row['display_name'], row['joins_json'])
-                )
-                conn.commit()
-
-    def remove_table_category_by_id(self, record_id):
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM table_categories WHERE id = ?", (record_id,))
-            conn.commit()
 
     def get_all_tables_for_mapping(self):
         with self.get_connection() as conn:
@@ -8016,19 +8034,12 @@ class DatabaseManager:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM table_categories")
             seen = set()
-            for row in updates:
-                if len(row) == 3:
-                    table_name, cat_path, order_idx = row
-                    display_name = None
-                    joins_json = None
-                else:
-                    table_name, cat_path, order_idx, display_name, joins_json = row
-                
-                key = (table_name, cat_path, display_name, joins_json)
+            for table_name, cat_path, order_idx in updates:
+                key = (table_name, cat_path)
                 if key not in seen:
                     cursor.execute(
-                        "INSERT INTO table_categories (table_name, task_category, task_order, display_name, joins_json) VALUES (?, ?, ?, ?, ?)",
-                        (table_name, cat_path, order_idx, display_name, joins_json)
+                        "INSERT INTO table_categories (table_name, task_category, task_order) VALUES (?, ?, ?)",
+                        (table_name, cat_path, order_idx)
                     )
                     seen.add(key)
             conn.commit()
@@ -8811,7 +8822,7 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-            SELECT id, doc_id, file_path, file_name, file_size, created_at, is_embed
+            SELECT id, doc_id, file_path, file_name, file_size, created_at, is_embed 
             FROM task_doc_attachments 
             WHERE doc_id = ?
             """, (doc_id,))
@@ -8837,4782 +8848,6 @@ class DatabaseManager:
             conn.commit()
 
 
-class QueryEditDialog(QDialog):
-    """오라클 쿼리 템플릿을 확인하고 직접 수정하여 DB에 저장 및 치환 후 클립보드 복사를 제공하는 다이얼로그"""
-    def __init__(self, db_mgr, setting_key, schema_name, title, parent=None):
-        super().__init__(parent)
-        self.db_mgr = db_mgr
-        self.setting_key = setting_key
-        self.schema_name = schema_name
-        
-        self.setWindowTitle(title)
-        self.setMinimumSize(600, 450)
-        self.resize(700, 500)
-        self.init_ui()
-
-    def init_ui(self):
-        layout = QVBoxLayout()
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(10)
-
-        # 상단 가이드 멘트
-        lbl_guide = QLabel(
-            "💡 아래는 오라클 DB에서 실행할 SQL 쿼리 템플릿입니다.\n"
-            "   - 필요 시 쿼리를 직접 수정한 뒤 [💾 설정 저장]을 누르면 이 설정 그대로 SQLite DB에 영구 반영됩니다.\n"
-            "   - [📋 클립보드 복사]를 누르면 {schema_name} 부분이 입력하신 OWNER명으로 치환되어 복사됩니다."
-        )
-        lbl_guide.setStyleSheet("font-size: 11px; color: #475569; line-height: 16px; font-weight: bold;")
-        layout.addWidget(lbl_guide)
-
-        # 쿼리 에디터 (QTextEdit)
-        self.txt_query = QTextEdit()
-        self.txt_query.setAcceptRichText(False)
-        self.txt_query.setFont(QFont("Consolas", 10))
-        self.txt_query.setStyleSheet("""
-            QTextEdit {
-                background-color: #F8FAFC;
-                border: 1px solid #CBD5E1;
-                border-radius: 4px;
-                padding: 8px;
-                color: #0F172A;
-            }
-        """)
-        self.query_highlighter = SqlHighlighter(self.txt_query.document())
-
-        # 설정된 쿼리 가져오기 — 한 줄짜리 구버전 템플릿은 보기 좋게 자동 정렬해서 표시
-        current_query = self.db_mgr.get_setting(self.setting_key, "")
-        if current_query.strip() and '\n' not in current_query.strip():
-            try:
-                current_query = format_sql(current_query)
-            except Exception:
-                pass
-        self.txt_query.setPlainText(current_query)
-        apply_sql_line_spacing(self.txt_query, 122)
-        layout.addWidget(self.txt_query)
-
-        # 하단 버튼 배치
-        btn_layout = QHBoxLayout()
-        
-        btn_save = QPushButton("💾 설정 저장")
-        btn_save.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_save.setStyleSheet("""
-            QPushButton {
-                background-color: #059669;
-                color: #FFFFFF;
-                border: none;
-                font-weight: bold;
-                font-size: 11px;
-                padding: 6px 12px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #047857;
-            }
-        """)
-        btn_save.clicked.connect(self.save_query)
-        
-        btn_copy = QPushButton("📋 클립보드 복사")
-        btn_copy.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_copy.setStyleSheet("""
-            QPushButton {
-                background-color: #2563EB;
-                color: #FFFFFF;
-                border: none;
-                font-weight: bold;
-                font-size: 11px;
-                padding: 6px 12px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #1D4ED8;
-            }
-        """)
-        btn_copy.clicked.connect(self.copy_replaced_query)
-        
-        btn_close = QPushButton("닫기")
-        btn_close.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_close.setStyleSheet("""
-            QPushButton {
-                background-color: #FFFFFF;
-                color: #475569;
-                border: 1px solid #CBD5E1;
-                font-size: 11px;
-                padding: 6px 12px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #F1F5F9;
-            }
-        """)
-        btn_close.clicked.connect(self.accept)
-
-        btn_format = QPushButton("✨ SQL 정렬")
-        btn_format.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_format.setStyleSheet("""
-            QPushButton {
-                background-color: #E0F2FE;
-                color: #0369A1;
-                border: 1px solid #BAE6FD;
-                font-weight: bold;
-                font-size: 11px;
-                padding: 6px 12px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #BAE6FD;
-            }
-        """)
-        btn_format.clicked.connect(self.on_format_clicked)
-
-        btn_layout.addWidget(btn_save)
-        btn_layout.addWidget(btn_copy)
-        btn_layout.addWidget(btn_format)
-        btn_layout.addStretch()
-        btn_layout.addWidget(btn_close)
-        layout.addLayout(btn_layout)
-
-        self.setLayout(layout)
-
-    def on_format_clicked(self):
-        sql = self.txt_query.toPlainText()
-        if not sql.strip():
-            return
-        try:
-            self.txt_query.setPlainText(format_sql(sql))
-            apply_sql_line_spacing(self.txt_query, 122)
-            show_copy_message("✨ SQL 정렬(포맷팅)이 완료되었습니다.", self)
-        except Exception as e:
-            QMessageBox.warning(self, "정렬 실패", f"SQL 정렬 중 오류가 발생했습니다:\n{str(e)}")
-
-    def save_query(self):
-        query_text = self.txt_query.toPlainText().strip()
-        if not query_text:
-            QMessageBox.warning(self, "경고", "쿼리 내용을 입력해 주세요.")
-            return
-            
-        try:
-            self.db_mgr.set_setting(self.setting_key, query_text)
-            QMessageBox.information(self, "완료", "수정된 쿼리 템플릿이 로컬 DB 설정에 정상 저장되었습니다.")
-        except Exception as e:
-            QMessageBox.critical(self, "에러", f"쿼리 저장 중 오류가 발생했습니다:\n{str(e)}")
-
-    def copy_replaced_query(self):
-        query_text = self.txt_query.toPlainText().strip()
-        if not query_text:
-            QMessageBox.warning(self, "경고", "복사할 쿼리 내용이 비어 있습니다.")
-            return
-            
-        # {schema_name} 치환 처리
-        replaced_query = query_text.replace("{schema_name}", self.schema_name)
-        
-        try:
-            QApplication.clipboard().setText(replaced_query)
-            QMessageBox.information(self, "복사 완료", f"[{self.schema_name}] 스키마 기준으로 치환된 쿼리가 클립보드에 복사되었습니다.\nDB 접속 툴에 붙여넣기(Ctrl+V)하여 실행하세요.")
-        except Exception as e:
-            QMessageBox.critical(self, "에러", f"클립보드 복사 중 오류가 발생했습니다:\n{str(e)}")
-
-
-class CSVImportDialog(QDialog):
-    """Excel/CSV 파일 경로 선택 및 쿼리/템플릿 복사 및 다운로드 가이드 기능을 제공하는 고도화된 다이얼로그"""
-    def __init__(self, db_mgr, parent=None):
-        super().__init__(parent)
-        self.db_mgr = db_mgr
-        self.setWindowTitle("데이터 불러오기 (Import Excel/CSV)")
-        self.setFixedSize(650, 520)
-        self.init_ui()
-
-    def init_ui(self):
-        main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(16, 16, 16, 16)
-        main_layout.setSpacing(10)
-
-        # 1. 안내 가이드 카드 영역
-        guide_card = QFrame()
-        guide_card.setStyleSheet("""
-            QFrame {
-                background-color: #F8FAFC;
-                border: 1px solid #E2E8F0;
-                border-radius: 6px;
-            }
-        """)
-        guide_layout = QVBoxLayout()
-        guide_layout.setContentsMargins(14, 12, 14, 12)
-        guide_layout.setSpacing(8)
-
-        lbl_guide_title = QLabel("💡 데이터 준비 및 연동 가이드 (필독)")
-        lbl_guide_title.setStyleSheet("font-size: 12px; font-weight: bold; color: #1E3A8A;")
-        guide_layout.addWidget(lbl_guide_title)
-
-        lbl_guide_desc = QLabel(
-            "1. 아래에 특정 스키마(OWNER)명을 입력하고 [기본 컬럼 쿼리 복사] 및 [공통코드 쿼리 복사]를 눌러 복사합니다.\n"
-            "2. 복사된 SQL을 오라클 DB 접속 툴(SQL Developer, DBeaver 등)에 붙여넣기(Ctrl+V)해서 실행하십시오.\n"
-            "3. ⚠️ 쿼리 결과인 엑셀 파일(.xlsx), CSV 또는 TXT 파일(콤마 구분)을 바로 업로드할 수 있습니다.\n"
-            "4. 각 양식별 [샘플 양식 다운로드 (전체)]를 클릭하여 예시를 다운받아 참고해 작성하십시오."
-        )
-        lbl_guide_desc.setStyleSheet("font-size: 11px; color: #475569; line-height: 16px;")
-        guide_layout.addWidget(lbl_guide_desc)
-
-        # 스키마(Owner) 입력 필드 & 쿼리 복사 / 템플릿 다운로드 버튼 영역
-        schema_layout = QHBoxLayout()
-        schema_layout.setSpacing(8)
-        schema_layout.addWidget(QLabel("특정 스키마(OWNER) 입력:"))
-        self.txt_schema = QLineEdit("SCOTT")
-        self.txt_schema.setFixedWidth(100)
-        schema_layout.addWidget(self.txt_schema)
-        schema_layout.addStretch()
-        guide_layout.addLayout(schema_layout)
-
-        # 다운로드 및 복사 버튼들 배치
-        btn_lay = QHBoxLayout()
-        btn_lay.setSpacing(6)
-        
-        btn_copy_cols = QPushButton("📋 기본 컬럼 쿼리 복사")
-        btn_copy_cols.clicked.connect(self.copy_cols_query)
-        
-        btn_copy_codes = QPushButton("📋 공통코드 쿼리 복사")
-        btn_copy_codes.clicked.connect(self.copy_codes_query)
-        
-        btn_dl_samples = QPushButton("🎁 샘플 양식 다운로드 (전체)")
-        btn_dl_samples.clicked.connect(self.download_all_samples)
-
-        for btn in [btn_copy_cols, btn_copy_codes, btn_dl_samples]:
-            btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            btn_lay.addWidget(btn)
-        
-        guide_layout.addLayout(btn_lay)
-        guide_card.setLayout(guide_layout)
-        main_layout.addWidget(guide_card)
-
-        # 2. 파일 지정 폼 영역
-        form_layout = QFormLayout()
-        form_layout.setSpacing(8)
-
-        self.txt_cols = QLineEdit()
-        self.txt_cols.setPlaceholderText("기본 컬럼 정보 Excel, CSV 또는 TXT 파일 선택...")
-        btn_browse_cols = QPushButton("찾기")
-        btn_browse_cols.clicked.connect(lambda: self.browse_file(self.txt_cols, "Excel/CSV/TXT Files (*.xlsx *.xls *.csv *.txt)"))
-        lay_cols = QHBoxLayout()
-        lay_cols.addWidget(self.txt_cols)
-        lay_cols.addWidget(btn_browse_cols)
-
-        self.txt_rels = QLineEdit()
-        self.txt_rels.setPlaceholderText("작성 완료된 Excel, CSV 또는 TXT 파일 선택...")
-        btn_browse_rels = QPushButton("찾기")
-        btn_browse_rels.clicked.connect(lambda: self.browse_file(self.txt_rels, "Excel/CSV/TXT Files (*.xlsx *.xls *.csv *.txt)"))
-        lay_rels = QHBoxLayout()
-        lay_rels.addWidget(self.txt_rels)
-        lay_rels.addWidget(btn_browse_rels)
-
-        self.txt_codes = QLineEdit()
-        self.txt_codes.setPlaceholderText("공통코드 Excel, CSV 또는 TXT 파일 선택...")
-        btn_browse_codes = QPushButton("찾기")
-        btn_browse_codes.clicked.connect(lambda: self.browse_file(self.txt_codes, "Excel/CSV/TXT Files (*.xlsx *.xls *.csv *.txt)"))
-        lay_codes = QHBoxLayout()
-        lay_codes.addWidget(self.txt_codes)
-        lay_codes.addWidget(btn_browse_codes)
-
-        form_layout.addRow(QLabel("① 기본 컬럼 파일:"), lay_cols)
-        form_layout.addRow(QLabel("② 공통 코드 파일:"), lay_codes)
-        form_layout.addRow(QLabel("③ 수동 관계 파일:"), lay_rels)
-
-        main_layout.addLayout(form_layout)
-        main_layout.addSpacing(10)
-
-        # Bottom buttons
-        btn_layout = QHBoxLayout()
-        self.chk_clear_existing = QCheckBox("기존데이터 삭제하기")
-        self.chk_clear_existing.setChecked(True)
-        self.chk_clear_existing.setStyleSheet("font-size: 11px; color: #1E293B; font-weight: bold;")
-        
-        btn_import = QPushButton("데이터 가져오기")
-        btn_import.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_import.clicked.connect(self.accept)
-        
-        btn_cancel = QPushButton("취소")
-        btn_cancel.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_cancel.clicked.connect(self.reject)
-        
-        btn_layout.addWidget(self.chk_clear_existing)
-        btn_layout.addStretch()
-        btn_layout.addWidget(btn_import)
-        btn_layout.addWidget(btn_cancel)
-        main_layout.addLayout(btn_layout)
-
-        self.setLayout(main_layout)
-
-    def browse_file(self, line_edit, filter_str):
-        file_path, _ = QFileDialog.getOpenFileName(self, "파일 선택", "", filter_str)
-        if file_path: line_edit.setText(file_path)
-
-    def get_paths(self):
-        return self.txt_cols.text(), self.txt_codes.text(), self.txt_rels.text(), self.chk_clear_existing.isChecked()
-
-    def copy_cols_query(self):
-        schema_name = self.txt_schema.text().strip().upper()
-        if not schema_name:
-            QMessageBox.warning(self, "경고", "오라클 쿼리에 대입할 스키마(OWNER)명을 입력해 주세요.")
-            return
-        dialog = QueryEditDialog(self.db_mgr, 'query_columns', schema_name, "기본 컬럼 조회 쿼리 설정", self)
-        dialog.exec()
-
-    def copy_codes_query(self):
-        schema_name = self.txt_schema.text().strip().upper()
-        if not schema_name:
-            QMessageBox.warning(self, "경고", "오라클 쿼리에 대입할 스키마(OWNER)명을 입력해 주세요.")
-            return
-        dialog = QueryEditDialog(self.db_mgr, 'query_common_codes', schema_name, "공통코드 조회 쿼리 설정", self)
-        dialog.exec()
-
-    def download_all_samples(self):
-        target_dir = QFileDialog.getExistingDirectory(self, "샘플 파일 저장 폴더 선택", "")
-        if not target_dir:
-            return
-            
-        try:
-            # 샘플 데이터 정의
-            cols_data = {
-                '테이블명': ['TB_USER', 'TB_USER', 'TB_USER', 'TB_DEPT', 'TB_DEPT'],
-                '테이블한글명': ['사용자마스터', '사용자마스터', '사용자마스터', '부서마스터', '부서마스터'],
-                '컬럼명': ['USER_ID', 'USER_NM', 'DEPT_CD', 'DEPT_CD', 'DEPT_NM'],
-                '컬럼한글명': ['사용자아이디', '사용자명', '부서코드', '부서코드', '부서명'],
-                '데이터타입': ['VARCHAR2', 'VARCHAR2', 'VARCHAR2', 'VARCHAR2', 'VARCHAR2'],
-                '길이': [20, 50, 10, 10, 100],
-                '정널여부': ['N', 'N', 'Y', 'N', 'N'],
-                'pk여부': ['Y', 'N', 'N', 'Y', 'N']
-            }
-            
-            rels_data = {
-                '본래테이블명': ['TB_USER', 'TB_USER', 'TB_DEPT'],
-                '컬럼명': ['DEPT_CD', 'USER_STATUS', 'UP_DEPT_CD'],
-                '참조코드테이블명': ['TB_DEPT', 'USER_STATUS_GRP', 'TB_DEPT']
-            }
-            
-            codes_data = {
-                '컬럼명': ['USER_STATUS', 'USER_STATUS', 'BOARD_TYPE', 'BOARD_TYPE'],
-                '코드그룹id': ['USER_STATUS_GRP', 'USER_STATUS_GRP', 'BOARD_TYPE_GRP', 'BOARD_TYPE_GRP'],
-                '코드그룹 한글명칭': ['사용자상태그룹', '사용자상태그룹', '게시판유형그룹', '게시판유형그룹'],
-                '코드값': ['10', '20', 'NOTICE', 'FREE'],
-                '코드한글명': ['정상', '정지', '공지사항', '자유게시판']
-            }
-            
-            df_cols = pd.DataFrame(cols_data)
-            df_rels = pd.DataFrame(rels_data)
-            df_codes = pd.DataFrame(codes_data)
-            
-            targets = [
-                ("1_기본컬럼_샘플", df_cols),
-                ("2_공통코드_샘플", df_codes),
-                ("3_수동관계_샘플", df_rels)
-            ]
-            
-            for prefix, df in targets:
-                # Excel
-                xls_path = os.path.join(target_dir, f"{prefix}.xlsx")
-                df.to_excel(xls_path, index=False)
-                
-                # CSV
-                csv_path = os.path.join(target_dir, f"{prefix}.csv")
-                df.to_csv(csv_path, index=False, encoding="utf-8-sig")
-                
-                # TXT
-                txt_path = os.path.join(target_dir, f"{prefix}.txt")
-                df.to_csv(txt_path, index=False, encoding="utf-8-sig", sep=",")
-                
-            QMessageBox.information(
-                self, "완료",
-                f"9개의 샘플 파일(Excel, CSV, TXT)이 성공적으로 생성되었습니다.\n"
-                f"저장 폴더: {target_dir}"
-            )
-        except Exception as e:
-            QMessageBox.critical(self, "에러", f"샘플 파일 생성 중 에러가 발생했습니다:\n{str(e)}")
-
-
-class RelationEditDialog(QDialog):
-    """프로그램 내부에서 직접 연결 테이블 관계(마스터테이블)를 수동 등록/수정하는 팝업"""
-    def __init__(self, db_mgr, src_table, src_column=None, current_ref="", current_type="마스터테이블", parent=None):
-        super().__init__(parent)
-        self.db_mgr = db_mgr
-        self.src_table = src_table
-        self.src_column = src_column
-        self.selected_ref_table = current_ref
-        
-        self.setWindowTitle("테이블 관계 설정 (등록/수정)")
-        self.setFixedSize(450, 460)
-        self.init_ui()
-
-    def init_ui(self):
-        layout = QVBoxLayout()
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(10)
-
-        # 1. 대상 정보 고정 영역
-        info_frame = QFrame()
-        info_frame.setStyleSheet("QFrame { background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 4px; } QLabel { border: none; }")
-        info_lay = QFormLayout()
-        info_lay.setContentsMargins(10, 10, 10, 10)
-        
-        lbl_tbl = QLabel(self.src_table)
-        lbl_tbl.setStyleSheet("font-weight: bold; color: #1E3A8A;")
-        info_lay.addRow(QLabel("본래 테이블명:"), lbl_tbl)
-
-        if self.src_column is None:
-            self.combo_columns = QComboBox()
-            columns = self.db_mgr.get_table_columns(self.src_table)
-            self.combo_columns.addItems([col['column_name'] for col in columns])
-            info_lay.addRow(QLabel("대상 컬럼 선택:"), self.combo_columns)
-        else:
-            lbl_col = QLabel(self.src_column)
-            lbl_col.setStyleSheet("font-weight: bold; color: #1E3A8A;")
-            info_lay.addRow(QLabel("대상 컬럼명:"), lbl_col)
-            
-        info_frame.setLayout(info_lay)
-        layout.addWidget(info_frame)
-
-        # 2. 참조 대상 탐색/입력 영역
-        layout.addWidget(QLabel("참조 테이블 탐색/입력:"))
-        
-        search_ref_layout = QHBoxLayout()
-        search_ref_layout.setSpacing(4)
-        
-        self.txt_ref = QLineEdit(self.selected_ref_table)
-        self.txt_ref.setPlaceholderText("검색어 입력 후 Enter...")
-        self.txt_ref.setFixedHeight(30)
-        self.txt_ref.setStyleSheet("""
-            QLineEdit {
-                background-color: #F8FAFC;
-                color: #1E293B;
-                border: 1px solid #CBD5E1;
-                border-radius: 4px;
-                padding: 6px 10px;
-                font-size: 12px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #3B82F6;
-                background-color: #FFFFFF;
-            }
-        """)
-        self.txt_ref.returnPressed.connect(self.on_search_text_changed)
-        search_ref_layout.addWidget(self.txt_ref)
-
-        reset_style = """
-            QPushButton {
-                background-color: #EFF6FF;
-                color: #2563EB;
-                border: 1px solid #BFDBFE;
-                border-radius: 4px;
-                padding: 0px;
-                font-size: 14px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #DBEAFE;
-                color: #1D4ED8;
-                border-color: #93C5FD;
-            }
-            QPushButton:pressed {
-                background-color: #BFDBFE;
-            }
-        """
-        self.btn_reset_ref = QPushButton("↺")
-        self.btn_reset_ref.setFixedWidth(28)
-        self.btn_reset_ref.setFixedHeight(30)
-        self.btn_reset_ref.setAutoDefault(False)
-        self.btn_reset_ref.setDefault(False)
-        self.btn_reset_ref.setToolTip("검색 초기화")
-        self.btn_reset_ref.setStyleSheet(reset_style)
-        self.btn_reset_ref.clicked.connect(self.clear_ref_search)
-        search_ref_layout.addWidget(self.btn_reset_ref)
-        
-        layout.addLayout(search_ref_layout)
-
-        self.list_search = QListWidget()
-        self.list_search.itemClicked.connect(self.on_list_item_selected)
-        layout.addWidget(self.list_search)
-
-        # Bottom Buttons
-        btn_layout = QHBoxLayout()
-        btn_save = QPushButton("관계 저장")
-        btn_save.setAutoDefault(False)
-        btn_save.setDefault(False)
-        btn_save.clicked.connect(self.save_relation)
-        btn_cancel = QPushButton("취소")
-        btn_cancel.setAutoDefault(False)
-        btn_cancel.setDefault(False)
-        btn_cancel.clicked.connect(self.reject)
-        btn_layout.addStretch()
-        btn_layout.addWidget(btn_save)
-        btn_layout.addWidget(btn_cancel)
-        layout.addLayout(btn_layout)
-
-        self.setLayout(layout)
-        self.on_search_text_changed(self.selected_ref_table)
-
-    def clear_ref_search(self):
-        self.txt_ref.clear()
-        self.on_search_text_changed("")
-
-    def on_search_text_changed(self, text=None):
-        if text is None or isinstance(text, bool):
-            text = self.txt_ref.text().strip()
-        self.list_search.clear()
-        # 테이블 검색만 수행
-        tables = self.db_mgr.search_tables_by_name(text)
-        for t in tables:
-            ko_text = f" ({t['table_ko_name']})" if t['table_ko_name'] else ""
-            item = QListWidgetItem(f"📄 {t['table_name']}{ko_text}")
-            item.setData(Qt.ItemDataRole.UserRole, t['table_name'])
-            self.list_search.addItem(item)
-
-    def on_list_item_selected(self, item):
-        ref_val = item.data(Qt.ItemDataRole.UserRole)
-        if ref_val:
-            self.selected_ref_table = ref_val
-            # 검색 필드 텍스트를 블락하지 않게 시그널을 끊고 임시 수정
-            self.txt_ref.blockSignals(True)
-            self.txt_ref.setText(ref_val)
-            self.txt_ref.blockSignals(False)
-
-    def save_relation(self):
-        ref_table = self.txt_ref.text().strip()
-        if not ref_table:
-            QMessageBox.warning(self, "경고", "참조 대상 테이블명을 입력해 주세요.")
-            return
-
-        m_type = "마스터테이블"
-        src_col = self.src_column
-        if src_col is None:
-            if hasattr(self, 'combo_columns'):
-                src_col = self.combo_columns.currentText()
-        
-        if not src_col:
-            QMessageBox.warning(self, "경고", "대상 컬럼을 선택해 주세요.")
-            return
-
-        try:
-            self.db_mgr.upsert_relation(self.src_table, src_col, ref_table, m_type)
-            self.accept()
-        except Exception as e:
-            QMessageBox.critical(self, "에러", f"관계 저장 실패:\n{str(e)}")
-
-
-class CommonCodeMapDialog(QDialog):
-    """특정 컬럼에 공통코드 그룹을 매핑하는 다이얼로그"""
-    def __init__(self, db_mgr, src_table, src_column, slot_num=1, parent=None):
-        super().__init__(parent)
-        self.db_mgr = db_mgr
-        self.src_table = src_table
-        self.src_column = src_column
-        self.slot_num = slot_num
-        
-        # DB에서 기존 정보 조회
-        self.selected_code_group = ""
-        self.custom_query = ""
-        self.is_custom_mode = False
-        
-        with self.db_mgr.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-            SELECT r.ref_table_name, r.custom_query,
-                   CASE 
-                       WHEN r.custom_query IS NOT NULL AND r.custom_query != '' THEN '공통코드'
-                       WHEN r.ref_table_name IS NOT NULL AND EXISTS (
-                           SELECT 1 FROM common_codes cc
-                           WHERE cc.code_group_id = r.ref_table_name
-                       ) THEN '공통코드'
-                       ELSE '마스터테이블'
-                   END AS mapping_type
-            FROM relations r
-            WHERE r.src_table_name = ? AND r.src_column_name = ?
-            """, (self.src_table, self.src_column))
-            row = cursor.fetchone()
-            if row and row['mapping_type'] == '공통코드':
-                self.selected_code_group = row['ref_table_name'] or ""
-                self.custom_query = row['custom_query'] or ""
-                if self.custom_query:
-                    self.is_custom_mode = True
-        
-        self.setWindowTitle("공통코드 매핑 설정 (등록/수정)")
-        self.setFixedSize(500, 560)
-        self.init_ui()
-
-    def init_ui(self):
-        layout = QVBoxLayout()
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(10)
-
-        # 1. 대상 정보 고정 영역
-        info_frame = QFrame()
-        info_frame.setStyleSheet("QFrame { background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 4px; } QLabel { border: none; }")
-        info_lay = QFormLayout()
-        info_lay.setContentsMargins(10, 10, 10, 10)
-        
-        lbl_tbl = QLabel(self.src_table)
-        lbl_tbl.setStyleSheet("font-weight: bold; color: #059669;")
-        info_lay.addRow(QLabel("본래 테이블명:"), lbl_tbl)
-
-        lbl_col = QLabel(self.src_column)
-        lbl_col.setStyleSheet("font-weight: bold; color: #059669;")
-        info_lay.addRow(QLabel("대상 컬럼명:"), lbl_col)
-            
-        info_frame.setLayout(info_lay)
-        layout.addWidget(info_frame)
-
-        # 2. 매핑 모드 선택 (라디오버튼)
-        mode_layout = QHBoxLayout()
-        self.btn_group_mode = QButtonGroup(self)
-        
-        self.radio_auto = QRadioButton("자동 디코드 쿼리 생성")
-        self.radio_custom = QRadioButton("수동 변환 쿼리 직접 입력")
-        
-        self.btn_group_mode.addButton(self.radio_auto)
-        self.btn_group_mode.addButton(self.radio_custom)
-        
-        mode_layout.addWidget(self.radio_auto)
-        mode_layout.addWidget(self.radio_custom)
-        layout.addLayout(mode_layout)
-
-        # 3. 자동 모드 입력 컨테이너
-        self.auto_container = QWidget()
-        auto_lay = QVBoxLayout()
-        auto_lay.setContentsMargins(0, 0, 0, 0)
-        auto_lay.setSpacing(6)
-        
-        auto_lay.addWidget(QLabel("공통코드 그룹 탐색/입력 (예: USER_STATUS_GRP):"))
-        search_ref_layout = QHBoxLayout()
-        search_ref_layout.setSpacing(4)
-        
-        self.txt_ref = QLineEdit(self.selected_code_group)
-        self.txt_ref.setPlaceholderText("코드그룹명 또는 한글명 입력...")
-        self.txt_ref.setFixedHeight(30)
-        self.txt_ref.setStyleSheet("""
-            QLineEdit {
-                background-color: #F8FAFC;
-                color: #1E293B;
-                border: 1px solid #CBD5E1;
-                border-radius: 4px;
-                padding: 6px 10px;
-                font-size: 12px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #3B82F6;
-                background-color: #FFFFFF;
-            }
-        """)
-        self.txt_ref.textChanged.connect(self.on_search_text_changed)
-        search_ref_layout.addWidget(self.txt_ref)
-
-        reset_style = """
-            QPushButton {
-                background-color: #EFF6FF;
-                color: #2563EB;
-                border: 1px solid #BFDBFE;
-                border-radius: 4px;
-                padding: 0px;
-                font-size: 14px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #DBEAFE;
-                color: #1D4ED8;
-                border-color: #93C5FD;
-            }
-            QPushButton:pressed {
-                background-color: #BFDBFE;
-            }
-        """
-        self.btn_reset_ref = QPushButton("↺")
-        self.btn_reset_ref.setFixedWidth(28)
-        self.btn_reset_ref.setFixedHeight(30)
-        self.btn_reset_ref.setAutoDefault(False)
-        self.btn_reset_ref.setDefault(False)
-        self.btn_reset_ref.setToolTip("검색 초기화")
-        self.btn_reset_ref.setStyleSheet(reset_style)
-        self.btn_reset_ref.clicked.connect(self.clear_ref_search)
-        search_ref_layout.addWidget(self.btn_reset_ref)
-        
-        auto_lay.addLayout(search_ref_layout)
-
-        self.list_search = QListWidget()
-        self.list_search.itemClicked.connect(self.on_list_item_selected)
-        self.list_search.itemDoubleClicked.connect(lambda item: self.save_mapping())
-        auto_lay.addWidget(self.list_search)
-        
-        self.auto_container.setLayout(auto_lay)
-        layout.addWidget(self.auto_container)
-
-        # 4. 수동 모드 입력 컨테이너
-        self.custom_container = QWidget()
-        custom_lay = QVBoxLayout()
-        custom_lay.setContentsMargins(0, 0, 0, 0)
-        custom_lay.setSpacing(6)
-        
-        lbl_custom_guide = QLabel("수동 변환 쿼리 조각 입력:")
-        lbl_custom_guide.setStyleSheet("font-weight: bold;")
-        custom_lay.addWidget(lbl_custom_guide)
-        
-        lbl_custom_desc = QLabel(
-            "💡 변환 쿼리 작성 가이드:\n"
-            "   - 콤마(,)와 SELECT 서브쿼리 및 별칭(AS)을 포함해 작성합니다.\n"
-            "   - 예시: , (SELECT CODE_NAME FROM COMMON_CODE_SUB WHERE CODE_GROUP_VAL = 'USER_STATUS_GRP' AND CODE_VALUE = DEPT_CD) AS \"부서코드명\""
-        )
-        lbl_custom_desc.setStyleSheet("font-size: 10px; color: #475569; line-height: 14px;")
-        custom_lay.addWidget(lbl_custom_desc)
-        
-        self.txt_custom_query = QTextEdit()
-        self.txt_custom_query.setFont(QFont("Consolas", 9))
-        self.txt_custom_query.setPlaceholderText(
-            ', (SELECT CODE_NAME FROM COMMON_CODE_SUB WHERE CODE_GROUP_VAL = \'USER_STATUS_GRP\' AND CODE_VALUE = DEPT_CD) AS "부서코드명"'
-        )
-        self.txt_custom_query.setPlainText(self.custom_query)
-        self.txt_custom_query.setStyleSheet("""
-            QTextEdit {
-                background-color: #F8FAFC;
-                border: 1px solid #CBD5E1;
-                border-radius: 4px;
-                padding: 6px;
-                color: #0F172A;
-            }
-        """)
-        self.custom_query_highlighter = SqlHighlighter(self.txt_custom_query.document())
-        custom_lay.addWidget(self.txt_custom_query)
-        
-        self.custom_container.setLayout(custom_lay)
-        layout.addWidget(self.custom_container)
-
-        # 모드 토글 시그널 연결
-        self.radio_auto.toggled.connect(self.on_mode_toggled)
-        self.radio_custom.toggled.connect(self.on_mode_toggled)
-
-        # 초기 모드 적용
-        if self.is_custom_mode:
-            self.radio_custom.setChecked(True)
-        else:
-            self.radio_auto.setChecked(True)
-        self.on_mode_toggled()
-
-        # Bottom Buttons
-        btn_layout = QHBoxLayout()
-        btn_save = QPushButton("매핑 저장")
-        btn_save.setAutoDefault(False)
-        btn_save.setDefault(False)
-        btn_save.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_save.setStyleSheet("""
-            QPushButton {
-                background-color: #059669;
-                color: #FFFFFF;
-                border: none;
-                font-weight: bold;
-                font-size: 11px;
-                padding: 6px 12px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #047857;
-            }
-        """)
-        btn_save.clicked.connect(self.save_mapping)
-        
-        btn_cancel = QPushButton("취소")
-        btn_cancel.setAutoDefault(False)
-        btn_cancel.setDefault(False)
-        btn_cancel.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_cancel.setStyleSheet("""
-            QPushButton {
-                background-color: #FFFFFF;
-                color: #475569;
-                border: 1px solid #CBD5E1;
-                font-size: 11px;
-                padding: 6px 12px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #F1F5F9;
-            }
-        """)
-        btn_cancel.clicked.connect(self.reject)
-        
-        btn_layout.addStretch()
-        btn_layout.addWidget(btn_save)
-        btn_layout.addWidget(btn_cancel)
-        layout.addLayout(btn_layout)
-
-        self.setLayout(layout)
-        self.on_search_text_changed(self.selected_code_group)
-
-    def clear_ref_search(self):
-        self.txt_ref.clear()
-        self.on_search_text_changed("")
-
-    def on_mode_toggled(self):
-        is_auto = self.radio_auto.isChecked()
-        self.auto_container.setVisible(is_auto)
-        self.auto_container.setEnabled(is_auto)
-        self.custom_container.setVisible(not is_auto)
-        self.custom_container.setEnabled(not is_auto)
-
-    def on_search_text_changed(self, text=None):
-        if not self.radio_auto.isChecked():
-            return
-        if text is None or isinstance(text, bool):
-            text = self.txt_ref.text().strip()
-        self.list_search.clear()
-        
-        with self.db_mgr.get_connection() as conn:
-            cursor = conn.cursor()
-            if text and text.strip():
-                lk = f"%{text.strip()}%"
-                cursor.execute("""
-                SELECT DISTINCT code_group_id, code_group_name 
-                FROM common_codes 
-                WHERE code_group_id LIKE ? OR code_group_name LIKE ?
-                ORDER BY code_group_id ASC
-                """, (lk, lk))
-            else:
-                cursor.execute("""
-                SELECT DISTINCT code_group_id, code_group_name 
-                FROM common_codes 
-                ORDER BY code_group_id ASC
-                """)
-            rows = cursor.fetchall()
-            
-        for row in rows:
-            grp = row['code_group_id']
-            grp_name = row['code_group_name'] or ""
-            ko_text = f" ({grp_name})" if grp_name else ""
-            
-            item = QListWidgetItem(f"🟩 {grp}{ko_text}")
-            item.setData(Qt.ItemDataRole.UserRole, grp)
-            self.list_search.addItem(item)
-
-    def on_list_item_selected(self, item):
-        ref_val = item.data(Qt.ItemDataRole.UserRole)
-        if ref_val:
-            self.selected_code_group = ref_val
-            self.txt_ref.blockSignals(True)
-            self.txt_ref.setText(ref_val)
-            self.txt_ref.blockSignals(False)
-
-    def save_mapping(self):
-        if self.radio_auto.isChecked():
-            code_group = self.txt_ref.text().strip()
-            if not code_group:
-                QMessageBox.warning(self, "경고", "매핑할 공통코드 그룹명을 입력해 주세요.")
-                return
-            custom_q = None
-        else:
-            code_group = self.selected_code_group
-            custom_q = self.txt_custom_query.toPlainText().strip()
-            if not custom_q:
-                QMessageBox.warning(self, "경고", "수동 변환 쿼리를 입력해 주세요.")
-                return
-            
-        try:
-            self.db_mgr.upsert_relation(self.src_table, self.src_column, code_group, "공통코드", custom_q)
-            self.accept()
-        except Exception as e:
-            QMessageBox.critical(self, "에러", f"공통코드 매핑 저장 실패:\n{str(e)}")
-
-
-class CommonCodeSlotWidget(QWidget):
-    """공통코드 개별 슬롯 설정 위젯 (총 3개 슬롯 지원)"""
-    def __init__(self, slot_num, db_mgr, parent=None):
-        super().__init__(parent)
-        self.slot_num = slot_num
-        self.db_mgr = db_mgr
-        self.init_ui()
-        self.load_settings()
-
-    def init_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(10)
-
-        # 안내 상자
-        info_frame = QFrame()
-        info_frame.setStyleSheet("QFrame { background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; } QLabel { border: none; }")
-        info_layout = QVBoxLayout(info_frame)
-        info_layout.setContentsMargins(10, 8, 10, 8)
-        info_layout.setSpacing(3)
-        
-        lbl_guide = QLabel(f"💡 공통코드 설정 #{self.slot_num}")
-        lbl_guide.setStyleSheet("font-weight: bold; color: #1E3A8A; font-size: 11px;")
-        lbl_desc = QLabel(
-            "오라클 SELECT 쿼리 자동 생성 시 사용될 공통코드 테이블과 컬럼을 정의합니다.\n"
-            "테이블을 선택하면 등록된 컬럼 목록이 자동 제공되며, 직접 입력도 가능합니다."
-        )
-        lbl_desc.setStyleSheet("color: #475569; font-size: 10px; line-height: 14px;")
-        info_layout.addWidget(lbl_guide)
-        info_layout.addWidget(lbl_desc)
-        layout.addWidget(info_frame)
-
-        # 설정 폼
-        form_layout = QFormLayout()
-        form_layout.setSpacing(8)
-
-        # 1. 테이블명 콤보박스
-        self.combo_table = QComboBox()
-        self.combo_table.setEditable(True)
-        tables = self.db_mgr.get_tables_list()
-        table_names = [t['table_name'] for t in tables]
-        self.combo_table.addItems(table_names)
-        self.combo_table.currentTextChanged.connect(self.on_table_changed)
-
-        # 2. 코드그룹 컬럼 콤보박스
-        self.combo_group_col = QComboBox()
-        self.combo_group_col.setEditable(True)
-
-        # 3. 코드값 컬럼 콤보박스
-        self.combo_val_col = QComboBox()
-        self.combo_val_col.setEditable(True)
-
-        # 4. 코드명 컬럼 콤보박스
-        self.combo_name_col = QComboBox()
-        self.combo_name_col.setEditable(True)
-
-        form_layout.addRow(QLabel("공통코드 테이블명 {code_table}:"), self.combo_table)
-        form_layout.addRow(QLabel("코드그룹 컬럼명 {code_group_col}:"), self.combo_group_col)
-        form_layout.addRow(QLabel("코드값 컬럼명 {code_value_col}:"), self.combo_val_col)
-        form_layout.addRow(QLabel("코드명 컬럼명 {code_name_col}:"), self.combo_name_col)
-
-        layout.addLayout(form_layout)
-
-        # 5. 쿼리 템플릿 영역 (기본으로 상시 표시)
-        lbl_temp_title = QLabel("📝 쿼리 템플릿:")
-        lbl_temp_title.setStyleSheet("font-weight: bold; color: #1E3A8A; font-size: 11px; margin-top: 4px;")
-        layout.addWidget(lbl_temp_title)
-
-        lbl_temp_guide = QLabel(
-            "사용 가능 치환자: {code_table}, {code_group_col}, {code_value_col}, {code_name_col}, {code_group}, {col_name}, {alias}"
-        )
-        lbl_temp_guide.setStyleSheet("color: #64748B; font-size: 9px;")
-        layout.addWidget(lbl_temp_guide)
-
-        self.txt_template = QTextEdit()
-        self.txt_template.setFont(QFont("Consolas", 10))
-        self.txt_template.setAcceptRichText(False)
-        self.txt_template.setFixedHeight(90)
-        self.txt_template.setStyleSheet("background-color: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 4px; padding: 6px;")
-        self.template_highlighter = SqlHighlighter(self.txt_template.document())
-        layout.addWidget(self.txt_template)
-
-        layout.addStretch()
-
-    def on_table_changed(self, table_name):
-        columns = self.db_mgr.get_table_columns(table_name)
-        col_names = [col['column_name'] for col in columns]
-
-        for combo in [self.combo_group_col, self.combo_val_col, self.combo_name_col]:
-            curr_txt = combo.currentText()
-            combo.clear()
-            combo.addItems(col_names)
-            combo.setCurrentText(curr_txt)
-
-    def load_settings(self):
-        if self.slot_num == 1:
-            tbl = self.db_mgr.get_setting('common_code_table_1', self.db_mgr.get_setting('common_code_table', 'COMMON_CODE_SUB'))
-            grp = self.db_mgr.get_setting('common_code_group_col_1', self.db_mgr.get_setting('common_code_group_col', 'CODE_GROUP_VAL'))
-            val = self.db_mgr.get_setting('common_code_val_col_1', self.db_mgr.get_setting('common_code_val_col', 'CODE_VALUE'))
-            name = self.db_mgr.get_setting('common_code_name_col_1', self.db_mgr.get_setting('common_code_name_col', 'CODE_NAME'))
-            default_temp = '(SELECT {code_name_col} FROM {code_table} WHERE {code_group_col} = \'{code_group}\' AND {code_value_col} = {col_name}) AS "{alias}"'
-            template = self.db_mgr.get_setting('common_code_template_1', self.db_mgr.get_setting('common_code_template', default_temp))
-        else:
-            tbl = self.db_mgr.get_setting(f'common_code_table_{self.slot_num}', '')
-            grp = self.db_mgr.get_setting(f'common_code_group_col_{self.slot_num}', '')
-            val = self.db_mgr.get_setting(f'common_code_val_col_{self.slot_num}', '')
-            name = self.db_mgr.get_setting(f'common_code_name_col_{self.slot_num}', '')
-            default_temp = '(SELECT {code_name_col} FROM {code_table} WHERE {code_group_col} = \'{code_group}\' AND {code_value_col} = {col_name}) AS "{alias}"'
-            template = self.db_mgr.get_setting(f'common_code_template_{self.slot_num}', default_temp)
-
-        self.combo_table.setCurrentText(tbl)
-        if tbl:
-            self.on_table_changed(tbl)
-
-        self.combo_group_col.setCurrentText(grp)
-        self.combo_val_col.setCurrentText(val)
-        self.combo_name_col.setCurrentText(name)
-        self.txt_template.setPlainText(template)
-        apply_sql_line_spacing(self.txt_template, 122)
-
-    def save_settings(self):
-        tbl = self.combo_table.currentText().strip()
-        grp = self.combo_group_col.currentText().strip()
-        val = self.combo_val_col.currentText().strip()
-        name = self.combo_name_col.currentText().strip()
-        template_val = self.txt_template.toPlainText().strip()
-
-        if self.slot_num == 1:
-            if not tbl or not grp or not val or not name:
-                raise ValueError("공통코드 설정 #1은 필수 항목(테이블명, 코드그룹, 코드값, 코드명)을 모두 입력해야 합니다.")
-            if not template_val:
-                raise ValueError("공통코드 설정 #1의 쿼리 템플릿을 비워둘 수 없습니다.")
-            self.db_mgr.set_setting('common_code_table', tbl)
-            self.db_mgr.set_setting('common_code_group_col', grp)
-            self.db_mgr.set_setting('common_code_val_col', val)
-            self.db_mgr.set_setting('common_code_name_col', name)
-            self.db_mgr.set_setting('common_code_template', template_val)
-
-        self.db_mgr.set_setting(f'common_code_table_{self.slot_num}', tbl)
-        self.db_mgr.set_setting(f'common_code_group_col_{self.slot_num}', grp)
-        self.db_mgr.set_setting(f'common_code_val_col_{self.slot_num}', val)
-        self.db_mgr.set_setting(f'common_code_name_col_{self.slot_num}', name)
-        self.db_mgr.set_setting(f'common_code_template_{self.slot_num}', template_val)
-
-
-class CommonCodeSetupDialog(QDialog):
-    """공통코드 테이블 및 컬럼명을 동적으로 설정하는 다이얼로그 (총 3개 설정 지원)"""
-    def __init__(self, db_mgr, parent=None):
-        super().__init__(parent)
-        self.db_mgr = db_mgr
-        self.setWindowTitle("⚙️ 공통코드 설정")
-        self.setMinimumSize(560, 480)
-        self.init_ui()
-
-    def init_ui(self):
-        layout = QVBoxLayout()
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(10)
-
-        self.tab_slots = QTabWidget()
-        self.tab_slots.setStyleSheet("""
-            QTabWidget::pane {
-                border: 1px solid #CBD5E1;
-                background-color: #FFFFFF;
-                border-radius: 4px;
-            }
-            QTabBar::tab {
-                background-color: #F1F5F9;
-                color: #475569;
-                padding: 7px 18px;
-                font-weight: bold;
-                font-size: 11px;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-                margin-right: 2px;
-            }
-            QTabBar::tab:selected {
-                background-color: #FFFFFF;
-                color: #2563EB;
-                border-bottom: 2px solid #2563EB;
-            }
-        """)
-
-        self.slots = []
-        for i in range(1, 4):
-            slot_w = CommonCodeSlotWidget(i, self.db_mgr, self)
-            self.slots.append(slot_w)
-            self.tab_slots.addTab(slot_w, f"공통코드 설정 {i}")
-
-        layout.addWidget(self.tab_slots)
-
-        # 하단 버튼
-        btn_layout = QHBoxLayout()
-        btn_save = QPushButton("💾 전체 설정 저장")
-        btn_save.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_save.setStyleSheet("""
-            QPushButton {
-                background-color: #2563EB;
-                color: #FFFFFF;
-                border: none;
-                font-weight: bold;
-                font-size: 11px;
-                padding: 7px 18px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #1D4ED8;
-            }
-        """)
-        btn_save.clicked.connect(self.save_all_settings)
-
-        btn_close = QPushButton("취소")
-        btn_close.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_close.setStyleSheet("""
-            QPushButton {
-                background-color: #FFFFFF;
-                color: #475569;
-                border: 1px solid #CBD5E1;
-                font-size: 11px;
-                padding: 7px 14px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #F1F5F9;
-            }
-        """)
-        btn_close.clicked.connect(self.reject)
-
-        btn_layout.addStretch()
-        btn_layout.addWidget(btn_save)
-        btn_layout.addWidget(btn_close)
-        layout.addLayout(btn_layout)
-
-        self.setLayout(layout)
-
-    def save_all_settings(self):
-        try:
-            for s in self.slots:
-                s.save_settings()
-            QMessageBox.information(self, "저장 완료", "공통코드 설정(총 3개) 및 쿼리 템플릿이 로컬 DB에 정상 저장되었습니다.")
-            self.accept()
-        except ValueError as ve:
-            QMessageBox.warning(self, "경고", str(ve))
-        except Exception as e:
-            QMessageBox.critical(self, "에러", f"설정 저장 중 에러가 발생했습니다:\n{str(e)}")
-
-
-def highlight_text(text, query, color="#2563EB"):
-    if not query:
-        return text
-    import re
-    from html import escape
-    text_escaped = escape(text)
-    escaped_query = re.escape(escape(query))
-    try:
-        pattern = re.compile(escaped_query, re.IGNORECASE)
-        return pattern.sub(lambda m: f"<span style='color: {color}; font-weight: bold;'>{m.group(0)}</span>", text_escaped)
-    except Exception:
-        return text_escaped
-
-
-class TableListWidgetItem(QWidget):
-    """테이블 리스트 항목용 커스텀 위젯 (즐겨찾기 별표 라벨 + 테이블명/한글명)"""
-    favorite_toggled = pyqtSignal(str)
-    double_clicked = pyqtSignal(str, str)
-
-    def __init__(self, table_name, table_ko_name, is_favorite, search_text="", parent=None):
-        super().__init__(parent)
-        self.table_name = table_name
-        self.table_ko_name = table_ko_name
-        self.is_favorite = is_favorite
-        self.search_text = search_text.strip()
-        self.setFixedHeight(32)
-        self.setToolTip("더블클릭 시 테이블 명세표가 열립니다.")
-        self.init_ui()
-
-    def init_ui(self):
-        layout = QHBoxLayout()
-        layout.setContentsMargins(8, 0, 8, 0)
-        layout.setSpacing(6)
-        layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-
-        # 즐겨찾기 별표 라벨 (클릭 이벤트 적용)
-        self.lbl_fav = QLabel()
-        self.lbl_fav.setFixedSize(20, 20)
-        self.lbl_fav.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.lbl_fav.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.update_star_icon()
-        self.lbl_fav.mousePressEvent = self.on_fav_clicked
-        layout.addWidget(self.lbl_fav)
-
-        # 테이블 텍스트 라벨 (영문 + 한글)
-        table_name_disp = self.table_name
-        table_ko_name_disp = self.table_ko_name or ""
-
-        if self.search_text:
-            table_name_disp = highlight_text(table_name_disp, self.search_text)
-            if table_ko_name_disp:
-                table_ko_name_disp = highlight_text(table_ko_name_disp, self.search_text)
-
-        ko_text = f" ({table_ko_name_disp})" if table_ko_name_disp else ""
-        self.lbl_text = QLabel(f"{table_name_disp}{ko_text}")
-        self.lbl_text.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        self.lbl_text.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        layout.addWidget(self.lbl_text)
-        layout.addStretch()
-
-        self.setLayout(layout)
-
-    def update_star_icon(self):
-        if self.is_favorite:
-            self.lbl_fav.setText("★")
-            self.lbl_fav.setStyleSheet("""
-                QLabel {
-                    color: #F59E0B;
-                    font-size: 14px;
-                    margin-bottom: 1px;
-                }
-            """)
-        else:
-            self.lbl_fav.setText("☆")
-            self.lbl_fav.setStyleSheet("""
-                QLabel {
-                    color: #94A3B8;
-                    font-size: 14px;
-                    margin-bottom: 1px;
-                }
-            """)
-
-    def on_fav_clicked(self, event):
-        self.favorite_toggled.emit(self.table_name)
-
-    def mousePressEvent(self, event):
-        event.ignore()
-
-    def mouseDoubleClickEvent(self, event):
-        event.ignore()
-
-
-class SimpleSidebarWidgetItem(QWidget):
-    """사이드바의 공통코드/관계 목록에 매핑될 심플 커스텀 위젯"""
-    def __init__(self, main_text, sub_text=None, height=32, parent=None):
-        super().__init__(parent)
-        self.main_text = main_text
-        self.sub_text = sub_text
-        self.setFixedHeight(height)
-        self.setToolTip("더블클릭 시 클립보드에 복사됩니다.")
-        self.init_ui()
-
-    def init_ui(self):
-        layout = QHBoxLayout()
-        layout.setContentsMargins(8, 0, 8, 0)
-        layout.setSpacing(4)
-        layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-
-        sub_text_val = self.sub_text
-        if sub_text_val == "마스터테이블":
-            sub_text_val = None
-        sub_desc = f" ({sub_text_val})" if sub_text_val else ""
-        self.lbl_text = QLabel(f"{self.main_text}{sub_desc}")
-        self.lbl_text.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        layout.addWidget(self.lbl_text)
-        layout.addStretch()
-
-        self.setLayout(layout)
-
-    def mouseDoubleClickEvent(self, event):
-        from PyQt6.QtWidgets import QApplication
-        QApplication.clipboard().setText(self.main_text)
-        show_copy_message(f"📋 {self.main_text} (이)가 클립보드에 복사되었습니다!", self)
-
-
-class CenteredCheckboxDelegate(QStyledItemDelegate):
-    """QTableWidget 내 체크박스를 셀 한가운데 배치하고, 마우스 이벤트를 정확하게 처리하는 델리게이트"""
-    def __init__(self, parent=None):
-        super().__init__(parent)
-
-    def get_checkbox_rect(self, option, widget):
-        style = widget.style() if widget else QApplication.style()
-        rect = style.subElementRect(QStyle.SubElement.SE_ItemViewItemCheckIndicator, option, widget)
-        # 셀 사각형(option.rect) 한가운데로 체크박스 사각형 위치 계산
-        centered_rect = QStyle.alignedRect(
-            option.direction,
-            Qt.AlignmentFlag.AlignCenter,
-            rect.size(),
-            option.rect
-        )
-        return centered_rect
-
-    def paint(self, painter, option, index):
-        opts = QStyleOptionViewItem(option)
-        self.initStyleOption(opts, index)
-        widget = opts.widget
-        style = widget.style() if widget else QApplication.style()
-
-        # 배경 및 선택 하이라이트 등 기본 셀 패널 그리기
-        style.drawPrimitive(QStyle.PrimitiveElement.PE_PanelItemViewItem, opts, painter, widget)
-
-        # 체크박스 인디케이터가 활성화된 항목인 경우 정중앙에 그리기
-        if opts.features & QStyleOptionViewItem.ViewItemFeature.HasCheckIndicator:
-            check_state = index.data(Qt.ItemDataRole.CheckStateRole)
-            if check_state == Qt.CheckState.Checked or check_state == 2:
-                opts.state |= QStyle.StateFlag.State_On
-                opts.state &= ~QStyle.StateFlag.State_Off
-            else:
-                opts.state |= QStyle.StateFlag.State_Off
-                opts.state &= ~QStyle.StateFlag.State_On
-            
-            opts.rect = self.get_checkbox_rect(opts, widget)
-            style.drawPrimitive(QStyle.PrimitiveElement.PE_IndicatorItemViewItemCheck, opts, painter, None)
-        else:
-            super().paint(painter, option, index)
-
-    def editorEvent(self, event, model, option, index):
-        flags = index.flags()
-        if not (flags & Qt.ItemFlag.ItemIsUserCheckable and flags & Qt.ItemFlag.ItemIsEnabled):
-            return super().editorEvent(event, model, option, index)
-
-        # 마우스 클릭(누르기, 떼기, 더블클릭) 이벤트 감지
-        if event.type() in [QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease, QEvent.Type.MouseButtonDblClick]:
-            widget = option.widget
-            opts = QStyleOptionViewItem(option)
-            self.initStyleOption(opts, index)
-            centered_rect = self.get_checkbox_rect(opts, widget)
-            # 마우스 릴리즈(클릭 완료) 시점에만 상태 반전 적용
-            if centered_rect.contains(event.pos()):
-                if event.type() == QEvent.Type.MouseButtonRelease:
-                    state = index.data(Qt.ItemDataRole.CheckStateRole)
-                    if state == Qt.CheckState.Checked.value or state == Qt.CheckState.Checked:
-                        new_state = Qt.CheckState.Unchecked
-                    else:
-                        new_state = Qt.CheckState.Checked
-                    model.setData(index, new_state, Qt.ItemDataRole.CheckStateRole)
-                return True
-            else:
-                # 체크박스 밖의 영역을 클릭했을 때는 체크박스 상태 반전을 차단하고 False를 리턴하여
-                # 테이블 뷰가 기본 이벤트(행 선택 등)를 처리할 수 있게 함
-                return False
-
-        return super().editorEvent(event, model, option, index)
-
-
-def apply_sql_line_spacing(text_edit, percent=130):
-    """읽기 전용 SQL 뷰어의 줄간격을 넓혀 가독성 향상 (내용 설정 후 호출)"""
-    from PyQt6.QtGui import QTextBlockFormat, QTextCursor
-    cursor = QTextCursor(text_edit.document())
-    cursor.select(QTextCursor.SelectionType.Document)
-    fmt = QTextBlockFormat()
-    fmt.setLineHeight(float(percent), QTextBlockFormat.LineHeightTypes.ProportionalHeight.value)
-    cursor.mergeBlockFormat(fmt)
-
-
-class SqlHighlighter(QSyntaxHighlighter):
-    """QTextEdit용 SQL 구문 강조(Syntax Highlighter) 클래스"""
-    def __init__(self, parent=None, dark=False):
-        super().__init__(parent)
-        self.highlighting_rules = []
-
-        # ※ 밝은 배경은 SSMS 관례(파랑/자주/빨강/초록), 어두운 배경은 VS Code Dark+ 관례를 따름
-        #    — 볼드 남발과 한글 이탤릭 주석이 가독성을 해치므로 금지
-        if dark:
-            col_keyword, col_function, col_variable = "#569CD6", "#DCDCAA", "#9CDCFE"
-            col_number, col_string, col_comment = "#B5CEA8", "#CE9178", "#6A9955"
-        else:
-            col_keyword, col_function, col_variable = "#1D4ED8", "#C026D3", "#0E7490"
-            col_number, col_string, col_comment = "#0D9488", "#DC2626", "#15803D"
-
-        # 1. SQL 표준 및 주요 예약어 (파랑)
-        keyword_format = QTextCharFormat()
-        keyword_format.setForeground(QColor(col_keyword))
-        keywords = [
-            "SELECT", "FROM", "WHERE", "GROUP BY", "ORDER BY", "HAVING", "LIMIT",
-            "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "JOIN",
-            "LEFT", "RIGHT", "INNER", "OUTER", "ON", "AND", "OR", "AS",
-            "CASE", "WHEN", "THEN", "ELSE", "END", "UNION", "ALL", "DISTINCT",
-            "CREATE", "TABLE", "ALTER", "DROP", "INDEX", "VIEW", "WITH",
-            "OVER", "PARTITION", "BY", "IN", "NOT", "NULL", "LIKE", "IS", "EXISTS",
-            "MERGE", "MATCHED", "USING", "WHEN MATCHED", "WHEN NOT MATCHED",
-            "DECLARE", "BEGIN", "TRAN", "TRANSACTION", "COMMIT", "ROLLBACK",
-            "IF", "WHILE", "BREAK", "CONTINUE", "PRINT", "RETURN", "EXEC", "EXECUTE",
-            "CURSOR", "FOR", "OPEN", "FETCH", "NEXT", "CLOSE", "DEALLOCATE",
-            "TOP", "OFFSET", "ROWS", "ONLY", "PIVOT", "UNPIVOT", "TRY", "CATCH",
-            "OUTPUT", "TRUNCATE", "START", "CONNECT", "PRIOR", "LEVEL", "TO"
-        ]
-        for word in keywords:
-            pattern = QRegularExpression(rf"\b{word}\b", QRegularExpression.PatternOption.CaseInsensitiveOption)
-            self.highlighting_rules.append((pattern, keyword_format))
-
-        # 2. 내장 및 분석용 함수 (자주색, 볼드 없음)
-        function_format = QTextCharFormat()
-        function_format.setForeground(QColor(col_function))
-        functions = [
-            "COUNT", "SUM", "AVG", "MIN", "MAX", "COALESCE", "DECODE", "NVL", "SUBSTR",
-            "TO_CHAR", "TO_DATE", "TO_NUMBER", "TRUNC", "INSTR", "LENGTH", "SYSDATE",
-            "ROW_NUMBER", "RANK", "DENSE_RANK", "LAG", "LEAD", "SUBSTRING", "CONCAT",
-            "UPPER", "LOWER", "REPLACE", "GETDATE", "ROWNUM", "CAST", "CONVERT",
-            "ISNULL", "NVL2", "TRIM", "LTRIM", "RTRIM", "QUOTENAME", "OBJECT_ID",
-            "STRING_AGG", "STRING_SPLIT", "CHARINDEX", "FORMAT", "DATEDIFF", "DATEADD"
-        ]
-        for word in functions:
-            pattern = QRegularExpression(rf"\b{word}\b", QRegularExpression.PatternOption.CaseInsensitiveOption)
-            self.highlighting_rules.append((pattern, function_format))
-
-        # 3. 변수 (@변수) 및 임시 테이블 (#temp) - 청록
-        variable_format = QTextCharFormat()
-        variable_format.setForeground(QColor(col_variable))
-        self.highlighting_rules.append((QRegularExpression(r"[@#][A-Za-z_]\w*"), variable_format))
-
-        # 4. 숫자형 상수
-        number_format = QTextCharFormat()
-        number_format.setForeground(QColor(col_number))
-        self.highlighting_rules.append((QRegularExpression(r"\b\d+\b"), number_format))
-
-        # 5. 문자열 리터럴 (N'' 유니코드 접두어 포함)
-        #    ※ 숫자/변수 규칙보다 뒤에 두어 문자열 내부가 침범당하지 않도록 함
-        string_format = QTextCharFormat()
-        string_format.setForeground(QColor(col_string))
-        self.highlighting_rules.append((QRegularExpression(r"N?'[^']*'"), string_format))
-        self.highlighting_rules.append((QRegularExpression(r'"[^"]*"'), string_format))
-
-        # 6. 한 줄 주석 '--' (이탤릭 금지 — 한글 주석 가독성)
-        #    ※ 항상 마지막 규칙: 주석 안의 키워드/문자열 색을 덮어써야 함
-        comment_format = QTextCharFormat()
-        comment_format.setForeground(QColor(col_comment))
-        self.highlighting_rules.append((QRegularExpression(r"--[^\n]*"), comment_format))
-
-        # 7. 다중 행 블록 주석 '/* ... */' 처리용 설정
-        self.block_comment_format = comment_format
-        self.block_comment_start_expression = QRegularExpression(r"/\*")
-        self.block_comment_end_expression = QRegularExpression(r"\*/")
-
-    def highlightBlock(self, text):
-        # 일반 정규식 강조 규칙 순차적 적용
-        for pattern, format in self.highlighting_rules:
-            match_iterator = pattern.globalMatch(text)
-            while match_iterator.hasNext():
-                match = match_iterator.next()
-                self.setFormat(match.capturedStart(), match.capturedLength(), format)
-
-        # 다중 행 블록 주석 상태 머신 적용
-        self.setCurrentBlockState(0)
-        start_index = 0
-        if self.previousBlockState() != 1:
-            start_match = self.block_comment_start_expression.match(text)
-            start_index = start_match.capturedStart()
-        else:
-            start_index = 0
-
-        while start_index >= 0:
-            end_match = self.block_comment_end_expression.match(text, start_index)
-            end_index = end_match.capturedStart()
-            comment_length = 0
-            if end_index < 0:
-                self.setCurrentBlockState(1)
-                comment_length = len(text) - start_index
-            else:
-                comment_length = end_index - start_index + end_match.capturedLength()
-            
-            self.setFormat(start_index, comment_length, self.block_comment_format)
-            start_index = self.block_comment_start_expression.match(text, start_index + comment_length).capturedStart()
-
-
-from PyQt6.QtCore import QObject
-
-class PasteEventFilter(QObject):
-    def __init__(self, parent_dialog, current_index):
-        super().__init__(parent_dialog)
-        self.dialog = parent_dialog
-        self.index = current_index
-
-    def eventFilter(self, obj, event):
-        if event.type() == QEvent.Type.FocusIn:
-            self.dialog.last_focused_editor = obj
-        elif event.type() == QEvent.Type.KeyPress:
-            if event.matches(QKeySequence.StandardKey.Paste):
-                clipboard = QApplication.clipboard()
-                text = clipboard.text()
-                
-                if '\t' in text or '\n' in text:
-                    # 끝부분의 줄바꿈 문자만 제거 (중간의 빈 값 보존)
-                    cleaned_text = text.rstrip('\r\n')
-                    lines = cleaned_text.split('\n')
-                    
-                    # 단일 행이면서 탭구분인 경우
-                    if len(lines) == 1 or (len(lines) > 1 and all(line.strip() == '' for line in lines[1:])):
-                        tokens = lines[0].split('\t')
-                    else:
-                        tokens = []
-                        for line in lines:
-                            line_val = line.replace('\r', '')
-                            if '\t' in line_val:
-                                tokens.extend(line_val.split('\t'))
-                            else:
-                                tokens.append(line_val)
-                    
-                    if len(tokens) > 1:
-                        start_idx = self.index
-                        for offset, val in enumerate(tokens):
-                            target_idx = start_idx + offset
-                            if target_idx < len(self.dialog.value_editors):
-                                editor = self.dialog.value_editors[target_idx]
-                                # 만약 NULL로 비활성화 되어 있다면 복구
-                                if getattr(editor, 'is_null_active', False):
-                                    editor.is_null_active = False
-                                    editor.setEnabled(True)
-                                    editor.setStyleSheet("")
-                                editor.setText(val)
-                        return True
-        return super().eventFilter(obj, event)
-
-
-class ExcelBulkQueryDialog(QDialog):
-    """엑셀 파일을 읽어 컬럼 매핑 후 대량 INSERT / UPDATE SQL 쿼리를 일괄 생성하는 팝업"""
-    def __init__(self, table_name, columns, pk_cols, where_cols, query_type, parent=None):
-        super().__init__(parent)
-        self.table_name = table_name
-        self.columns = columns
-        self.pk_cols = pk_cols
-        self.where_cols = where_cols
-        self.query_type = query_type
-        self.df = None
-        self.combo_mappings = []
-
-        type_label = "INSERT" if query_type == "insert" else "UPDATE"
-        self.setWindowTitle(f"엑셀 대량 {type_label} 쿼리 생성 - {table_name}")
-        self.setMinimumSize(860, 680)
-        self.setStyleSheet("""
-            QDialog { background-color: #FFFFFF; }
-            QLabel { font-size: 11px; color: #334155; }
-            QLineEdit { background-color: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 4px; padding: 5px 8px; font-size: 11px; }
-            QComboBox { background-color: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 4px; padding: 4px 8px; font-size: 11px; }
-        """)
-        self.init_ui()
-
-    def init_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setSpacing(10)
-
-        # 1. 헤더 안내
-        type_label = "INSERT" if self.query_type == "insert" else "UPDATE"
-        title = QLabel(f"엑셀 불러오기 기반 대량 {type_label} SQL 생성 ({self.table_name})")
-        title.setStyleSheet("font-size: 14px; font-weight: bold; color: #1E293B; padding-bottom: 2px;")
-        layout.addWidget(title)
-
-        desc = QLabel("엑셀 파일을 선택하고 '불러오기'를 누르면 컬럼이 자동 매핑됩니다. 매핑을 확인한 후 '대량 SQL 쿼리 생성'을 누르세요.")
-        desc.setStyleSheet("font-size: 11px; color: #64748B;")
-        layout.addWidget(desc)
-
-        # 2. 파일 선택 그룹
-        file_box = QFrame()
-        file_box.setStyleSheet("QFrame { background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px; }")
-        file_layout = QHBoxLayout(file_box)
-        file_layout.setContentsMargins(8, 6, 8, 6)
-
-        lbl_file = QLabel("엑셀 파일:")
-        lbl_file.setStyleSheet("font-weight: bold; color: #334155;")
-        self.txt_file_path = QLineEdit()
-        self.txt_file_path.setReadOnly(True)
-        self.txt_file_path.setPlaceholderText("선택된 파일 없음 (*.xlsx, *.xls)")
-
-        btn_browse = QPushButton("찾아보기")
-        btn_browse.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_browse.setStyleSheet("background-color: #E2E8F0; color: #334155; border: none; border-radius: 4px; padding: 6px 12px; font-weight: bold; font-size: 11px;")
-        btn_browse.clicked.connect(self.browse_file)
-
-        btn_load = QPushButton("불러오기")
-        btn_load.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_load.setStyleSheet("background-color: #2563EB; color: #FFFFFF; border: none; border-radius: 4px; padding: 6px 14px; font-weight: bold; font-size: 11px;")
-        btn_load.clicked.connect(self.load_excel)
-
-        file_layout.addWidget(lbl_file)
-        file_layout.addWidget(self.txt_file_path, 1)
-        file_layout.addWidget(btn_browse)
-        file_layout.addWidget(btn_load)
-        layout.addWidget(file_box)
-
-        # 상태 안내 라벨
-        self.lbl_status = QLabel("파일을 불러와 주세요.")
-        self.lbl_status.setStyleSheet("font-size: 11px; font-weight: bold; color: #0284C7; padding-left: 4px;")
-        layout.addWidget(self.lbl_status)
-
-        # 3. 매핑 테이블
-        lbl_map = QLabel("엑셀 컬럼 ↔ 테이블 컬럼 매핑")
-        lbl_map.setStyleSheet("font-size: 12px; font-weight: bold; color: #334155; margin-top: 4px;")
-        layout.addWidget(lbl_map)
-
-        self.tbl_map = QTableWidget()
-        self.tbl_map.setColumnCount(4)
-        self.tbl_map.setHorizontalHeaderLabels(["엑셀 컬럼명", "1행 샘플 데이터", "->", "매핑할 테이블 컬럼"])
-        self.tbl_map.verticalHeader().setVisible(False)
-        self.tbl_map.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.tbl_map.setStyleSheet("""
-            QTableWidget { background-color: #FFFFFF; border: 1px solid #E2E8F0; gridline-color: #F1F5F9; font-size: 11px; }
-            QTableWidget::item { padding: 4px; }
-            QHeaderView::section { background-color: #F1F5F9; color: #475569; padding: 5px; font-weight: bold; font-size: 11px; border: none; border-bottom: 1px solid #E2E8F0; }
-        """)
-        h = self.tbl_map.horizontalHeader()
-        h.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
-        h.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
-        h.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
-        h.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self.tbl_map.setColumnWidth(0, 180)
-        self.tbl_map.setColumnWidth(1, 200)
-        self.tbl_map.setColumnWidth(2, 40)
-        self.tbl_map.setFixedHeight(180)
-        layout.addWidget(self.tbl_map)
-
-        # 4. 실행 버튼
-        btn_action_layout = QHBoxLayout()
-        btn_gen_bulk = QPushButton("대량 SQL 쿼리 생성")
-        btn_gen_bulk.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_gen_bulk.setStyleSheet("background-color: #059669; color: #FFFFFF; border: none; border-radius: 4px; padding: 8px 18px; font-weight: bold; font-size: 12px;")
-        btn_gen_bulk.clicked.connect(self.generate_bulk_sql)
-        btn_action_layout.addWidget(btn_gen_bulk)
-        btn_action_layout.addStretch()
-        layout.addLayout(btn_action_layout)
-
-        # 5. 결과 SQL 텍스트 에디터 (다크 테마)
-        lbl_res = QLabel("생성된 대량 SQL 결과")
-        lbl_res.setStyleSheet("font-size: 12px; font-weight: bold; color: #334155; margin-top: 4px;")
-        layout.addWidget(lbl_res)
-
-        self.txt_result = QTextEdit()
-        self.txt_result.setReadOnly(True)
-        self.txt_result.setFont(QFont("Consolas", 10))
-        self.txt_result.setStyleSheet("""
-            QTextEdit {
-                background-color: #1E1E2E;
-                color: #D4D4D4;
-                border: 1px solid #313244;
-                border-radius: 6px;
-                padding: 8px;
-            }
-        """)
-        self.sql_highlighter = SqlHighlighter(self.txt_result.document(), dark=True)
-        layout.addWidget(self.txt_result, 1)
-
-        # 6. 하단 버튼
-        bottom_layout = QHBoxLayout()
-        self.lbl_result_count = QLabel("")
-        self.lbl_result_count.setStyleSheet("font-size: 11px; font-weight: bold; color: #059669;")
-        bottom_layout.addWidget(self.lbl_result_count)
-        bottom_layout.addStretch()
-
-        btn_copy = QPushButton("클립보드 전체 복사")
-        btn_copy.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_copy.setStyleSheet("background-color: #2563EB; color: #FFFFFF; border: none; border-radius: 4px; padding: 7px 16px; font-weight: bold; font-size: 11px;")
-        btn_copy.clicked.connect(self.copy_result)
-
-        btn_save = QPushButton(".sql 파일로 저장")
-        btn_save.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_save.setStyleSheet("background-color: #475569; color: #FFFFFF; border: none; border-radius: 4px; padding: 7px 16px; font-weight: bold; font-size: 11px;")
-        btn_save.clicked.connect(self.save_sql_file)
-
-        btn_close = QPushButton("닫기")
-        btn_close.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_close.setStyleSheet("background-color: #E2E8F0; color: #475569; border: none; border-radius: 4px; padding: 7px 16px; font-weight: bold; font-size: 11px;")
-        btn_close.clicked.connect(self.accept)
-
-        bottom_layout.addWidget(btn_copy)
-        bottom_layout.addWidget(btn_save)
-        bottom_layout.addWidget(btn_close)
-        layout.addLayout(bottom_layout)
-
-    def browse_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "엑셀 파일 선택", "", "Excel Files (*.xlsx *.xls)")
-        if file_path:
-            self.txt_file_path.setText(file_path)
-            self.load_excel()
-
-    def load_excel(self):
-        file_path = self.txt_file_path.text().strip()
-        if not file_path or not os.path.exists(file_path):
-            QMessageBox.warning(self, "경고", "올바른 엑셀 파일 경로를 선택해 주세요.")
-            return
-
-        try:
-            self.df = pd.read_excel(file_path, dtype=str)
-            self.df = self.df.fillna("")
-            
-            row_count = len(self.df)
-            col_count = len(self.df.columns)
-            self.lbl_status.setText(f"엑셀 로드 완료: 총 {row_count:,}건의 데이터 행 (컬럼 수: {col_count}개)")
-
-            self.populate_mapping_table()
-        except Exception as e:
-            QMessageBox.critical(self, "오류", f"엑셀 파일을 읽는 중 오류가 발생했습니다:\n{str(e)}")
-
-    def populate_mapping_table(self):
-        if self.df is None:
-            return
-
-        excel_cols = list(self.df.columns)
-        self.tbl_map.setRowCount(len(excel_cols))
-        self.combo_mappings = []
-
-        db_options = [("[매핑 안함 (제외)]", None)]
-        for col in self.columns:
-            ko = f" ({col.get('ko_name')})" if col.get('ko_name') else ""
-            db_options.append((f"{col['name']}{ko}", col))
-
-        first_row = self.df.iloc[0] if len(self.df) > 0 else None
-
-        for r_idx, ex_col in enumerate(excel_cols):
-            ex_col_str = str(ex_col).strip()
-            
-            # 1. 엑셀 컬럼명
-            item_ex = QTableWidgetItem(ex_col_str)
-            item_ex.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-            
-            # 2. 1행 샘플 데이터
-            sample_val = str(first_row[ex_col]) if first_row is not None else ""
-            item_sample = QTableWidgetItem(sample_val)
-            item_sample.setForeground(QColor("#64748B"))
-            
-            # 3. 화살표
-            item_arrow = QTableWidgetItem("➡️")
-            item_arrow.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-
-            # 4. DB 컬럼 선택 콤보박스
-            combo = QComboBox()
-            for opt_text, opt_val in db_options:
-                combo.addItem(opt_text, opt_val)
-
-            norm_ex = ex_col_str.replace(" ", "").replace("_", "").upper()
-            best_match_idx = 0
-            for opt_idx, (_, col_dict) in enumerate(db_options):
-                if col_dict:
-                    col_name_norm = col_dict['name'].replace(" ", "").replace("_", "").upper()
-                    ko_name_norm = col_dict.get('ko_name', '').replace(" ", "").replace("_", "").upper()
-                    if norm_ex == col_name_norm or (ko_name_norm and norm_ex == ko_name_norm):
-                        best_match_idx = opt_idx
-                        break
-
-            combo.setCurrentIndex(best_match_idx)
-            self.combo_mappings.append((ex_col, combo))
-
-            self.tbl_map.setItem(r_idx, 0, item_ex)
-            self.tbl_map.setItem(r_idx, 1, item_sample)
-            self.tbl_map.setItem(r_idx, 2, item_arrow)
-            self.tbl_map.setCellWidget(r_idx, 3, combo)
-
-    def _format_cell_value(self, val, data_type):
-        import re
-        val_str = str(val).strip() if val is not None else ""
-        if not val_str or val_str.upper() == "NULL":
-            return "NULL"
-
-        if (val_str.startswith("'") and val_str.endswith("'")) or (val_str.startswith('"') and val_str.endswith('"')):
-            return val_str
-
-        val_upper = val_str.upper()
-        if val_upper in ["SYSDATE", "DEFAULT", "USER", "CURRENT_TIMESTAMP"]:
-            return val_upper
-        if "(" in val_str and ")" in val_str:
-            return val_str
-
-        dt = data_type.upper() if data_type else ""
-        
-        # 1. 날짜/시간 타입
-        if "DATE" in dt or "TIME" in dt or "TIMESTAMP" in dt:
-            date_digits = re.sub(r"[^\d]", "", val_str)
-            if len(date_digits) == 8: # YYYYMMDD
-                formatted_date = f"{date_digits[:4]}-{date_digits[4:6]}-{date_digits[6:]}"
-                return f"TO_DATE('{formatted_date}', 'YYYY-MM-DD')"
-            elif len(date_digits) == 14: # YYYYMMDDHH24MISS
-                formatted_date = f"{date_digits[:4]}-{date_digits[4:6]}-{date_digits[6:8]} {date_digits[8:10]}:{date_digits[10:12]}:{date_digits[12:]}"
-                return f"TO_DATE('{formatted_date}', 'YYYY-MM-DD HH24:MI:SS')"
-            else:
-                return f"'{val_str}'"
-                
-        # 2. 숫자 타입
-        elif "NUMBER" in dt or "INT" in dt or "DECIMAL" in dt or "FLOAT" in dt or "DOUBLE" in dt:
-            if re.match(r'^-?\d+(\.\d+)?$', val_str):
-                return val_str
-            else:
-                return f"'{val_str}'"
-            
-        # 3. 문자열 및 기타 기본 타입
-        else:
-            return f"'{val_str}'"
-
-    def generate_bulk_sql(self):
-        if self.df is None or len(self.df) == 0:
-            QMessageBox.warning(self, "알림", "불러온 엑셀 데이터가 없습니다. 먼저 엑셀 파일을 불러와 주세요.")
-            return
-
-        active_mappings = []
-        for ex_col, combo in self.combo_mappings:
-            col_dict = combo.currentData()
-            if col_dict is not None:
-                active_mappings.append((ex_col, col_dict))
-
-        if not active_mappings:
-            QMessageBox.warning(self, "알림", "매핑된 테이블 컬럼이 없습니다. 최소 하나 이상의 컬럼을 매핑해 주세요.")
-            return
-
-        sql_lines = []
-        if self.query_type == "insert":
-            col_names = [col['name'] for _, col in active_mappings]
-            cols_clause = ", ".join(col_names)
-            
-            for _, row in self.df.iterrows():
-                row_vals = []
-                for ex_col, col in active_mappings:
-                    raw_val = row[ex_col]
-                    formatted_val = self._format_cell_value(raw_val, col.get('data_type', ''))
-                    row_vals.append(formatted_val)
-                val_str = ", ".join(row_vals)
-                sql_lines.append(f"INSERT INTO {self.table_name} ({cols_clause}) VALUES ({val_str});")
-
-        elif self.query_type == "update":
-            set_mappings = [m for m in active_mappings if m[1]['name'] not in self.pk_cols]
-            where_mappings = [m for m in active_mappings if m[1]['name'] in self.pk_cols]
-            
-            if not where_mappings:
-                where_mappings = active_mappings[:1]
-                set_mappings = active_mappings[1:] if len(active_mappings) > 1 else active_mappings
-
-            for _, row in self.df.iterrows():
-                set_parts = []
-                for ex_col, col in set_mappings:
-                    formatted_val = self._format_cell_value(row[ex_col], col.get('data_type', ''))
-                    set_parts.append(f"{col['name']} = {formatted_val}")
-                
-                where_parts = []
-                for ex_col, col in where_mappings:
-                    formatted_val = self._format_cell_value(row[ex_col], col.get('data_type', ''))
-                    where_parts.append(f"{col['name']} = {formatted_val}")
-
-                set_str = ", ".join(set_parts) if set_parts else f"{where_mappings[0][1]['name']} = {where_mappings[0][1]['name']}"
-                where_str = " AND ".join(where_parts)
-                sql_lines.append(f"UPDATE {self.table_name} SET {set_str} WHERE {where_str};")
-
-        full_sql = "\n".join(sql_lines)
-        self.txt_result.setPlainText(full_sql)
-        self.lbl_result_count.setText(f"총 {len(sql_lines):,}건의 SQL 쿼리가 생성되었습니다.")
-        show_copy_message(f"총 {len(sql_lines):,}건의 대량 SQL이 생성되었습니다!", self)
-
-    def copy_result(self):
-        text = self.txt_result.toPlainText().strip()
-        if not text:
-            QMessageBox.information(self, "알림", "복사할 SQL 결과가 없습니다.")
-            return
-        QApplication.clipboard().setText(text)
-        show_copy_message("생성된 대량 SQL이 클립보드에 복사되었습니다!", self)
-
-    def save_sql_file(self):
-        text = self.txt_result.toPlainText().strip()
-        if not text:
-            QMessageBox.information(self, "알림", "저장할 SQL 결과가 없습니다.")
-            return
-        default_name = f"{self.table_name}_bulk_{self.query_type}.sql"
-        file_path, _ = QFileDialog.getSaveFileName(self, "SQL 파일로 저장", default_name, "SQL Files (*.sql);;Text Files (*.txt)")
-        if file_path:
-            try:
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write(text)
-                show_copy_message("SQL 파일이 성공적으로 저장되었습니다!", self)
-            except Exception as e:
-                QMessageBox.critical(self, "오류", f"파일 저장 중 오류가 발생했습니다:\n{str(e)}")
-
-
-class InsertUpdateDialog(QDialog):
-    """INSERT/UPDATE/DELETE 생성 시 값을 미리 입력하고, 하단에서 실시간으로 SQL 미리보기를 확인할 수 있는 팝업"""
-
-    TYPE_LABELS = {"insert": "INSERT", "update": "UPDATE", "delete": "DELETE"}
-    TITLE_VERBS = {"insert": "값 입력", "update": "값 입력", "delete": "조건 값 입력"}
-    HINTS = {
-        "insert": "각 컬럼의 값을 입력하세요. 비워두면 기본값이 사용됩니다.",
-        "update": "수정할 컬럼의 값을 입력하세요. 비워둔 컬럼은 SET 절에서 제외됩니다.",
-        "delete": "삭제 조건(WHERE)에 사용할 값을 입력하세요. 비워두면 기본값이 사용됩니다.\n"
-                  "⚠️ 조건에 해당하는 모든 행이 삭제되므로 실행 전 아래 미리보기를 꼭 확인하세요.",
-    }
-
-    def __init__(self, table_name, columns, pk_cols, where_cols, query_type, db_mgr, parent=None):
-        super().__init__(parent)
-        self.table_name = table_name
-        self.columns = columns
-        self.pk_cols = pk_cols
-        self.where_cols = where_cols
-        self.query_type = query_type
-        self.db_mgr = db_mgr
-        self.result_sql = ""
-        self.type_label = self.TYPE_LABELS.get(query_type, query_type.upper())
-        self.last_focused_editor = None
-        title_verb = self.TITLE_VERBS.get(query_type, "값 입력")
-
-        self.setWindowTitle(f"{self.type_label} {title_verb} - {table_name}")
-        self.setMinimumSize(680, 580)
-        self.setStyleSheet("""
-            QDialog { background-color: #FFFFFF; }
-            QLabel { font-size: 11px; color: #334155; }
-            QLineEdit { background-color: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 3px; padding: 4px 6px; font-size: 11px; }
-            QLineEdit:focus { border: 1px solid #3B82F6; }
-        """)
-        self.init_ui()
-
-    def init_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setSpacing(8)
-
-        header_layout = QHBoxLayout()
-        title_verb = self.TITLE_VERBS.get(self.query_type, "값 입력")
-        title = QLabel(f"📝 {self.type_label} 쿼리 {title_verb} ({self.table_name})")
-        title.setStyleSheet("font-size: 13px; font-weight: bold; color: #1E293B; padding: 4px 0;")
-        header_layout.addWidget(title)
-        header_layout.addStretch()
-
-        btn_paste = QPushButton("클립보드 붙여넣기")
-        btn_paste.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_paste.setStyleSheet("""
-            QPushButton {
-                background-color: #2563EB;
-                color: #FFFFFF;
-                border: none;
-                border-radius: 4px;
-                padding: 6px 12px;
-                font-weight: bold;
-                font-size: 11px;
-            }
-            QPushButton:hover {
-                background-color: #1D4ED8;
-            }
-        """)
-        btn_paste.clicked.connect(self.paste_from_clipboard)
-        header_layout.addWidget(btn_paste)
-
-        # 엑셀 불러오기(대량) 버튼 (INSERT/UPDATE 쿼리 지원)
-        if self.query_type in ["insert", "update"]:
-            btn_excel_bulk = QPushButton("엑셀 불러오기(대량)")
-            btn_excel_bulk.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            btn_excel_bulk.setStyleSheet("""
-                QPushButton {
-                    background-color: #059669;
-                    color: #FFFFFF;
-                    border: none;
-                    border-radius: 4px;
-                    padding: 6px 12px;
-                    font-weight: bold;
-                    font-size: 11px;
-                }
-                QPushButton:hover {
-                    background-color: #047857;
-                }
-            """)
-            btn_excel_bulk.clicked.connect(self.open_excel_bulk_dialog)
-            header_layout.addWidget(btn_excel_bulk)
-
-        layout.addLayout(header_layout)
-
-        hint = QLabel(self.HINTS.get(self.query_type, ""))
-        hint.setStyleSheet("font-size: 10px; color: #94A3B8; margin-bottom: 4px;")
-        layout.addWidget(hint)
-
-        # 테이블
-        self.tbl = QTableWidget()
-        self.tbl.setColumnCount(5)
-        self.tbl.setHorizontalHeaderLabels(["컬럼명", "한글명", "데이터타입", "값", "NULL"])
-        self.tbl.verticalHeader().setVisible(False)
-        self.tbl.setEditTriggers(QAbstractItemView.EditTrigger.AllEditTriggers)
-        self.tbl.setStyleSheet("""
-            QTableWidget { background-color: #FFFFFF; border: 1px solid #E2E8F0; gridline-color: #F1F5F9; font-size: 11px; }
-            QTableWidget::item { padding: 3px; }
-            QHeaderView::section { background-color: #F1F5F9; color: #475569; padding: 4px; font-weight: bold; font-size: 11px; border: none; border-bottom: 1px solid #E2E8F0; }
-        """)
-
-        h = self.tbl.horizontalHeader()
-        h.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        h.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        h.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        h.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        h.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
-        self.tbl.setColumnWidth(4, 55)
-
-        self.tbl.setRowCount(len(self.columns))
-        self.value_editors = []
-        for i, col in enumerate(self.columns):
-            name_item = QTableWidgetItem(col['name'])
-            name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            ko_item = QTableWidgetItem(col.get('ko_name', ''))
-            ko_item.setFlags(ko_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            type_item = QTableWidgetItem(col.get('data_type', ''))
-            type_item.setFlags(type_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-
-            default_val = self._get_default_value(col['name'], col.get('data_type', ''))
-            val_edit = QLineEdit(default_val) # 모든 모드에서 기본값 채우기
-            val_edit.setPlaceholderText(default_val)
-            val_edit.textChanged.connect(self._update_preview)
-
-            paste_filter = PasteEventFilter(self, i)
-            val_edit.installEventFilter(paste_filter)
-            val_edit.paste_filter = paste_filter
-
-            btn_row_null = QPushButton("NULL")
-            btn_row_null.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            btn_row_null.setStyleSheet("background-color: #F1F5F9; color: #64748B; border: 1px solid #CBD5E1; border-radius: 3px; font-size: 10px; font-weight: bold; padding: 2px 4px;")
-            
-            def make_null_toggle(editor):
-                def toggle():
-                    if not hasattr(editor, 'is_null_active'):
-                        editor.is_null_active = False
-                    
-                    if editor.is_null_active:
-                        editor.is_null_active = False
-                        editor.setEnabled(True)
-                        editor.setStyleSheet("") # 기본 스타일 복원
-                        if hasattr(editor, 'prev_text'):
-                            editor.setText(editor.prev_text)
-                        else:
-                            editor.clear()
-                    else:
-                        editor.prev_text = editor.text()
-                        editor.is_null_active = True
-                        editor.setText("NULL")
-                        editor.setEnabled(False)
-                        editor.setStyleSheet("background-color: #E2E8F0; color: #94A3B8; border: 1px solid #CBD5E1;")
-                    # 실시간 미리보기 갱신 강제 트리거
-                    editor.textChanged.emit(editor.text())
-                return toggle
-                
-            btn_row_null.clicked.connect(make_null_toggle(val_edit))
-
-            self.tbl.setItem(i, 0, name_item)
-            self.tbl.setItem(i, 1, ko_item)
-            self.tbl.setItem(i, 2, type_item)
-            self.tbl.setCellWidget(i, 3, val_edit)
-            self.tbl.setCellWidget(i, 4, btn_row_null)
-            self.value_editors.append(val_edit)
-
-        layout.addWidget(self.tbl, 1)
-
-        # 실시간 SQL 미리보기 (다크 테마)
-        lbl_preview = QLabel("🖥️ 실시간 SQL 미리보기")
-        lbl_preview.setStyleSheet("font-size: 11px; font-weight: bold; color: #64748B; margin-top: 4px;")
-        layout.addWidget(lbl_preview)
-
-        self.txt_preview = QTextEdit()
-        self.txt_preview.setReadOnly(True)
-        self.txt_preview.setFont(QFont("Consolas", 10))
-        self.txt_preview.setFixedHeight(130)
-        self.txt_preview.setStyleSheet("""
-            QTextEdit {
-                background-color: #1E1E2E;
-                color: #D4D4D4;
-                border: 1px solid #313244;
-                border-radius: 6px;
-                padding: 8px;
-            }
-        """)
-        self.preview_highlighter = SqlHighlighter(self.txt_preview.document(), dark=True)
-        layout.addWidget(self.txt_preview, 0)
-
-        # 버튼
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
-
-        is_delete = self.query_type == "delete"
-        btn_gen = QPushButton(f"{'🗑️' if is_delete else '📋'} {self.type_label} SQL 생성 및 복사")
-        btn_gen.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        if is_delete:
-            btn_gen.setStyleSheet("""
-                QPushButton { background-color: #EF4444; color: #FFFFFF; border: none; border-radius: 4px; padding: 8px 16px; font-weight: bold; font-size: 12px; }
-                QPushButton:hover { background-color: #DC2626; }
-            """)
-        else:
-            btn_gen.setStyleSheet("""
-                QPushButton { background-color: #2563EB; color: #FFFFFF; border: none; border-radius: 4px; padding: 8px 16px; font-weight: bold; font-size: 12px; }
-                QPushButton:hover { background-color: #1D4ED8; }
-            """)
-        btn_gen.clicked.connect(self._generate_sql)
-
-        btn_cancel = QPushButton("취소")
-        btn_cancel.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_cancel.setStyleSheet("background-color: #E2E8F0; color: #475569; border: none; border-radius: 4px; padding: 8px 16px; font-weight: bold; font-size: 12px;")
-        btn_cancel.clicked.connect(self.reject)
-
-        btn_layout.addWidget(btn_gen)
-        btn_layout.addWidget(btn_cancel)
-        layout.addLayout(btn_layout)
-
-        # 초기 상태 미리보기 표시 (INSERT/DELETE는 기본값이 이미 채워져 있어 즉시 완성된 SQL이 보임)
-        self._update_preview()
-
-    def paste_from_clipboard(self):
-        clipboard = QApplication.clipboard()
-        text = clipboard.text()
-        if not text:
-            return
-            
-        focused_idx = 0
-        if getattr(self, 'last_focused_editor', None) in self.value_editors:
-            focused_idx = self.value_editors.index(self.last_focused_editor)
-        else:
-            focused_widget = QApplication.focusWidget()
-            if focused_widget in self.value_editors:
-                focused_idx = self.value_editors.index(focused_widget)
-            else:
-                for idx, editor in enumerate(self.value_editors):
-                    if editor.hasFocus():
-                        focused_idx = idx
-                        break
-
-        cleaned_text = text.rstrip('\r\n')
-        
-        if '\t' in text or '\n' in text:
-            lines = cleaned_text.split('\n')
-            if len(lines) == 1 or (len(lines) > 1 and all(line.strip() == '' for line in lines[1:])):
-                tokens = lines[0].split('\t')
-            else:
-                tokens = []
-                for line in lines:
-                    line_val = line.replace('\r', '')
-                    if '\t' in line_val:
-                        tokens.extend(line_val.split('\t'))
-                    else:
-                        tokens.append(line_val)
-        else:
-            tokens = [cleaned_text]
-
-        for offset, val in enumerate(tokens):
-            target_idx = focused_idx + offset
-            if target_idx < len(self.value_editors):
-                editor = self.value_editors[target_idx]
-                if getattr(editor, 'is_null_active', False):
-                    editor.is_null_active = False
-                    editor.setEnabled(True)
-                    editor.setStyleSheet("")
-                editor.setText(val)
-
-    def open_excel_bulk_dialog(self):
-        dlg = ExcelBulkQueryDialog(self.table_name, self.columns, self.pk_cols, self.where_cols, self.query_type, self)
-        dlg.exec()
-
-    def _get_default_value(self, col_name, data_type):
-        dt = data_type.upper() if data_type else ''
-        if 'DATE' in dt or 'TIME' in dt or 'TIMESTAMP' in dt:
-            return 'SYSDATE'
-        elif 'NUMBER' in dt or 'INT' in dt or 'DECIMAL' in dt or 'FLOAT' in dt or 'DOUBLE' in dt:
-            return '0'
-        else:
-            return f"{col_name}"
-            
-    def _format_value_by_type(self, value, data_type, is_null_active=False):
-        import re
-        val = value.strip()
-        
-        if is_null_active:
-            return "NULL"
-            
-        dt = data_type.upper() if data_type else ""
-        
-        # 문자열 및 기타 기본 타입 판별
-        is_string_type = not ("NUMBER" in dt or "INT" in dt or "DECIMAL" in dt or "FLOAT" in dt or "DOUBLE" in dt or "DATE" in dt or "TIME" in dt or "TIMESTAMP" in dt)
-        
-        # 값에 아무것도 없으면 VARCHAR의 경우에는 '' 처럼 빈값으로 넣을 수 있게 하고, 숫자 타입은 0, 다른 타입은 NULL로 처리
-        if not val:
-            if is_string_type:
-                return "''"
-            elif "NUMBER" in dt or "INT" in dt or "DECIMAL" in dt or "FLOAT" in dt or "DOUBLE" in dt:
-                return "0"
-            else:
-                return "NULL"
-            
-        # 이미 홑따옴표나 쌍따옴표로 감싸진 경우 그대로 반환
-        if (val.startswith("'") and val.endswith("'")) or (val.startswith('"') and val.endswith('"')):
-            return val
-            
-        # SQL 함수 호출이나 대문자 키워드는 그대로 반환
-        val_upper = val.upper()
-        if val_upper in ["SYSDATE", "DEFAULT", "USER", "CURRENT_TIMESTAMP"]:
-            return val_upper
-        if "(" in val and ")" in val: # 예: TO_DATE('2026-06-09', 'YYYY-MM-DD')
-            return val
-            
-        # 만약 사용자가 문자열 "NULL"을 직접 입력했다면, 문자열 타입에서는 따옴표로 감싸고 숫자타입 등에서는 NULL로 반환
-        if val_upper == "NULL":
-            if is_string_type:
-                return "'NULL'"
-            else:
-                return "NULL"
-            
-        # 데이터타입별 포맷 결정
-        # 1. 날짜/시간 타입
-        if "DATE" in dt or "TIME" in dt or "TIMESTAMP" in dt:
-            date_digits = re.sub(r"[^\d]", "", val)
-            if len(date_digits) == 8: # YYYYMMDD
-                formatted_date = f"{date_digits[:4]}-{date_digits[4:6]}-{date_digits[6:]}"
-                return f"TO_DATE('{formatted_date}', 'YYYY-MM-DD')"
-            elif len(date_digits) == 14: # YYYYMMDDHH24MISS
-                formatted_date = f"{date_digits[:4]}-{date_digits[4:6]}-{date_digits[6:8]} {date_digits[8:10]}:{date_digits[10:12]}:{date_digits[12:]}"
-                return f"TO_DATE('{formatted_date}', 'YYYY-MM-DD HH24:MI:SS')"
-            else:
-                return f"'{val}'"
-                
-        # 2. 숫자 타입
-        elif "NUMBER" in dt or "INT" in dt or "DECIMAL" in dt or "FLOAT" in dt or "DOUBLE" in dt:
-            if re.match(r'^-?\d+(\.\d+)?$', val):
-                return val
-            else:
-                return f"'{val}'"
-            
-        # 3. 문자열 및 기타 기본 타입
-        else:
-            return f"'{val}'"
-    
-    def _build_sql(self):
-        """현재 입력값 기준으로 SQL을 조립. 성공 시 (sql, None), 실패 시 (None, 에러메시지) 반환.
-        실시간 미리보기와 최종 생성 버튼이 이 메서드 하나를 공유한다."""
-        if self.query_type == "insert":
-            values = []
-            for col, editor in zip(self.columns, self.value_editors):
-                raw_val = editor.text()
-                is_null = getattr(editor, 'is_null_active', False)
-                values.append(self._format_value_by_type(raw_val, col.get('data_type', ''), is_null))
-            col_names = [col['name'] for col in self.columns]
-            col_str = ", ".join(col_names)
-            val_str = ", ".join(values)
-            sql = f"INSERT INTO {self.table_name} (\n    {col_str}\n) VALUES (\n    {val_str}\n);"
-            return sql, None
-
-        elif self.query_type == "update":
-            set_cols = []
-            for col, editor in zip(self.columns, self.value_editors):
-                raw_val = editor.text()
-                is_null = getattr(editor, 'is_null_active', False)
-                formatted_val = self._format_value_by_type(raw_val, col.get('data_type', ''), is_null)
-                if col['name'] not in self.pk_cols:
-                    set_cols.append((col, formatted_val))
-
-            set_lines = [f"\t{col['name']} = {val}" for col, val in set_cols]
-            set_clause = ",\n".join(set_lines)
-
-            # WHERE절 대상 컬럼 값 결정
-            if self.where_cols:
-                where_targets = self.where_cols
-            elif self.pk_cols:
-                where_targets = [{'name': n, 'data_type': ''} for n in self.pk_cols]
-            else:
-                where_targets = [{'name': c['name'], 'data_type': c.get('data_type', '')} for c in self.columns]
-
-            for wt in where_targets:
-                for col, editor in zip(self.columns, self.value_editors):
-                    if col['name'] == wt['name']:
-                        raw_val = editor.text()
-                        is_null = getattr(editor, 'is_null_active', False)
-                        wt['_val'] = self._format_value_by_type(raw_val, col.get('data_type', ''), is_null)
-                        break
-
-            where_conds = []
-            for wt in where_targets:
-                literal = wt['_val'] if '_val' in wt else self._get_default_value(wt['name'], wt.get('data_type', ''))
-                where_conds.append(f"{wt['name']} = {literal}")
-
-            where_lines = ["WHERE", f"    {where_conds[0]}"]
-            for cond in where_conds[1:]:
-                where_lines.append(f"    AND {cond}")
-
-            sql = "\n".join([f"UPDATE {self.table_name}  SET ", set_clause, "\n".join(where_lines) + ";"])
-            return sql, None
-
-        elif self.query_type == "delete":
-            conds = []
-            for col, editor in zip(self.columns, self.value_editors):
-                raw_val = editor.text()
-                is_null = getattr(editor, 'is_null_active', False)
-                formatted_val = self._format_value_by_type(raw_val, col.get('data_type', ''), is_null)
-                conds.append(f"{col['name']} = {formatted_val}")
-
-            if not conds:
-                return None, "삭제 조건으로 사용할 컬럼이 없습니다."
-
-            where_lines = ["WHERE", f"    {conds[0]}"]
-            for cond in conds[1:]:
-                where_lines.append(f"    AND {cond}")
-            sql = f"DELETE FROM {self.table_name}\n" + "\n".join(where_lines) + ";"
-            return sql, None
-
-        return None, None
-
-    def _update_preview(self):
-        """값 입력칸이 바뀔 때마다 하단 다크 패널에 완성될 SQL을 실시간으로 그려준다."""
-        sql, err = self._build_sql()
-        if sql:
-            self.txt_preview.setPlainText(sql)
-        else:
-            self.txt_preview.setPlainText(f"-- {err}" if err else "-- 값을 입력하면 SQL이 여기에 표시됩니다.")
-
-    def _generate_sql(self):
-        sql, err = self._build_sql()
-        if not sql:
-            QMessageBox.warning(self, "경고", err or "입력값을 확인해 주세요.")
-            return
-        self.result_sql = sql
-        QApplication.clipboard().setText(self.result_sql)
-        self.accept()
-
-
-class RegisterTaskFolderDialog(QDialog):
-    """테이블/조인뷰를 업무 폴더(분류)에 등록하기 위한 다이얼로그"""
-    def __init__(self, db_mgr, default_display_name="", parent=None):
-        super().__init__(parent)
-        self.db_mgr = db_mgr
-        self.setWindowTitle("📌 업무 폴더 등록")
-        self.resize(380, 180)
-        self.init_ui(default_display_name)
-
-    def init_ui(self, default_display_name):
-        layout = QVBoxLayout()
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(12)
-
-        # 입력 폼
-        form = QFormLayout()
-        form.setSpacing(8)
-
-        # 1. Category selector (Editable ComboBox)
-        self.combo_category = QComboBox()
-        self.combo_category.setEditable(True)
-        self.combo_category.setPlaceholderText("분류 선택 또는 직접 입력...")
-        
-        # 기존 분류 로드
-        cats = self.db_mgr.get_unique_categories()
-        if "기타" not in cats:
-            cats.append("기타")
-        self.combo_category.addItems(cats)
-        if cats:
-            self.combo_category.setCurrentIndex(0)
-        
-        # 2. Display name edit
-        self.txt_display_name = QLineEdit()
-        self.txt_display_name.setText(default_display_name)
-        self.txt_display_name.setPlaceholderText("예: TB_A + TB_B 조인뷰")
-
-        form.addRow("📁 업무 분류(폴더):", self.combo_category)
-        form.addRow("✏️ 등록 이름:", self.txt_display_name)
-        layout.addLayout(form)
-
-        # 버튼 영역
-        buttons_layout = QHBoxLayout()
-        buttons_layout.addStretch()
-
-        btn_ok = QPushButton("저장(S)")
-        btn_ok.setShortcut("Ctrl+S")
-        btn_ok.clicked.connect(self.accept)
-        
-        btn_cancel = QPushButton("취소")
-        btn_cancel.clicked.connect(self.reject)
-
-        # 스타일 정의
-        btn_style = """
-            QPushButton {
-                background-color: #FFFFFF;
-                color: #475569;
-                border: 1px solid #CBD5E1;
-                border-radius: 4px;
-                font-size: 11px;
-                font-weight: 600;
-                padding: 4px 12px;
-            }
-            QPushButton:hover {
-                color: #2563EB;
-                border-color: #2563EB;
-                background-color: #F8FAFC;
-            }
-            QPushButton:pressed {
-                background-color: #EFF6FF;
-            }
-        """
-        btn_ok_style = """
-            QPushButton {
-                background-color: #2563EB;
-                color: #FFFFFF;
-                border: 1px solid #2563EB;
-                border-radius: 4px;
-                font-size: 11px;
-                font-weight: 600;
-                padding: 4px 12px;
-            }
-            QPushButton:hover {
-                background-color: #1D4ED8;
-                border-color: #1D4ED8;
-            }
-            QPushButton:pressed {
-                background-color: #1E40AF;
-            }
-        """
-        btn_ok.setStyleSheet(btn_ok_style)
-        btn_cancel.setStyleSheet(btn_style)
-        
-        buttons_layout.addWidget(btn_ok)
-        buttons_layout.addWidget(btn_cancel)
-        layout.addLayout(buttons_layout)
-
-        self.setLayout(layout)
-
-    def get_data(self):
-        category = self.combo_category.currentText().strip()
-        if not category:
-            category = "기타"
-        display_name = self.txt_display_name.text().strip()
-        return category, display_name
-
-
-class JoinSettingsDialog(QDialog):
-    def __init__(self, main_table, joined_table, joined_alias, left_cols_by_alias, right_cols, initial_conditions=None, is_edit=False, alias_to_table=None, initial_join_type='LEFT JOIN', parent=None):
-        super().__init__(parent)
-        self.main_table = main_table
-        self.joined_table = joined_table
-        self.joined_alias = joined_alias
-        self.left_cols_by_alias = left_cols_by_alias
-        self.right_cols = right_cols
-        
-        self.setWindowTitle(f"🔗 Join 관계 설정 ({joined_table})")
-        self.setMinimumWidth(600)
-        self.setMinimumHeight(400)
-        
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #F8FAFC;
-            }
-            QLabel {
-                font-size: 11px;
-                color: #334155;
-            }
-            QComboBox {
-                background-color: #FFFFFF;
-                border: 1px solid #CBD5E1;
-                border-radius: 4px;
-                padding: 4px;
-                font-size: 11px;
-            }
-            QPushButton {
-                background-color: #2563EB;
-                color: #FFFFFF;
-                border: none;
-                border-radius: 4px;
-                font-size: 11px;
-                font-weight: bold;
-                padding: 6px 12px;
-            }
-            QPushButton:hover {
-                background-color: #1D4ED8;
-            }
-            QPushButton#btn_cancel {
-                background-color: #FFFFFF;
-                color: #475569;
-                border: 1px solid #CBD5E1;
-            }
-            QPushButton#btn_cancel:hover {
-                background-color: #F1F5F9;
-            }
-            QPushButton#btn_add_cond {
-                background-color: #10B981;
-                color: #FFFFFF;
-            }
-            QPushButton#btn_add_cond:hover {
-                background-color: #059669;
-            }
-        """)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(15, 15, 15, 15)
-        layout.setSpacing(12)
-
-        desc_lbl = QLabel(f"<b>{main_table}</b> (A)와 <b>{joined_table}</b> ({joined_alias})를 연결할 Join 조건을 설정해주세요.<br/>콤보박스에 직접 입력하여 함수 가공(예: <i>substr(A.COL, 1, 3)</i>)도 가능합니다.")
-        desc_lbl.setWordWrap(True)
-        layout.addWidget(desc_lbl)
-
-        # 조인 종류 선택 영역
-        join_type_layout = QHBoxLayout()
-        join_type_layout.setContentsMargins(10, 5, 10, 5)
-        join_type_layout.setSpacing(8)
-        
-        lbl_join_type = QLabel("<b>조인 종류 설정:</b>")
-        lbl_join_type.setStyleSheet("color: #475569; font-weight: bold; font-size: 11px;")
-        
-        self.combo_join_type = QComboBox()
-        self.combo_join_type.addItems(["LEFT JOIN", "INNER JOIN"])
-        self.combo_join_type.setCurrentText(initial_join_type)
-        self.combo_join_type.setFixedWidth(130)
-        
-        # Style QComboBox popup list view
-        from PyQt6.QtWidgets import QListView
-        lv = QListView()
-        lv.setStyleSheet("background-color: white; border: 1px solid #CBD5E1; selection-background-color: #EFF6FF; selection-color: #2563EB;")
-        self.combo_join_type.setView(lv)
-        
-        join_type_layout.addWidget(lbl_join_type)
-        join_type_layout.addWidget(self.combo_join_type)
-        join_type_layout.addStretch()
-        
-        layout.addLayout(join_type_layout)
-
-        # Header layout to show left and right table names
-        header_layout = QHBoxLayout()
-        header_layout.setContentsMargins(10, 0, 10, 0)
-        header_layout.setSpacing(6)
-        
-        # Build left table description
-        self.alias_to_table = alias_to_table or {'A': main_table}
-        left_desc_list = []
-        for alias, tbl in self.alias_to_table.items():
-            left_desc_list.append(f"{tbl} ({alias})")
-        left_desc = ", ".join(left_desc_list)
-        
-        lbl_left_hdr = QLabel(f"<b>조인 기준 컬럼 ({left_desc})</b>")
-        lbl_left_hdr.setStyleSheet("color: #475569; font-weight: bold; font-size: 11px;")
-        
-        lbl_op_hdr = QLabel("")
-        lbl_op_hdr.setFixedWidth(60)
-        
-        lbl_right_hdr = QLabel(f"<b>조인 대상 컬럼 ({joined_table} ({joined_alias}))</b>")
-        lbl_right_hdr.setStyleSheet("color: #475569; font-weight: bold; font-size: 11px;")
-        
-        lbl_del_hdr = QLabel("")
-        lbl_del_hdr.setFixedWidth(24)
-        
-        header_layout.addWidget(lbl_left_hdr, 1)
-        header_layout.addWidget(lbl_op_hdr)
-        header_layout.addWidget(lbl_right_hdr, 1)
-        header_layout.addWidget(lbl_del_hdr)
-        
-        layout.addLayout(header_layout)
-
-        # Scroll Area for condition rows
-        from PyQt6.QtWidgets import QScrollArea
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setStyleSheet("QScrollArea { border: 1px solid #E2E8F0; border-radius: 4px; background: white; }")
-        
-        self.scroll_content = QWidget()
-        self.scroll_content.setStyleSheet("background-color: white;")
-        self.scroll_layout = QVBoxLayout(self.scroll_content)
-        self.scroll_layout.setContentsMargins(10, 10, 10, 10)
-        self.scroll_layout.setSpacing(8)
-        self.scroll_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        
-        self.scroll_area.setWidget(self.scroll_content)
-        layout.addWidget(self.scroll_area)
-
-        # Button to add new condition
-        btn_add_cond = QPushButton("➕ 조건 추가")
-        btn_add_cond.setObjectName("btn_add_cond")
-        btn_add_cond.clicked.connect(lambda: self.add_condition_row())
-        btn_add_cond.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        layout.addWidget(btn_add_cond)
-
-        # Bottom buttons
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
-
-        self.btn_cancel = QPushButton("취소")
-        self.btn_cancel.setObjectName("btn_cancel")
-        self.btn_cancel.clicked.connect(self.reject)
-        self.btn_cancel.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        
-        self.btn_ok = QPushButton("연결 설정")
-        self.btn_ok.clicked.connect(self.accept)
-        self.btn_ok.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-
-        btn_layout.addWidget(self.btn_cancel)
-        btn_layout.addWidget(self.btn_ok)
-        layout.addLayout(btn_layout)
-
-        self.rows = []
-        
-        # Populate initial conditions
-        if initial_conditions:
-            if is_edit:
-                for cond in initial_conditions:
-                    self.add_condition_row(cond.get('left', ''), cond.get('op', '='), cond.get('right', ''))
-            else:
-                if len(initial_conditions) > 0:
-                    cond = initial_conditions[0]
-                    self.add_condition_row(cond.get('left', ''), cond.get('op', '='), cond.get('right', ''))
-                else:
-                    self.add_condition_row()
-        else:
-            self.add_condition_row()
-
-    def add_condition_row(self, left_val="", op="=", right_val=""):
-        row_widget = QWidget()
-        row_layout = QHBoxLayout(row_widget)
-        row_layout.setContentsMargins(0, 4, 0, 4)
-        row_layout.setSpacing(6)
-        
-        # Left combo box (editable)
-        combo_left = QComboBox()
-        combo_left.setEditable(True)
-        for alias, cols in self.left_cols_by_alias.items():
-            for c in cols:
-                combo_left.addItem(f"{alias}.{c}")
-        if left_val:
-            combo_left.setCurrentText(left_val)
-        else:
-            combo_left.setCurrentIndex(-1)
-            
-        # Operator combo box
-        combo_op = QComboBox()
-        combo_op.addItems(["=", "!=", ">", "<", "LIKE", ">=", "<="])
-        combo_op.setCurrentText(op)
-        combo_op.setFixedWidth(60)
-        
-        # Right combo box (editable)
-        combo_right = QComboBox()
-        combo_right.setEditable(True)
-        for c in self.right_cols:
-            combo_right.addItem(f"{self.joined_alias}.{c}")
-        if right_val:
-            combo_right.setCurrentText(right_val)
-        else:
-            combo_right.setCurrentIndex(-1)
-            
-        # Delete button
-        btn_del = QPushButton("－")
-        btn_del.setFixedSize(24, 24)
-        btn_del.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_del.setStyleSheet("""
-            QPushButton {
-                background-color: #FEE2E2;
-                color: #EF4444;
-                border: 1px solid #FCA5A5;
-                border-radius: 4px;
-                font-weight: bold;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background-color: #EF4444;
-                color: #FFFFFF;
-                border: 1px solid #EF4444;
-            }
-        """)
-        
-        def remove_row():
-            row_widget.setParent(None)
-            row_widget.deleteLater()
-            if row_info in self.rows:
-                self.rows.remove(row_info)
-            
-        btn_del.clicked.connect(remove_row)
-        
-        row_layout.addWidget(combo_left, 1)
-        row_layout.addWidget(combo_op)
-        row_layout.addWidget(combo_right, 1)
-        row_layout.addWidget(btn_del)
-        
-        # Style QComboBox popup list views explicitly to guarantee solid background
-        for combo in [combo_left, combo_op, combo_right]:
-            from PyQt6.QtWidgets import QListView
-            lv = QListView()
-            lv.setStyleSheet("background-color: white; border: 1px solid #CBD5E1; selection-background-color: #EFF6FF; selection-color: #2563EB;")
-            combo.setView(lv)
-            
-        self.scroll_layout.addWidget(row_widget)
-        
-        row_info = {
-            'widget': row_widget,
-            'combo_left': combo_left,
-            'combo_op': combo_op,
-            'combo_right': combo_right
-        }
-        self.rows.append(row_info)
-
-    def accept(self):
-        self.conditions = []
-        for r in self.rows:
-            l_text = r['combo_left'].currentText().strip()
-            op_text = r['combo_op'].currentText().strip()
-            r_text = r['combo_right'].currentText().strip()
-            if l_text and r_text:
-                self.conditions.append({
-                    'left': l_text,
-                    'op': op_text,
-                    'right': r_text
-                })
-        if not self.conditions:
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, "경고", "최소 하나의 Join 조건을 지정해야 합니다.")
-            return
-        self.join_type = self.combo_join_type.currentText()
-        super().accept()
-
-
-class TableDetailWidget(QWidget):
-    """우측 탭 내부에 표시될 테이블 상세 정보 위젯 (좌: 컬럼 표, 우: 공통코드 상세 패널 - 라이트 테마)"""
-    link_clicked = pyqtSignal(str)
-    relation_changed = pyqtSignal() # 직접 관계 수정 시 메인 리프레시 요청 시그널
-
-    def __init__(self, table_name, table_ko_name, db_mgr, joins_json=None, display_name=None, parent=None):
-        super().__init__(parent)
-        self.table_name = table_name
-        self.table_ko_name = table_ko_name
-        self.db_mgr = db_mgr
-        self.all_checked = True
-        
-        self.joins_json = joins_json
-        self.display_name = display_name
-        
-        self.joins = []
-        if self.joins_json:
-            try:
-                import json
-                self.joins = json.loads(self.joins_json)
-            except Exception as e:
-                print(f"Error parsing joins_json: {e}")
-                self.joins = []
-        
-        self.setAcceptDrops(True)
-        self.init_ui()
-
-    def init_ui(self):
-        main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(0, 0, 0, 0)
-
-        # 테이블명 헤더 정보 영역 (2행 구조: 상단=테이블명, 하단=버튼)
-        header_widget = QWidget()
-        header_widget.setObjectName("DetailHeader")
-        header_widget.setFixedHeight(60)
-        header_widget.setStyleSheet("""
-            QWidget#DetailHeader {
-                background-color: #F8FAFC;
-                border-bottom: 1px solid #E2E8F0;
-            }
-        """)
-        header_vlayout = QVBoxLayout()
-        header_vlayout.setContentsMargins(12, 4, 12, 4)
-        header_vlayout.setSpacing(3)
-
-        # 1행: 테이블명 + 한글명
-        header_title_layout = QHBoxLayout()
-        header_title_layout.setContentsMargins(0, 0, 0, 0)
-        header_title_layout.setSpacing(4)
-
-        title_text = self.display_name if self.display_name else self.table_name
-        if self.joins_json:
-            lbl_title = QLabel(f"🔗 {title_text}")
-        else:
-            lbl_title = QLabel(f"📄 {title_text}")
-        lbl_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #1E3A8A;")
-        lbl_title.mouseDoubleClickEvent = lambda event: self.copy_table_name_to_clipboard()
-        lbl_title.setToolTip("더블클릭 시 테이블명이 클립보드에 복사됩니다.")
-
-        if self.display_name:
-            # Show original table name as subtitle if display name is custom
-            ko_desc = f" [{self.table_name}]"
-            if self.table_ko_name:
-                ko_desc += f" {self.table_ko_name}"
-        else:
-            ko_desc = f" [{self.table_ko_name}]" if self.table_ko_name else ""
-        lbl_ko_title = QLabel(ko_desc)
-        lbl_ko_title.setStyleSheet("font-size: 11px; color: #64748B; font-weight: normal; margin-right: 15px;")
-        if self.table_ko_name:
-            lbl_ko_title.mouseDoubleClickEvent = lambda event: self.copy_table_ko_name_to_clipboard()
-            lbl_ko_title.setToolTip("더블클릭 시 테이블 한글명이 클립보드에 복사됩니다.")
-
-        # Join badge widget
-        self.join_badge_widget = QWidget()
-        self.join_badge_layout = QHBoxLayout(self.join_badge_widget)
-        self.join_badge_layout.setContentsMargins(0, 0, 0, 0)
-        self.join_badge_layout.setSpacing(6)
-        self.join_badge_widget.setStyleSheet("""
-            QWidget {
-                background: transparent;
-                border: none;
-            }
-        """)
-        self.join_badge_widget.hide()
-
-        header_title_layout.addWidget(lbl_title)
-        header_title_layout.addWidget(lbl_ko_title)
-        header_title_layout.addWidget(self.join_badge_widget)
-        header_title_layout.addStretch()
-
-        # 2행: 쿼리 생성 버튼 및 전체선택 보조 도구
-        header_btn_layout = QHBoxLayout()
-        header_btn_layout.setContentsMargins(0, 0, 0, 0)
-        header_btn_layout.setSpacing(4)
-
-        btn_select_all = QPushButton("☑ 전체선택")
-        btn_select_all.clicked.connect(self.toggle_all_checkboxes)
-
-        btn_sql_sel_1 = QPushButton("Select(1줄)")
-        btn_sql_sel_1.clicked.connect(lambda: self.generate_and_copy_query("select_1"))
-
-        btn_sql_sel = QPushButton("Select생성")
-        btn_sql_sel.clicked.connect(lambda: self.generate_and_copy_query("select"))
-
-        btn_sql_ins = QPushButton("Insert생성")
-        btn_sql_ins.clicked.connect(lambda: self.generate_and_copy_query("insert"))
-
-        btn_sql_upd = QPushButton("Update생성")
-        btn_sql_upd.clicked.connect(lambda: self.generate_and_copy_query("update"))
-
-        btn_sql_del = QPushButton("Delete생성")
-        btn_sql_del.clicked.connect(lambda: self.generate_and_copy_query("delete"))
-
-        btn_style = """
-            QPushButton {
-                background-color: #FFFFFF;
-                color: #475569;
-                border: 1px solid #CBD5E1;
-                border-radius: 4px;
-                font-size: 11px;
-                font-weight: 600;
-                padding: 3px 8px;
-            }
-            QPushButton:hover {
-                color: #2563EB;
-                border-color: #2563EB;
-                background-color: #F8FAFC;
-            }
-            QPushButton:pressed {
-                background-color: #EFF6FF;
-            }
-        """
-        for btn in [btn_select_all, btn_sql_sel_1, btn_sql_sel, btn_sql_ins, btn_sql_upd, btn_sql_del]:
-            btn.setStyleSheet(btn_style)
-            btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            header_btn_layout.addWidget(btn)
-
-        # 💡 Join용 Select 버튼 추가
-        self.btn_join_active_style = """
-            QPushButton {
-                background-color: #EFF6FF;
-                color: #2563EB;
-                border: 1px solid #BFDBFE;
-                border-radius: 4px;
-                font-size: 11px;
-                font-weight: 600;
-                padding: 3px 8px;
-            }
-            QPushButton:hover {
-                background-color: #DBEAFE;
-                color: #2563EB;
-                border-color: #2563EB;
-            }
-        """
-        
-        self.btn_join_inactive_style = """
-            QPushButton {
-                background-color: #F1F5F9;
-                color: #94A3B8;
-                border: 1px solid #E2E8F0;
-                border-radius: 4px;
-                font-size: 11px;
-                font-weight: 600;
-                padding: 3px 8px;
-            }
-        """
-
-        self.btn_sql_sel_1_join = QPushButton("Select(1줄) + Join")
-        self.btn_sql_sel_1_join.clicked.connect(lambda: self.generate_and_copy_query("select_1_join"))
-        self.btn_sql_sel_1_join.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        header_btn_layout.addWidget(self.btn_sql_sel_1_join)
-
-        self.btn_sql_sel_join = QPushButton("Select생성 + Join")
-        self.btn_sql_sel_join.clicked.connect(lambda: self.generate_and_copy_query("select_join"))
-        self.btn_sql_sel_join.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        header_btn_layout.addWidget(self.btn_sql_sel_join)
-
-        # 💡 업무 폴더 등록 버튼 추가 및 스타일 정의
-        self.btn_register_active_style = """
-            QPushButton {
-                background-color: #FFFBEB;
-                color: #D97706;
-                border: 1px solid #FDE68A;
-                border-radius: 4px;
-                font-size: 11px;
-                font-weight: 600;
-                padding: 3px 8px;
-            }
-            QPushButton:hover {
-                background-color: #FEF3C7;
-                color: #B45309;
-                border-color: #FBBF24;
-            }
-            QPushButton:pressed {
-                background-color: #FDE68A;
-            }
-        """
-        
-        self.btn_register_inactive_style = """
-            QPushButton {
-                background-color: #F1F5F9;
-                color: #94A3B8;
-                border: 1px solid #E2E8F0;
-                border-radius: 4px;
-                font-size: 11px;
-                font-weight: 600;
-                padding: 3px 8px;
-            }
-        """
-
-        self.btn_register_favorite = QPushButton("⭐ 업무 폴더 등록")
-        self.btn_register_favorite.clicked.connect(self.register_to_task_folder)
-        self.btn_register_favorite.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        header_btn_layout.addWidget(self.btn_register_favorite)
-
-        self.update_join_ui()
-
-        header_btn_layout.addStretch()
-
-        header_vlayout.addLayout(header_title_layout)
-        header_vlayout.addLayout(header_btn_layout)
-        header_widget.setLayout(header_vlayout)
-        main_layout.addWidget(header_widget, 0)
-
-        # 분할 패널 (QSplitter)
-        self.splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.splitter.setHandleWidth(6)
-        self.splitter.setStyleSheet("""
-            QSplitter::handle {
-                background-color: #E2E8F0;
-            }
-        """)
-
-        # 1. 좌측 컬럼 테이블 설정
-        self.table_widget = QTableWidget()
-        self.table_widget.setColumnCount(10)
-        self.table_widget.setHorizontalHeaderLabels([
-            "선택", "번호", "PK", "컬럼명", "컬럼한글명", "데이터타입", "Null여부", "연결테이블", "공통코드", "조건"
-        ])
-        self.table_widget.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table_widget.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table_widget.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.table_widget.verticalHeader().setVisible(False)
-        self.table_widget.cellDoubleClicked.connect(self.on_cell_double_clicked)
-        
-        # 💡 우클릭 메뉴 등록을 위해 ContextMenu 활성화
-        self.table_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.table_widget.customContextMenuRequested.connect(self.on_table_context_menu)
-
-        self.table_widget.setStyleSheet("""
-            QTableWidget {
-                background-color: #FFFFFF;
-                gridline-color: #E2E8F0;
-                color: #1E293B;
-                border: none;
-            }
-            QTableWidget::item {
-                padding: 6px;
-            }
-            QTableWidget::item:selected {
-                background-color: #EFF6FF;
-                color: #1E293B;
-            }
-            QHeaderView::section {
-                background-color: #F1F5F9;
-                color: #475569;
-                padding: 6px;
-                font-weight: bold;
-                border: none;
-                border-bottom: 1px solid #E2E8F0;
-            }
-        """)
-
-        header = self.table_widget.horizontalHeader()
-        self.table_widget.setColumnWidth(0, 45)  # 선택
-        self.table_widget.setColumnWidth(1, 45)  # 번호
-        self.table_widget.setColumnWidth(2, 45)  # PK
-        self.table_widget.setColumnWidth(3, 180) # 컬럼명
-        self.table_widget.setColumnWidth(4, 180) # 컬럼한글명
-        self.table_widget.setColumnWidth(5, 120) # 데이터타입
-        self.table_widget.setColumnWidth(6, 80)  # Null여부
-        self.table_widget.setColumnWidth(7, 130) # 연결테이블
-        self.table_widget.setColumnWidth(8, 130) # 공통코드
-        self.table_widget.setColumnWidth(9, 65)  # 조건 (폭을 65로 확대)
-
-        for col_idx in range(10):
-            header.setSectionResizeMode(col_idx, QHeaderView.ResizeMode.Interactive)
-
-        header.sectionClicked.connect(self.on_header_section_clicked)
-
-        # 체크박스 정중앙 배치 델리게이트 등록
-        self.checkbox_delegate = CenteredCheckboxDelegate(self.table_widget)
-        self.table_widget.setItemDelegateForColumn(0, self.checkbox_delegate)
-        self.table_widget.setItemDelegateForColumn(9, self.checkbox_delegate)
-
-        self.splitter.addWidget(self.table_widget)
-
-        # 2. 우측 공통코드 확장 상세 패널
-        self.code_panel = QFrame()
-        self.code_panel.setObjectName("CodePanel")
-        self.code_panel.setStyleSheet("""
-            QFrame#CodePanel {
-                background-color: #F8FAFC;
-                border-left: 1px solid #E2E8F0;
-            }
-        """)
-        code_layout = QVBoxLayout()
-        code_layout.setContentsMargins(10, 10, 10, 10)
-
-        # 패널 타이틀 영역
-        title_layout = QHBoxLayout()
-        self.lbl_code_title = QLabel("공통코드 리스트")
-        self.lbl_code_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #059669;")
-        btn_close_panel = QPushButton("✕")
-        btn_close_panel.setFixedSize(18, 18)
-        btn_close_panel.setStyleSheet("""
-            QPushButton {
-                border: none;
-                color: #64748B;
-                font-weight: bold;
-                background: transparent;
-            }
-            QPushButton:hover {
-                color: #EF4444;
-            }
-        """)
-        btn_close_panel.clicked.connect(self.hide_code_panel)
-        title_layout.addWidget(self.lbl_code_title)
-        title_layout.addStretch()
-        title_layout.addWidget(btn_close_panel)
-        code_layout.addLayout(title_layout)
-
-        # 코드 데이터 표
-        self.code_table = QTableWidget()
-        self.code_table.setColumnCount(2)
-        self.code_table.setHorizontalHeaderLabels(["코드값", "코드한글명"])
-        self.code_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.code_table.verticalHeader().setVisible(False)
-        self.code_table.cellDoubleClicked.connect(self.on_code_table_double_clicked)
-        self.code_table.setStyleSheet("""
-            QTableWidget {
-                background-color: #FFFFFF;
-                gridline-color: #E2E8F0;
-                color: #1E293B;
-                border: 1px solid #E2E8F0;
-            }
-            QTableWidget::item {
-                padding: 4px;
-            }
-            QHeaderView::section {
-                background-color: #F1F5F9;
-                color: #475569;
-                padding: 4px;
-                font-weight: bold;
-                border: none;
-                border-bottom: 1px solid #E2E8F0;
-            }
-        """)
-        
-        c_header = self.code_table.horizontalHeader()
-        c_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
-        c_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
-
-        code_layout.addWidget(self.code_table)
-        self.code_panel.setLayout(code_layout)
-        
-        self.splitter.addWidget(self.code_panel)
-        
-        self.code_panel.setVisible(False)
-        self.splitter.setSizes([800, 0])
-
-        main_layout.addWidget(self.splitter, 1)
-
-        # 하단 도움말 바 (연결테이블 / 공통코드 / 조건 사용법 - 3줄 세로 배치)
-        help_widget = QWidget()
-        help_widget.setObjectName("HelpBar")
-        help_widget.setStyleSheet("""
-            QWidget#HelpBar {
-                background-color: #F0F9FF;
-                border-top: 1px solid #BAE6FD;
-            }
-        """)
-        help_layout = QVBoxLayout()
-        help_layout.setContentsMargins(12, 5, 12, 5)
-        help_layout.setSpacing(2)
-
-        # 아이콘 / 레이블 / 설명을 완전히 3열로 분리 → 픽셀 단위 정렬
-        grid = QGridLayout()
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(0)
-        grid.setVerticalSpacing(2)
-
-        # (icon, label_html, label_color, desc)
-        help_data = [
-            ("🔗", "<b>연결테이블</b>", "#1D4ED8",
-             ": 해당 컬럼이 참조하는 FK 대상 테이블 — 클릭 시 해당 테이블 상세로 이동 / <b>우클릭</b>으로 자유롭게 수정·등록 가능"),
-            ("🏷️", "<b>공통코드</b>", "#059669",
-             ": 해당 컬럼에 매핑된 공통코드 그룹 — 클릭 시 코드 목록이 우측 패널에 표시 / <b>우클릭</b>으로 자유롭게 수정·등록 가능"),
-            ("☑", "<b>조건</b>", "#7C3AED",
-             ": WHERE 절 조건 컬럼 여부 — 체크된 컬럼은 Select/Update/Delete 생성 시 WHERE 절에 포함됩니다."),
-        ]
-        for r, (icon, label_html, color, desc) in enumerate(help_data):
-            # 열0: 아이콘 (고정폭 24px, 중앙정렬)
-            lbl_icon = QLabel(icon)
-            lbl_icon.setFixedWidth(24)
-            lbl_icon.setStyleSheet("font-size: 13px;")
-            lbl_icon.setAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
-            # 열1: 레이블 텍스트 (고정폭 72px, 좌측정렬)
-            lbl_text = QLabel(label_html)
-            lbl_text.setFixedWidth(72)
-            lbl_text.setStyleSheet(f"font-size: 11px; color: {color};")
-            lbl_text.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            # 열2: 설명 (자동 확장)
-            lbl_desc = QLabel(desc)
-            lbl_desc.setStyleSheet("font-size: 11px; color: #475569;")
-            lbl_desc.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            grid.addWidget(lbl_icon, r, 0)
-            grid.addWidget(lbl_text, r, 1)
-            grid.addWidget(lbl_desc, r, 2)
-        grid.setColumnStretch(2, 1)
-        help_layout.addLayout(grid)
-
-        help_widget.setLayout(help_layout)
-        main_layout.addWidget(help_widget, 0)
-
-        self.setLayout(main_layout)
-
-
-        self.load_columns_data()
-        self.table_widget.cellClicked.connect(self.on_cell_clicked)
-        self.table_widget.itemChanged.connect(self.on_item_changed)
-
-    def load_columns_data(self):
-        # DB 상태를 업데이트할 때 신호(itemChanged)가 발생하므로, 로딩 중에는 신호를 차단합니다.
-        self.table_widget.blockSignals(True)
-        
-        columns = self.db_mgr.get_table_columns(self.table_name)
-        if len(columns) == 0:
-            self.table_widget.setRowCount(1)
-            self.table_widget.clearSpans()
-            placeholder_item = QTableWidgetItem("⚠️ 데이터베이스에 이 테이블의 컬럼 정보가 등록되지 않았습니다. (가져오기 시 등록 필요)")
-            placeholder_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            placeholder_item.setForeground(QColor("#EF4444"))
-            font = placeholder_item.font()
-            font.setBold(True)
-            font.setPointSize(10)
-            placeholder_item.setFont(font)
-            self.table_widget.setItem(0, 0, placeholder_item)
-            self.table_widget.setSpan(0, 0, 1, 10)
-            self.table_widget.blockSignals(False)
-            return
-            
-        self.table_widget.clearSpans()
-        self.table_widget.setRowCount(len(columns))
-
-        for row_idx, col in enumerate(columns):
-            # 0. 선택 (체크박스, DB 저장값 로드)
-            check_item = QTableWidgetItem()
-            check_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            check_item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
-            sel_state = Qt.CheckState.Unchecked if col.get('is_selected') == 0 else Qt.CheckState.Checked
-            check_item.setCheckState(sel_state)
-            self.table_widget.setItem(row_idx, 0, check_item)
-
-            # 1. 번호
-            num_item = QTableWidgetItem(str(row_idx + 1))
-            num_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.table_widget.setItem(row_idx, 1, num_item)
-
-            # 2. PK
-            pk_text = "🔑" if col['is_pk'] in ['Y', 'y', 1, '1'] else ""
-            pk_item = QTableWidgetItem(pk_text)
-            pk_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.table_widget.setItem(row_idx, 2, pk_item)
-
-            # 3. 컬럼명
-            col_name_item = QTableWidgetItem(col['column_name'])
-            col_name_item.setToolTip("더블클릭 시 클립보드에 복사됩니다.")
-            if pk_text:
-                font = col_name_item.font()
-                font.setBold(True)
-                col_name_item.setFont(font)
-                col_name_item.setForeground(QColor("#D97706"))
-            self.table_widget.setItem(row_idx, 3, col_name_item)
-
-            # 4. 컬럼한글명
-            col_ko_item = QTableWidgetItem(col['column_ko_name'] or "")
-            col_ko_item.setToolTip("더블클릭 시 클립보드에 복사됩니다.")
-            if pk_text:
-                font = col_ko_item.font()
-                font.setBold(True)
-                col_ko_item.setFont(font)
-                col_ko_item.setForeground(QColor("#D97706"))
-            self.table_widget.setItem(row_idx, 4, col_ko_item)
-
-            # 5. 데이터타입
-            dt_len = f"({int(col['length'])})" if col['length'] is not None else ""
-            type_str = f"{col['data_type']}{dt_len}"
-            type_item = QTableWidgetItem(type_str)
-            self.table_widget.setItem(row_idx, 5, type_item)
-
-            # 6. Null여부
-            null_val = "NULL" if col['is_nullable'] in ['Y', 'y', 1, '1'] else "NOT NULL"
-            null_item = QTableWidgetItem(null_val)
-            null_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            if null_val == "NOT NULL":
-                null_item.setForeground(QColor("#DC2626"))
-            else:
-                null_item.setForeground(QColor("#64748B"))
-            self.table_widget.setItem(row_idx, 6, null_item)
-
-            # 7. 연결테이블
-            if col['mapping_type'] == '마스터테이블' and col['ref_table_name']:
-                ref_t = col['ref_table_name']
-                link_item = QTableWidgetItem(ref_t)
-                link_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                link_item.setForeground(QColor("#2563EB"))
-                font = link_item.font()
-                font.setUnderline(True)
-                font.setBold(True)
-                link_item.setFont(font)
-                self.table_widget.setItem(row_idx, 7, link_item)
-            else:
-                empty_item = QTableWidgetItem("-")
-                empty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                empty_item.setForeground(QColor("#94A3B8"))
-                self.table_widget.setItem(row_idx, 7, empty_item)
-
-            # 8. 공통코드
-            if col['mapping_type'] == '공통코드' and (col['ref_table_name'] or col['custom_query']):
-                code_grp = col['ref_table_name'] or ""
-                disp_text = code_grp if code_grp else "수동쿼리"
-                code_item = QTableWidgetItem(disp_text)
-                code_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                code_item.setForeground(QColor("#059669"))
-                font = code_item.font()
-                font.setUnderline(True)
-                code_item.setFont(font)
-                
-                if col['custom_query']:
-                    code_item.setToolTip(f"💡 수동 변환 쿼리 적용됨:\n{col['custom_query']}")
-                else:
-                    codes = self.db_mgr.get_common_codes_list(code_grp)
-                    if codes:
-                        tooltip_lines = [f"{c['code_value']}: {c['code_ko_name']}" for c in codes]
-                        tooltip_text = f"💡 공통코드 리스트 ({code_grp})\n" + "\n".join(tooltip_lines)
-                        code_item.setToolTip(tooltip_text)
-                    else:
-                        code_item.setToolTip(f"공통코드 데이터 없음 ({code_grp})")
-                
-                code_item.setData(Qt.ItemDataRole.UserRole, code_grp)
-                code_item.setData(Qt.ItemDataRole.UserRole + 1, col['custom_query'] or "")
-                self.table_widget.setItem(row_idx, 8, code_item)
-            else:
-                empty_item = QTableWidgetItem("-")
-                empty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                empty_item.setForeground(QColor("#94A3B8"))
-                self.table_widget.setItem(row_idx, 8, empty_item)
-
-            # 9. WHERE (체크박스, DB 저장값 로드)
-            where_item = QTableWidgetItem()
-            where_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            where_item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
-            where_state = Qt.CheckState.Checked if col.get('is_where') == 1 else Qt.CheckState.Unchecked
-            where_item.setCheckState(where_state)
-            self.table_widget.setItem(row_idx, 9, where_item)
-
-        self.table_widget.resizeColumnsToContents()
-        min_widths = {
-            0: 45,  # 선택
-            1: 45,  # 번호
-            2: 45,  # PK
-            3: 110, # 컬럼명 (최소 110)
-            4: 110, # 컬럼한글명 (최소 110)
-            5: 100, # 데이터타입
-            6: 70,  # Null여부
-            7: 100, # 연결테이블
-            8: 100, # 공통코드
-            9: 50   # 조건
-        }
-        for col, min_w in min_widths.items():
-            if self.table_widget.columnWidth(col) < min_w:
-                self.table_widget.setColumnWidth(col, min_w)
-
-        self.table_widget.blockSignals(False)
-
-    def on_item_changed(self, item):
-        column = item.column()
-        if column not in [0, 9]:
-            return
-            
-        row = item.row()
-        col_name_item = self.table_widget.item(row, 3)
-        if not col_name_item:
-            return
-        col_name = col_name_item.text()
-        
-        state_val = 1 if item.checkState() == Qt.CheckState.Checked else 0
-        check_type = 'is_selected' if column == 0 else 'is_where'
-        
-        self.db_mgr.update_column_check_state(self.table_name, col_name, check_type, state_val)
-
-    def on_cell_double_clicked(self, row, column):
-        if column in [3, 4]:
-            item = self.table_widget.item(row, column)
-            if item and item.text():
-                text_to_copy = item.text().strip()
-                QApplication.clipboard().setText(text_to_copy)
-                show_copy_message(f"📋 {text_to_copy} (이)가 클립보드에 복사되었습니다!", self)
-
-    def on_code_table_double_clicked(self, row, column):
-        item = self.code_table.item(row, column)
-        if item and item.text():
-            text_to_copy = item.text().strip()
-            if text_to_copy:
-                QApplication.clipboard().setText(text_to_copy)
-                show_copy_message(f"{text_to_copy} (이)가 클립보드에 복사되었습니다!", self)
-
-    # 💡 Drag & Drop Join 구현
-    def dragEnterEvent(self, event):
-        # Allow drop if format is text/plain (which represents the dragged table name)
-        if event.mimeData().hasFormat("text/plain"):
-            dragged_text = event.mimeData().text()
-            # Do not allow joining with self
-            if dragged_text != self.table_name:
-                event.acceptProposedAction()
-
-    def dragMoveEvent(self, event):
-        event.acceptProposedAction()
-
-    def dropEvent(self, event):
-        from PyQt6.QtWidgets import QMessageBox
-        dragged_table = event.mimeData().text().strip()
-        if not dragged_table or dragged_table == self.table_name:
-            return
-
-        # Fetch columns of self and dragged table
-        cols_self_info = self.db_mgr.get_table_columns(self.table_name)
-        cols_joined_info = self.db_mgr.get_table_columns(dragged_table)
-        cols_self = [col['column_name'] for col in cols_self_info]
-        cols_joined = [col['column_name'] for col in cols_joined_info]
-
-        if not cols_self or not cols_joined:
-            QMessageBox.warning(self, "오류", "테이블 컬럼 정보를 가져올 수 없습니다.")
-            return
-
-        # Determine next alias
-        alias_new = chr(ord('B') + len(self.joins))
-
-        # Build left columns by alias (A + previous joins) and track PKs
-        left_cols_by_alias = {}
-        left_cols_by_alias['A'] = cols_self
-        
-        pks_by_alias = {}
-        pks_by_alias['A'] = {col['column_name'].lower() for col in cols_self_info if col.get('is_pk') == 1}
-        
-        for j in self.joins:
-            cols_prev_info = self.db_mgr.get_table_columns(j['table_name'])
-            cols_prev = [col['column_name'] for col in cols_prev_info]
-            left_cols_by_alias[j['alias']] = cols_prev
-            pks_by_alias[j['alias']] = {col['column_name'].lower() for col in cols_prev_info if col.get('is_pk') == 1}
-
-        # Pre-calculate case-insensitive matches (PK matches take priority)
-        joined_pks = {col['column_name'].lower() for col in cols_joined_info if col.get('is_pk') == 1}
-        
-        pk_matches = []
-        non_pk_matches = []
-        cols_joined_lower = [c.lower() for c in cols_joined]
-        
-        for alias, cols in left_cols_by_alias.items():
-            alias_pks = pks_by_alias.get(alias, set())
-            for c in cols:
-                c_lower = c.lower()
-                if c_lower in cols_joined_lower:
-                    matched_idx = cols_joined_lower.index(c_lower)
-                    matched_c = cols_joined[matched_idx]
-                    cond = {
-                        'left': f"{alias}.{c}",
-                        'op': '=',
-                        'right': f"{alias_new}.{matched_c}"
-                    }
-                    if c_lower in joined_pks and c_lower in alias_pks:
-                        pk_matches.append(cond)
-                    else:
-                        non_pk_matches.append(cond)
-
-        if pk_matches:
-            initial_conds = pk_matches
-        elif non_pk_matches:
-            initial_conds = [non_pk_matches[0]]
-        else:
-            initial_conds = []
-
-        # Open JoinSettingsDialog
-        alias_to_table = {'A': self.table_name}
-        for j in self.joins:
-            alias_to_table[j['alias']] = j['table_name']
-
-        dialog = JoinSettingsDialog(
-            self.table_name,
-            dragged_table,
-            alias_new,
-            left_cols_by_alias,
-            cols_joined,
-            initial_conditions=initial_conds,
-            alias_to_table=alias_to_table,
-            initial_join_type='LEFT JOIN',
-            parent=self
-        )
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.joins.append({
-                'table_name': dragged_table,
-                'alias': alias_new,
-                'conditions': dialog.conditions,
-                'join_type': dialog.join_type
-            })
-            self.update_join_ui()
-            show_copy_message(f"🔗 {dragged_table} ({alias_new}) 테이블이 Join 추가되었습니다!", self)
-            event.acceptProposedAction()
-
-    def edit_join(self, index):
-        if not (0 <= index < len(self.joins)):
-            return
-        join = self.joins[index]
-        t_name = join['table_name']
-        alias = join['alias']
-        
-        # Build left columns available *before* this join
-        left_cols_by_alias = {}
-        cols_main = [col['column_name'] for col in self.db_mgr.get_table_columns(self.table_name)]
-        left_cols_by_alias['A'] = cols_main
-        
-        for i in range(index):
-            prev_j = self.joins[i]
-            cols_prev = [col['column_name'] for col in self.db_mgr.get_table_columns(prev_j['table_name'])]
-            left_cols_by_alias[prev_j['alias']] = cols_prev
-            
-        cols_new = [col['column_name'] for col in self.db_mgr.get_table_columns(t_name)]
-        
-        alias_to_table = {'A': self.table_name}
-        for i in range(index):
-            prev_j = self.joins[i]
-            alias_to_table[prev_j['alias']] = prev_j['table_name']
-
-        dialog = JoinSettingsDialog(
-            self.table_name,
-            t_name,
-            alias,
-            left_cols_by_alias,
-            cols_new,
-            initial_conditions=join['conditions'],
-            is_edit=True,
-            alias_to_table=alias_to_table,
-            initial_join_type=join.get('join_type', 'LEFT JOIN'),
-            parent=self
-        )
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            join['conditions'] = dialog.conditions
-            join['join_type'] = dialog.join_type
-            self.update_join_ui()
-            show_copy_message(f"✏️ {t_name} ({alias}) Join 조건이 수정되었습니다.", self)
-
-    def delete_join_at(self, index):
-        if 0 <= index < len(self.joins):
-            t_name = self.joins[index]['table_name']
-            del self.joins[index]
-            # Recalculate aliases for remaining joins so they are contiguous (B, C, D...)
-            for idx, j in enumerate(self.joins):
-                j['alias'] = chr(ord('B') + idx)
-            self.update_join_ui()
-            show_copy_message(f"🔓 {t_name} 테이블의 Join 관계가 해제되었습니다.", self)
-
-    def remove_join(self):
-        self.joins = []
-        self.update_join_ui()
-        show_copy_message("🔓 모든 Join 관계가 해제되었습니다.", self)
-
-    def update_join_ui(self):
-        # Clear existing items in self.join_badge_layout
-        while self.join_badge_layout.count() > 0:
-            item = self.join_badge_layout.takeAt(0)
-            w = item.widget()
-            if w:
-                w.deleteLater()
-                
-        if self.joins:
-            for idx, join in enumerate(self.joins):
-                badge = QWidget()
-                badge.setStyleSheet("""
-                    QWidget {
-                        background-color: #EFF6FF;
-                        border: 1px solid #BFDBFE;
-                        border-radius: 8px;
-                    }
-                """)
-                badge_lay = QHBoxLayout(badge)
-                badge_lay.setContentsMargins(6, 2, 6, 2)
-                badge_lay.setSpacing(4)
-                
-                # Display Join info
-                conds_desc = " AND ".join([f"{c['left']} {c['op']} {c['right']}" for c in join['conditions']])
-                if len(conds_desc) > 35:
-                    conds_desc_short = conds_desc[:32] + "..."
-                else:
-                    conds_desc_short = conds_desc
-                    
-                j_type = join.get('join_type', 'LEFT JOIN')
-                lbl = QLabel(f"[{j_type}] {join['table_name']} ({join['alias']}): {conds_desc_short}")
-                lbl.setToolTip(f"[{j_type}] {join['table_name']} ({join['alias']}) ON {conds_desc}")
-                lbl.setStyleSheet("font-size: 10px; color: #1E40AF; font-weight: bold; background: transparent; border: none; padding: 0;")
-                
-                btn_edit = QPushButton("✏️")
-                btn_edit.setToolTip("Join 조건 수정")
-                btn_edit.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-                btn_edit.setStyleSheet("font-size: 9px; color: #1E40AF; background: transparent; border: none; padding: 0px 2px;")
-                btn_edit.clicked.connect(lambda checked=False, i=idx: self.edit_join(i))
-                
-                btn_del = QPushButton("✕")
-                btn_del.setToolTip("Join 삭제")
-                btn_del.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-                btn_del.setStyleSheet("font-size: 10px; font-weight: bold; color: #1E40AF; background: transparent; border: none; padding: 0px 2px;")
-                btn_del.clicked.connect(lambda checked=False, i=idx: self.delete_join_at(i))
-                
-                badge_lay.addWidget(lbl)
-                badge_lay.addWidget(btn_edit)
-                badge_lay.addWidget(btn_del)
-                
-                self.join_badge_layout.addWidget(badge)
-                
-            self.join_badge_widget.show()
-            self.btn_sql_sel_1_join.setEnabled(True)
-            self.btn_sql_sel_1_join.setStyleSheet(self.btn_join_active_style)
-            self.btn_sql_sel_join.setEnabled(True)
-            self.btn_sql_sel_join.setStyleSheet(self.btn_join_active_style)
-            self.btn_register_favorite.setEnabled(True)
-            self.btn_register_favorite.setStyleSheet(self.btn_register_active_style)
-        else:
-            self.join_badge_widget.hide()
-            self.btn_sql_sel_1_join.setEnabled(False)
-            self.btn_sql_sel_1_join.setStyleSheet(self.btn_join_inactive_style)
-            self.btn_sql_sel_join.setEnabled(False)
-            self.btn_sql_sel_join.setStyleSheet(self.btn_join_inactive_style)
-            self.btn_register_favorite.setEnabled(False)
-            self.btn_register_favorite.setStyleSheet(self.btn_register_inactive_style)
-
-    def register_to_task_folder(self):
-        if not self.joins:
-            QMessageBox.warning(self, "경고", "조인된 테이블이 없습니다. 테이블을 드래그하여 조인한 후에 등록해 주세요.")
-            return
-            
-        import json
-        joined_names = [self.table_name] + [j['table_name'] for j in self.joins]
-        default_display_name = " + ".join(joined_names) + " 조인뷰"
-
-        dialog = RegisterTaskFolderDialog(self.db_mgr, default_display_name, self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            category, display_name = dialog.get_data()
-            if not display_name:
-                display_name = default_display_name
-
-            joins_str = json.dumps(self.joins, ensure_ascii=False)
-            
-            try:
-                self.db_mgr.add_custom_table_category(
-                    table_name=self.table_name,
-                    category_name=category,
-                    display_name=display_name,
-                    joins_json=joins_str
-                )
-                show_copy_message(f"📁 '{category}' 폴더에 '{display_name}'(으)로 등록되었습니다!", self)
-                
-                # Find and refresh MainWindow's tasks tree
-                main_win = None
-                curr = self
-                while curr:
-                    if hasattr(curr, 'load_tasks_tree'):
-                        main_win = curr
-                        break
-                    curr = curr.parent()
-                if main_win:
-                    main_win.load_tasks_tree()
-            except Exception as e:
-                QMessageBox.critical(self, "오류", f"업무 폴더 등록 중 오류가 발생했습니다:\n{str(e)}")
-
-    def copy_table_name_to_clipboard(self):
-        QApplication.clipboard().setText(self.table_name)
-        show_copy_message(f"📋 테이블명 {self.table_name} (이)가 클립보드에 복사되었습니다!", self)
-
-    def copy_table_ko_name_to_clipboard(self):
-        if self.table_ko_name:
-            QApplication.clipboard().setText(self.table_ko_name)
-            show_copy_message(f"📋 테이블 한글명 {self.table_ko_name} (이)가 클립보드에 복사되었습니다!", self)
-
-    def toggle_all_checkboxes(self):
-        self.all_checked = not self.all_checked
-        state = Qt.CheckState.Checked if self.all_checked else Qt.CheckState.Unchecked
-        state_val = 1 if self.all_checked else 0
-        
-        self.table_widget.blockSignals(True)
-        for row in range(self.table_widget.rowCount()):
-            item = self.table_widget.item(row, 0)
-            if item:
-                item.setCheckState(state)
-        self.table_widget.blockSignals(False)
-        
-        self.db_mgr.update_all_columns_check_state(self.table_name, 'is_selected', state_val)
-
-    def toggle_all_where_checkboxes(self):
-        any_checked = False
-        for row in range(self.table_widget.rowCount()):
-            item = self.table_widget.item(row, 9)
-            if item and item.checkState() == Qt.CheckState.Checked:
-                any_checked = True
-                break
-        
-        state = Qt.CheckState.Unchecked if any_checked else Qt.CheckState.Checked
-        state_val = 0 if any_checked else 1
-        
-        self.table_widget.blockSignals(True)
-        for row in range(self.table_widget.rowCount()):
-            item = self.table_widget.item(row, 9)
-            if item:
-                item.setCheckState(state)
-        self.table_widget.blockSignals(False)
-        
-        self.db_mgr.update_all_columns_check_state(self.table_name, 'is_where', state_val)
-
-    def on_header_section_clicked(self, logical_index):
-        if logical_index == 0:
-            self.toggle_all_checkboxes()
-        elif logical_index == 9:
-            self.toggle_all_where_checkboxes()
-
-    def on_cell_clicked(self, row, column):
-        if column == 7:
-            item = self.table_widget.item(row, column)
-            if item and item.text() != "-":
-                ref_t = item.text()
-                self.link_clicked.emit(ref_t)
-                return
-        elif column == 8:
-            item = self.table_widget.item(row, column)
-            if item and item.text() != "-":
-                code_grp = item.data(Qt.ItemDataRole.UserRole)
-                if code_grp:
-                    self.show_code_details(code_grp)
-                    return
-
-    # 💡 우클릭 컨텍스트 메뉴 처리
-    def on_table_context_menu(self, pos):
-        index = self.table_widget.indexAt(pos)
-        if not index.isValid():
-            return
-            
-        row = index.row()
-        column = index.column()
-        
-        # 우클릭한 행의 컬럼명 확보 (3번 열)
-        col_name = self.table_widget.item(row, 3).text()
-        
-        # 기존 관계 맺어져 있는지 정보 추출 (7번 연결테이블 또는 8번 공통코드 기준)
-        current_ref = ""
-        current_type = "마스터테이블"
-        
-        # DB에서 직접 조회해서 안전성 확보
-        with self.db_mgr.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-            SELECT r.ref_table_name,
-                   CASE 
-                       WHEN r.custom_query IS NOT NULL AND r.custom_query != '' THEN '공통코드'
-                       WHEN r.ref_table_name IS NOT NULL AND EXISTS (
-                           SELECT 1 FROM common_codes cc
-                           WHERE cc.code_group_id = r.ref_table_name
-                       ) THEN '공통코드'
-                       ELSE '마스터테이블'
-                   END AS mapping_type
-            FROM relations r
-            WHERE r.src_table_name = ? AND r.src_column_name = ?
-            """, (self.table_name, col_name))
-            row_rel = cursor.fetchone()
-            if row_rel:
-                current_ref = row_rel['ref_table_name']
-                current_type = row_rel['mapping_type']
-
-        menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: #FFFFFF;
-                border: 1px solid #CBD5E1;
-                border-radius: 6px;
-                padding: 4px 0px;
-            }
-            QMenu::item {
-                padding: 6px 16px;
-                font-size: 12px;
-                color: #334155;
-            }
-            QMenu::item:selected {
-                background-color: #F1F5F9;
-                color: #2563EB;
-            }
-        """)
-
-        # 1. 기존 기능: 공통코드값 매핑 등록/수정
-        action_code = QAction("🟩 공통코드값 매핑 등록/수정", self)
-        action_code.triggered.connect(lambda: self.open_code_mapping_dialog(col_name, current_ref))
-        menu.addAction(action_code)
-
-        # 2. 기존 기능: 연결 관계(마스터테이블) 등록/수정 액션
-        action_rel = QAction("🔗 연결 관계 등록/수정", self)
-        rel_ref = current_ref if current_type == "마스터테이블" else ""
-        action_rel.triggered.connect(lambda checked=False, r=rel_ref: self.open_relation_edit_dialog(col_name, r, "마스터테이블"))
-        menu.addAction(action_rel)
-
-        # 3. 기존 기능: 삭제 액션 (매핑되어 있는 경우)
-        if current_ref:
-            if current_type == "공통코드":
-                action_del = QAction("❌ 공통코드 매핑 삭제", self)
-                action_del.triggered.connect(lambda: self.confirm_and_delete_relation(col_name))
-                menu.addAction(action_del)
-            else:
-                action_del = QAction("❌ 연결 관계 삭제", self)
-                action_del.triggered.connect(lambda: self.confirm_and_delete_relation(col_name))
-                menu.addAction(action_del)
-
-        menu.addSeparator()
-
-        # 4. 맨 밑: 공통코드 선택 (설정에서 등록한 3개 공통코드 고르기)
-        code_submenu = menu.addMenu("공통코드 선택")
-        code_submenu.setStyleSheet(menu.styleSheet())
-        
-        # 3개 슬롯 설정 테이블명 조회
-        slot1_tbl = self.db_mgr.get_setting('common_code_table_1', self.db_mgr.get_setting('common_code_table', 'COMMON_CODE_SUB'))
-        slot2_tbl = self.db_mgr.get_setting('common_code_table_2', '')
-        slot3_tbl = self.db_mgr.get_setting('common_code_table_3', '')
-
-        lbl_s1 = f"공통코드 1 ({slot1_tbl})" if slot1_tbl else "공통코드 1"
-        lbl_s2 = f"공통코드 2 ({slot2_tbl})" if slot2_tbl else "공통코드 2 (미설정)"
-        lbl_s3 = f"공통코드 3 ({slot3_tbl})" if slot3_tbl else "공통코드 3 (미설정)"
-
-        act_s1 = QAction(lbl_s1, self)
-        act_s1.triggered.connect(lambda checked=False, col=col_name: self.apply_common_code_slot(col, 1))
-        code_submenu.addAction(act_s1)
-
-        act_s2 = QAction(lbl_s2, self)
-        act_s2.triggered.connect(lambda checked=False, col=col_name: self.apply_common_code_slot(col, 2))
-        code_submenu.addAction(act_s2)
-
-        act_s3 = QAction(lbl_s3, self)
-        act_s3.triggered.connect(lambda checked=False, col=col_name: self.apply_common_code_slot(col, 3))
-        code_submenu.addAction(act_s3)
-
-        menu.exec(self.table_widget.viewport().mapToGlobal(pos))
-
-    def apply_common_code_slot(self, col_name, slot_num):
-        # 1. 컬럼의 한글명 조회
-        col_ko = ""
-        for row in range(self.table_widget.rowCount()):
-            c_item = self.table_widget.item(row, 3)
-            if c_item and c_item.text() == col_name:
-                ko_item = self.table_widget.item(row, 4)
-                if ko_item:
-                    col_ko = ko_item.text().strip()
-                break
-
-        # 2. 해당 슬롯의 공통코드 설정 조회
-        slot_tbl = self.db_mgr.get_setting(f'common_code_table_{slot_num}', self.db_mgr.get_setting('common_code_table', 'COMMON_CODE_SUB') if slot_num == 1 else '')
-        slot_grp = self.db_mgr.get_setting(f'common_code_group_col_{slot_num}', self.db_mgr.get_setting('common_code_group_col', 'CODE_GROUP_VAL') if slot_num == 1 else '')
-        slot_val = self.db_mgr.get_setting(f'common_code_val_col_{slot_num}', self.db_mgr.get_setting('common_code_val_col', 'CODE_VALUE') if slot_num == 1 else '')
-        slot_name = self.db_mgr.get_setting(f'common_code_name_col_{slot_num}', self.db_mgr.get_setting('common_code_name_col', 'CODE_NAME') if slot_num == 1 else '')
-        slot_temp = self.db_mgr.get_setting(f'common_code_template_{slot_num}', self.db_mgr.get_setting('common_code_template', '') if slot_num == 1 else '')
-
-        if not slot_tbl:
-            slot_tbl = "COMMON_CODE_SUB"
-        if not slot_grp:
-            slot_grp = "CODE_GROUP_VAL"
-        if not slot_val:
-            slot_val = "CODE_VALUE"
-        if not slot_name:
-            slot_name = "CODE_NAME"
-        if not slot_temp:
-            slot_temp = '(SELECT {code_name_col} FROM {code_table} WHERE {code_group_col} = \'{code_group}\' AND {code_value_col} = {col_name}) AS "{alias}"'
-
-        # 3. 매핑 코드그룹 추출 (DB common_codes 조회 또는 기본 컬럼명)
-        code_grp = col_name
-        with self.db_mgr.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT code_group_id FROM common_codes WHERE column_name = ? LIMIT 1", (col_name,))
-            r = cursor.fetchone()
-            if r and r['code_group_id']:
-                code_grp = r['code_group_id']
-
-        alias = f"{col_ko}명" if col_ko else f"{col_name}_NM"
-        if len(alias) > 10:
-            alias = alias[:9] + "~"
-
-        try:
-            rendered = slot_temp.format(
-                code_table=slot_tbl,
-                code_group_col=slot_grp,
-                code_value_col=slot_val,
-                code_name_col=slot_name,
-                code_group=code_grp,
-                col_name=col_name,
-                alias=alias
-            )
-            subquery = f", {rendered}"
-        except Exception:
-            subquery = f", (SELECT {slot_name} FROM {slot_tbl} WHERE {slot_grp} = '{code_grp}' AND {slot_val} = {col_name}) AS \"{alias}\""
-
-        self.db_mgr.upsert_relation(self.table_name, col_name, slot_tbl, "공통코드", subquery)
-        show_copy_message(f"✅ [{col_name}] 컬럼에 공통코드 {slot_num} ({slot_tbl}) 설정이 즉시 적용되었습니다.", self)
-        self.load_columns_data()
-        self.relation_changed.emit()
-
-    def open_code_mapping_dialog(self, column_name, current_ref, slot_num=1):
-        dialog = CommonCodeMapDialog(self.db_mgr, self.table_name, column_name, slot_num=slot_num, parent=self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            show_copy_message("✅ 공통코드 매핑이 저장되었습니다.", self)
-            self.load_columns_data()
-            self.relation_changed.emit()
-
-    def open_relation_edit_dialog(self, column_name, current_ref, current_type):
-        dialog = RelationEditDialog(self.db_mgr, self.table_name, column_name, current_ref, current_type, self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            show_copy_message("✅ 관계가 정상 저장되었습니다.", self)
-            self.load_columns_data()
-            self.relation_changed.emit()
-
-    def confirm_and_delete_relation(self, column_name):
-        res = QMessageBox.question(self, "관계 삭제", f"[{column_name}] 컬럼의 연결 관계 정보를 정말로 삭제하시겠습니까?",
-                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if res == QMessageBox.StandardButton.Yes:
-            self.db_mgr.delete_relation(self.table_name, column_name)
-            show_copy_message("❌ 관계가 삭제되었습니다.", self)
-            self.load_columns_data()
-            self.relation_changed.emit()
-
-    def open_relation_add_dialog_toolbar(self):
-        dialog = RelationEditDialog(self.db_mgr, self.table_name, None, "", "마스터테이블", self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            show_copy_message("✅ 관계가 정상 저장되었습니다.", self)
-            self.load_columns_data()
-            self.relation_changed.emit()
-
-
-
-
-
-    def get_selected_columns_info(self):
-        selected_cols = []
-        pk_cols = []
-        where_cols = []
-        for row in range(self.table_widget.rowCount()):
-            check_item = self.table_widget.item(row, 0)
-            is_checked = check_item and check_item.checkState() == Qt.CheckState.Checked
-            
-            where_item = self.table_widget.item(row, 9)
-            is_where = where_item and where_item.checkState() == Qt.CheckState.Checked
-            
-            pk_item = self.table_widget.item(row, 2)
-            is_pk = pk_item and pk_item.text() == "🔑"
-            
-            col_name = self.table_widget.item(row, 3).text()
-            
-            ko_item = self.table_widget.item(row, 4)
-            col_ko = ko_item.text() if ko_item else ""
-            
-            type_item = self.table_widget.item(row, 5)
-            data_type = type_item.text() if type_item else ""
-            
-            code_item = self.table_widget.item(row, 8)
-            code_group = None
-            custom_query = None
-            if code_item and code_item.text() != "-":
-                code_group = code_item.data(Qt.ItemDataRole.UserRole)
-                custom_query = code_item.data(Qt.ItemDataRole.UserRole + 1)
-            
-            col_info = {
-                'name': col_name,
-                'ko_name': col_ko,
-                'data_type': data_type,
-                'code_group': code_group,
-                'custom_query': custom_query
-            }
-            
-            if is_pk:
-                pk_cols.append(col_name)
-            if is_checked:
-                selected_cols.append(col_info)
-            if is_where:
-                where_cols.append(col_info)
-        return selected_cols, pk_cols, where_cols
-
-    def generate_and_copy_query(self, query_type):
-        selected_cols, pk_cols, where_cols = self.get_selected_columns_info()
-        if not selected_cols and query_type != "delete":
-            show_copy_message("⚠️ 선택된 컬럼이 없습니다.", self)
-            return
-
-        code_table = self.db_mgr.get_setting('common_code_table', 'COMMON_CODE_SUB')
-        code_group_col = self.db_mgr.get_setting('common_code_group_col', 'CODE_GROUP_VAL')
-        code_value_col = self.db_mgr.get_setting('common_code_val_col', 'CODE_VALUE')
-        code_name_col = self.db_mgr.get_setting('common_code_name_col', 'CODE_NAME')
-        
-        default_temp = '(SELECT {code_name_col} FROM {code_table} WHERE {code_group_col} = \'{code_group}\' AND {code_value_col} = {col_name}) AS "{alias}"'
-        code_template = self.db_mgr.get_setting('common_code_template', default_temp)
-
-        def get_literal_value(col_name, data_type):
-            dt = data_type.upper()
-            if 'DATE' in dt or 'TIME' in dt or 'TIMESTAMP' in dt:
-                return 'SYSDATE'
-            elif 'NUMBER' in dt or 'INT' in dt or 'DECIMAL' in dt or 'FLOAT' in dt or 'DOUBLE' in dt:
-                return '0'
-            else:
-                return f"'{col_name}'"
-
-        def build_where_clause(target_cols):
-            if not target_cols:
-                return ""
-            conds = []
-            for col in target_cols:
-                literal = get_literal_value(col['name'], col['data_type'])
-                conds.append(f"{col['name']} = {literal}")
-            
-            lines = ["WHERE", f"    {conds[0]}"]
-            for cond in conds[1:]:
-                lines.append(f"    AND {cond}")
-            return "\n".join(lines)
-
-        def get_col_info_by_names(names):
-            results = []
-            for row in range(self.table_widget.rowCount()):
-                c_name = self.table_widget.item(row, 3).text()
-                if c_name in names:
-                    ko_item = self.table_widget.item(row, 4)
-                    type_item = self.table_widget.item(row, 5)
-                    results.append({
-                        'name': c_name,
-                        'ko_name': ko_item.text() if ko_item else "",
-                        'data_type': type_item.text() if type_item else ""
-                    })
-            return results
-
-        def truncate_alias(alias, max_len=10):
-            """Oracle 30바이트 식별자 제한 대응 - 한글 10자 초과 시 축약"""
-            if len(alias) > max_len:
-                return alias[:max_len-1] + "~"
-            return alias
-
-        def build_code_subquery(col):
-            alias = f"{col['ko_name']}명" if col['ko_name'] else f"{col['name']}_NM"
-            alias = truncate_alias(alias)
-            try:
-                return code_template.format(
-                    code_table=code_table,
-                    code_group_col=code_group_col,
-                    code_value_col=code_value_col,
-                    code_name_col=code_name_col,
-                    code_group=col['code_group'],
-                    col_name=col['name'],
-                    alias=alias
-                )
-            except KeyError:
-                fallback_template = '(SELECT {code_name_col} FROM {code_table} WHERE {code_group_col} = \'{code_group}\' AND {code_value_col} = {col_name}) AS "{alias}"'
-                return fallback_template.format(
-                    code_table=code_table,
-                    code_group_col=code_group_col,
-                    code_value_col=code_value_col,
-                    code_name_col=code_name_col,
-                    code_group=col['code_group'],
-                    col_name=col['name'],
-                    alias=alias
-                )
-
-        def build_code_subquery_join(col, prefix="A"):
-            alias = f"{col['ko_name']}명" if col['ko_name'] else f"{col['name']}_NM"
-            alias = truncate_alias(alias)
-            col_ref = f"{prefix}.{col['name']}"
-            try:
-                return code_template.format(
-                    code_table=code_table,
-                    code_group_col=code_group_col,
-                    code_value_col=code_value_col,
-                    code_name_col=code_name_col,
-                    code_group=col['code_group'],
-                    col_name=col_ref,
-                    alias=alias
-                )
-            except KeyError:
-                fallback_template = '(SELECT {code_name_col} FROM {code_table} WHERE {code_group_col} = \'{code_group}\' AND {code_value_col} = {col_name}) AS "{alias}"'
-                return fallback_template.format(
-                    code_table=code_table,
-                    code_group_col=code_group_col,
-                    code_value_col=code_value_col,
-                    code_name_col=code_name_col,
-                    code_group=col['code_group'],
-                    col_name=col_ref,
-                    alias=alias
-                )
-
-        sql = ""
-        if query_type == "select_1_join":
-            if not self.joins:
-                show_copy_message("⚠️ JOIN할 테이블이 지정되지 않았습니다. 좌측에서 테이블을 드래그해 넣어주세요.", self)
-                return
-            
-            select_items = []
-            for col in selected_cols:
-                basic_item = f"A.{col['name']}"
-                if col['ko_name']:
-                    safe_alias = truncate_alias(col['ko_name'])
-                    basic_item += f' AS "{safe_alias}"'
-                select_items.append(basic_item)
-                
-                if col['custom_query']:
-                    cq = col['custom_query'].strip()
-                    if cq.startswith(','):
-                        cq = cq[1:].strip()
-                    select_items.append(cq)
-                elif col['code_group']:
-                    code_item = build_code_subquery_join(col, "A")
-                    select_items.append(code_item)
-            
-            for join in self.joins:
-                alias = join['alias']
-                table2_cols = self.db_mgr.get_table_columns(join['table_name'])
-                for col in table2_cols:
-                    col_name = col['column_name']
-                    col_ko = col['column_ko_name']
-                    basic_item = f"{alias}.{col_name}"
-                    if col_ko:
-                        safe_alias = truncate_alias(col_ko)
-                        basic_item += f' AS "{safe_alias}"'
-                    select_items.append(basic_item)
-                    
-                    if col.get('custom_query'):
-                        cq = col['custom_query'].strip()
-                        if cq.startswith(','):
-                            cq = cq[1:].strip()
-                        select_items.append(cq)
-                    elif col.get('mapping_type') == '공통코드' and col.get('ref_table_name'):
-                        pseudo_col = {
-                            'name': col_name,
-                            'ko_name': col_ko,
-                            'code_group': col['ref_table_name']
-                        }
-                        code_item = build_code_subquery_join(pseudo_col, alias)
-                        select_items.append(code_item)
-            
-            col_str = ", ".join(select_items)
-            
-            join_clauses = []
-            for join in self.joins:
-                alias = join['alias']
-                cond_strings = []
-                for cond in join['conditions']:
-                    cond_strings.append(f"{cond['left']} {cond['op']} {cond['right']}")
-                cond_clause = " AND ".join(cond_strings)
-                j_type = join.get('join_type', 'LEFT JOIN')
-                join_clauses.append(f"{j_type} {join['table_name']} {alias} ON {cond_clause}")
-            
-            join_str = "\n".join(join_clauses)
-            sql = f"SELECT\n\t{col_str}\nFROM {self.table_name} A\n{join_str}"
-            
-            if where_cols:
-                conds = []
-                for col in where_cols:
-                    literal = get_literal_value(col['name'], col['data_type'])
-                    conds.append(f"A.{col['name']} = {literal}")
-                sql += "\nWHERE\n    " + conds[0]
-                for cond in conds[1:]:
-                    sql += f"\n    AND {cond}"
-            sql += ";"
-
-        elif query_type == "select_join":
-            if not self.joins:
-                show_copy_message("⚠️ JOIN할 테이블이 지정되지 않았습니다. 좌측에서 테이블을 드래그해 넣어주세요.", self)
-                return
-            
-            select_items = []
-            for col in selected_cols:
-                basic_item = f"A.{col['name']}"
-                if col['ko_name']:
-                    safe_alias = truncate_alias(col['ko_name'])
-                    basic_item += f' AS "{safe_alias}"'
-                select_items.append(basic_item)
-                
-                if col['custom_query']:
-                    cq = col['custom_query'].strip()
-                    if cq.startswith(','):
-                        cq = cq[1:].strip()
-                    select_items.append(cq)
-                elif col['code_group']:
-                    code_item = build_code_subquery_join(col, "A")
-                    select_items.append(code_item)
-            
-            for join in self.joins:
-                alias = join['alias']
-                table2_cols = self.db_mgr.get_table_columns(join['table_name'])
-                for col in table2_cols:
-                    col_name = col['column_name']
-                    col_ko = col['column_ko_name']
-                    basic_item = f"{alias}.{col_name}"
-                    if col_ko:
-                        safe_alias = truncate_alias(col_ko)
-                        basic_item += f' AS "{safe_alias}"'
-                    select_items.append(basic_item)
-                    
-                    if col.get('custom_query'):
-                        cq = col['custom_query'].strip()
-                        if cq.startswith(','):
-                            cq = cq[1:].strip()
-                        select_items.append(cq)
-                    elif col.get('mapping_type') == '공통코드' and col.get('ref_table_name'):
-                        pseudo_col = {
-                            'name': col_name,
-                            'ko_name': col_ko,
-                            'code_group': col['ref_table_name']
-                        }
-                        code_item = build_code_subquery_join(pseudo_col, alias)
-                        select_items.append(code_item)
-
-            lines = ["SELECT"]
-            lines.append(f"     {select_items[0]}")
-            for item in select_items[1:]:
-                lines.append(f"     , {item}")
-            lines.append(f"FROM {self.table_name} A")
-            
-            for join in self.joins:
-                alias = join['alias']
-                cond_strings = []
-                for cond in join['conditions']:
-                    cond_strings.append(f"{cond['left']} {cond['op']} {cond['right']}")
-                cond_clause = " AND ".join(cond_strings)
-                j_type = join.get('join_type', 'LEFT JOIN')
-                lines.append(f"{j_type} {join['table_name']} {alias} ON {cond_clause}")
-                
-            if where_cols:
-                conds = []
-                for col in where_cols:
-                    literal = get_literal_value(col['name'], col['data_type'])
-                    conds.append(f"A.{col['name']} = {literal}")
-                
-                lines.append("WHERE")
-                lines.append(f"    {conds[0]}")
-                for cond in conds[1:]:
-                    lines.append(f"    AND {cond}")
-            lines[-1] = lines[-1] + ";"
-            sql = "\n".join(lines)
-
-        elif query_type == "select_1":
-            select_items = []
-            for col in selected_cols:
-                basic_item = col['name']
-                if col['ko_name']:
-                    safe_alias = truncate_alias(col['ko_name'])
-                    basic_item += f' AS "{safe_alias}"'
-                select_items.append(basic_item)
-                
-                if col['custom_query']:
-                    cq = col['custom_query'].strip()
-                    if cq.startswith(','):
-                        cq = cq[1:].strip()
-                    select_items.append(cq)
-                elif col['code_group']:
-                    code_item = build_code_subquery(col)
-                    select_items.append(code_item)
-                    
-            col_str = ", ".join(select_items)
-            sql = f"SELECT\n\t{col_str}\nFROM {self.table_name}"
-            if where_cols:
-                sql += "\n" + build_where_clause(where_cols)
-            sql += ";"
-            
-        elif query_type == "select":
-            select_items = []
-            for col in selected_cols:
-                basic_item = col['name']
-                if col['ko_name']:
-                    safe_alias = truncate_alias(col['ko_name'])
-                    basic_item += f' AS "{safe_alias}"'
-                select_items.append(basic_item)
-                
-                if col['custom_query']:
-                    cq = col['custom_query'].strip()
-                    if cq.startswith(','):
-                        cq = cq[1:].strip()
-                    select_items.append(cq)
-                elif col['code_group']:
-                    code_item = build_code_subquery(col)
-                    select_items.append(code_item)
-
-            lines = ["SELECT"]
-            lines.append(f"     {select_items[0]}")
-            for item in select_items[1:]:
-                lines.append(f"     , {item}")
-            lines.append(f"FROM {self.table_name}")
-            if where_cols:
-                lines.append(build_where_clause(where_cols))
-            lines[-1] = lines[-1] + ";"
-            sql = "\n".join(lines)
-            
-        elif query_type == "insert":
-            dialog = InsertUpdateDialog(self.table_name, selected_cols, pk_cols, where_cols, "insert", self.db_mgr, self)
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                sql = dialog.result_sql
-                QApplication.clipboard().setText(sql)
-                show_copy_message("📋 INSERT 쿼리가 클립보드에 복사되었습니다!", self)
-                history_title = f"[{self.table_name}] INSERT 생성"
-                try:
-                    main_win = self.window()
-                    if main_win and hasattr(main_win, 'add_recent_query_log'):
-                        main_win.add_recent_query_log(history_title, sql)
-                    else:
-                        self.db_mgr.add_recent_query(history_title, sql)
-                except Exception as e:
-                    print(f"[History Log Fail] {str(e)}")
-            return
-            
-        elif query_type == "update":
-            dialog = InsertUpdateDialog(self.table_name, selected_cols, pk_cols, where_cols, "update", self.db_mgr, self)
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                sql = dialog.result_sql
-                QApplication.clipboard().setText(sql)
-                show_copy_message("📋 UPDATE 쿼리가 클립보드에 복사되었습니다!", self)
-                history_title = f"[{self.table_name}] UPDATE 생성"
-                try:
-                    main_win = self.window()
-                    if main_win and hasattr(main_win, 'add_recent_query_log'):
-                        main_win.add_recent_query_log(history_title, sql)
-                    else:
-                        self.db_mgr.add_recent_query(history_title, sql)
-                except Exception as e:
-                    print(f"[History Log Fail] {str(e)}")
-            return
-            
-        elif query_type == "delete":
-            if where_cols:
-                where_targets = where_cols
-            elif pk_cols:
-                where_targets = get_col_info_by_names(pk_cols)
-            else:
-                where_targets = selected_cols
-
-            if not where_targets:
-                show_copy_message("⚠️ 삭제 조건으로 사용할 컬럼을 선택하거나 지정해 주세요.", self)
-                return
-
-            dialog = InsertUpdateDialog(self.table_name, where_targets, pk_cols, where_cols, "delete", self.db_mgr, self)
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                sql = dialog.result_sql
-                QApplication.clipboard().setText(sql)
-                show_copy_message("📋 DELETE 쿼리가 클립보드에 복사되었습니다!", self)
-                history_title = f"[{self.table_name}] DELETE 생성"
-                try:
-                    main_win = self.window()
-                    if main_win and hasattr(main_win, 'add_recent_query_log'):
-                        main_win.add_recent_query_log(history_title, sql)
-                    else:
-                        self.db_mgr.add_recent_query(history_title, sql)
-                except Exception as e:
-                    print(f"[History Log Fail] {str(e)}")
-            return
-
-        QApplication.clipboard().setText(sql)
-        show_copy_message("📋 클립보드에 복사되었습니다!", self)
-
-        # 최근 쿼리 복사 이력 자동 적립
-        history_title = f"[{self.table_name}] {query_type.upper()} 생성"
-        try:
-            main_win = self.window()
-            if main_win and hasattr(main_win, 'add_recent_query_log'):
-                main_win.add_recent_query_log(history_title, sql)
-            else:
-                self.db_mgr.add_recent_query(history_title, sql)
-        except Exception as e:
-            print(f"[History Log Fail] {str(e)}")
-
-    def show_code_details(self, code_group):
-        self.lbl_code_title.setText(f"🟩 공통코드: {code_group}")
-        codes = self.db_mgr.get_common_codes_list(code_group)
-        self.code_table.setRowCount(len(codes))
-        for r_idx, c in enumerate(codes):
-            val_item = QTableWidgetItem(c['code_value'])
-            val_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            
-            ko_item = QTableWidgetItem(c['code_ko_name'] or "")
-            ko_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            
-            self.code_table.setItem(r_idx, 0, val_item)
-            self.code_table.setItem(r_idx, 1, ko_item)
-            
-        self.code_table.resizeColumnsToContents()
-        if self.code_table.columnWidth(0) < 55:
-            self.code_table.setColumnWidth(0, 55)
-        if self.code_table.columnWidth(1) < 125:
-            self.code_table.setColumnWidth(1, 125)
-
-        self.code_panel.setVisible(True)
-        
-        # Calculate dynamic panel width to prevent horizontal scrollbar (columns + margins + vertical scrollbar margin)
-        total_col_width = self.code_table.columnWidth(0) + self.code_table.columnWidth(1)
-        panel_width = max(240, min(total_col_width + 45, 500))
-        
-        w_left = max(450, self.width() - panel_width)
-        self.splitter.setSizes([w_left, self.width() - w_left])
-
-    def hide_code_panel(self):
-        self.code_panel.setVisible(False)
-        self.splitter.setSizes([self.width(), 0])
-
-
-class AllCommonCodesTab(QWidget):
-    """우측 메인에 열리는 전체 공통코드 조회 뷰"""
-    def __init__(self, db_mgr, parent=None):
-        super().__init__(parent)
-        self.db_mgr = db_mgr
-        self.init_ui()
-
-    def init_ui(self):
-        layout = QVBoxLayout()
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(8)
-
-        # 검색 영역
-        search_layout = QHBoxLayout()
-        search_layout.addWidget(QLabel("🔍 검색 분류:"))
-        self.combo_search_type = QComboBox()
-        self.combo_search_type.addItems(["코드그룹 ID", "코드값", "코드한글명"])
-        self.combo_search_type.setFixedHeight(30)
-        self.combo_search_type.setStyleSheet("""
-            QComboBox {
-                background-color: #F8FAFC;
-                color: #1E293B;
-                border: 1px solid #CBD5E1;
-                border-radius: 4px;
-                padding: 4px 10px;
-                font-size: 12px;
-                min-width: 110px;
-            }
-        """)
-        self.combo_search_type.currentTextChanged.connect(self.load_data)
-        search_layout.addWidget(self.combo_search_type)
-
-        self.txt_search = QLineEdit()
-        self.txt_search.setPlaceholderText("검색어를 입력하세요...")
-        self.txt_search.setFixedHeight(30)
-        self.txt_search.setStyleSheet("""
-            QLineEdit {
-                background-color: #F8FAFC;
-                color: #1E293B;
-                border: 1px solid #CBD5E1;
-                border-radius: 4px;
-                padding: 6px 10px;
-                font-size: 12px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #3B82F6;
-                background-color: #FFFFFF;
-            }
-        """)
-        self.txt_search.textChanged.connect(self.load_data)
-        search_layout.addWidget(self.txt_search)
-
-        reset_style = """
-            QPushButton {
-                background-color: #EFF6FF;
-                color: #2563EB;
-                border: 1px solid #BFDBFE;
-                border-radius: 4px;
-                padding: 0px;
-                font-size: 14px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #DBEAFE;
-                color: #1D4ED8;
-                border-color: #93C5FD;
-            }
-            QPushButton:pressed {
-                background-color: #BFDBFE;
-            }
-        """
-        self.btn_reset_search = QPushButton("↺")
-        self.btn_reset_search.setFixedWidth(28)
-        self.btn_reset_search.setFixedHeight(30)
-        self.btn_reset_search.setToolTip("검색 초기화")
-        self.btn_reset_search.setStyleSheet(reset_style)
-        self.btn_reset_search.clicked.connect(self.clear_search)
-        search_layout.addWidget(self.btn_reset_search)
-
-        layout.addLayout(search_layout)
-
-        # 테이블
-        self.table = QTableWidget()
-        self.table.setColumnCount(5)
-        self.table.setHorizontalHeaderLabels(["컬럼명", "코드그룹 ID", "코드그룹 한글명칭", "코드값", "코드한글명"])
-        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.verticalHeader().setVisible(False)
-        self.table.cellDoubleClicked.connect(self.on_cell_double_clicked)
-        self.table.setStyleSheet("""
-            QTableWidget {
-                background-color: #FFFFFF;
-                gridline-color: #E2E8F0;
-                color: #1E293B;
-                border: 1px solid #E2E8F0;
-                border-radius: 4px;
-            }
-            QTableWidget::item {
-                padding: 6px;
-            }
-            QHeaderView::section {
-                background-color: #F1F5F9;
-                color: #475569;
-                padding: 6px;
-                font-weight: bold;
-                border: none;
-                border-bottom: 1px solid #E2E8F0;
-            }
-        """)
-        
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
-        header.setMinimumSectionSize(80)
-        # 기본 컬럼 너비 지정 (스크롤 안 생기도록)
-        self.table.setColumnWidth(0, 160)  # 컬럼명
-        self.table.setColumnWidth(1, 150)  # 코드그룹 ID
-        self.table.setColumnWidth(3, 100)  # 코드값
-        # 가로 스크롤바 숨김 (Stretch 컬럼들이 공간 채움)
-        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.table.setMinimumWidth(700)
-
-        layout.addWidget(self.table)
-        self.setLayout(layout)
-        self.load_data()
-
-    def clear_search(self):
-        self.txt_search.clear()
-
-    def load_data(self):
-        keyword = self.txt_search.text()
-        search_type = self.combo_search_type.currentText()
-        codes = self.db_mgr.get_all_common_codes(keyword, search_type)
-        self.table.setRowCount(len(codes))
-        for r_idx, c in enumerate(codes):
-            item_col = QTableWidgetItem(c.get('column_name', ''))
-            item_col.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            item_col.setToolTip("더블클릭 시 클립보드에 복사됩니다.")
-            self.table.setItem(r_idx, 0, item_col)
-            
-            item_grp = QTableWidgetItem(c['code_group'])
-            item_grp.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            item_grp.setToolTip("더블클릭 시 클립보드에 복사됩니다.")
-            self.table.setItem(r_idx, 1, item_grp)
-            
-            item_grp_ko = QTableWidgetItem(c.get('code_group_name', ''))
-            item_grp_ko.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            item_grp_ko.setToolTip("더블클릭 시 클립보드에 복사됩니다.")
-            self.table.setItem(r_idx, 2, item_grp_ko)
-            
-            item_val = QTableWidgetItem(c['code_value'])
-            item_val.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            item_val.setToolTip("더블클릭 시 클립보드에 복사됩니다.")
-            self.table.setItem(r_idx, 3, item_val)
-            
-            item_ko = QTableWidgetItem(c['code_ko_name'] or "")
-            item_ko.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            item_ko.setToolTip("더블클릭 시 클립보드에 복사됩니다.")
-            self.table.setItem(r_idx, 4, item_ko)
-
-    def set_filter(self, keyword):
-        self.combo_search_type.setCurrentText("코드그룹 ID")
-        self.txt_search.setText(keyword)
-        self.load_data()
-
-    def on_cell_double_clicked(self, row, column):
-        item = self.table.item(row, column)
-        if item and item.text():
-            text_to_copy = item.text().strip()
-            if text_to_copy == "-":
-                return
-            QApplication.clipboard().setText(text_to_copy)
-            show_copy_message(f"📋 {text_to_copy} (이)가 클립보드에 복사되었습니다!", self)
-
-
-class AllRelationsTab(QWidget):
-    """우측 메인에 열리는 전체 테이블 관계 조회 뷰"""
-    table_link_clicked = pyqtSignal(str)
-
-    def __init__(self, db_mgr, parent=None):
-        super().__init__(parent)
-        self.db_mgr = db_mgr
-        self.init_ui()
-
-    def init_ui(self):
-        layout = QVBoxLayout()
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(8)
-
-        # 검색 영역 (콤보박스 + 검색창)
-        search_layout = QHBoxLayout()
-        
-        self.combo_search_type = QComboBox()
-        self.combo_search_type.addItems(["본래테이블명", "참조테이블명", "컬럼명"])
-        self.combo_search_type.setFixedHeight(30)
-        self.combo_search_type.setStyleSheet("""
-            QComboBox {
-                background-color: #F8FAFC;
-                color: #1E293B;
-                border: 1px solid #CBD5E1;
-                border-radius: 4px;
-                padding: 4px 6px;
-                font-size: 12px;
-                min-width: 110px;
-            }
-        """)
-        search_layout.addWidget(self.combo_search_type)
-
-        self.txt_search = QLineEdit()
-        self.txt_search.setPlaceholderText("검색어 입력 후 Enter...")
-        self.txt_search.setFixedHeight(30)
-        self.txt_search.setStyleSheet("""
-            QLineEdit {
-                background-color: #F8FAFC;
-                color: #1E293B;
-                border: 1px solid #CBD5E1;
-                border-radius: 4px;
-                padding: 6px 10px;
-                font-size: 12px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #3B82F6;
-                background-color: #FFFFFF;
-            }
-        """)
-        self.txt_search.returnPressed.connect(self.load_data)
-        self.combo_search_type.currentIndexChanged.connect(self.load_data)
-        search_layout.addWidget(self.txt_search)
-
-        reset_style = """
-            QPushButton {
-                background-color: #EFF6FF;
-                color: #2563EB;
-                border: 1px solid #BFDBFE;
-                border-radius: 4px;
-                padding: 0px;
-                font-size: 14px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #DBEAFE;
-                color: #1D4ED8;
-                border-color: #93C5FD;
-            }
-            QPushButton:pressed {
-                background-color: #BFDBFE;
-            }
-        """
-        self.btn_reset_search = QPushButton("↺")
-        self.btn_reset_search.setFixedWidth(28)
-        self.btn_reset_search.setFixedHeight(30)
-        self.btn_reset_search.setToolTip("검색 초기화")
-        self.btn_reset_search.setStyleSheet(reset_style)
-        self.btn_reset_search.clicked.connect(self.clear_search)
-        search_layout.addWidget(self.btn_reset_search)
-
-        layout.addLayout(search_layout)
-
-        # 테이블
-        self.table = QTableWidget()
-        self.table.setColumnCount(3)
-        self.table.setHorizontalHeaderLabels(["본래테이블명", "컬럼명", "참조코드테이블명"])
-        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.verticalHeader().setVisible(False)
-        self.table.cellDoubleClicked.connect(self.on_cell_double_clicked)
-        self.table.setStyleSheet("""
-            QTableWidget {
-                background-color: #FFFFFF;
-                gridline-color: #E2E8F0;
-                color: #1E293B;
-                border: 1px solid #E2E8F0;
-                border-radius: 4px;
-            }
-            QTableWidget::item {
-                padding: 6px;
-            }
-            QHeaderView::section {
-                background-color: #F1F5F9;
-                color: #475569;
-                padding: 6px;
-                font-weight: bold;
-                border: none;
-                border-bottom: 1px solid #E2E8F0;
-            }
-        """)
-        
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        
-        layout.addWidget(self.table)
-        self.setLayout(layout)
-        self.load_data()
-
-    def clear_search(self):
-        self.txt_search.clear()
-        self.load_data()
-
-    def load_data(self):
-        keyword = self.txt_search.text()
-        search_type = self.combo_search_type.currentText()
-        rels = self.db_mgr.get_all_relations(keyword, search_type)
-        self.table.setRowCount(len(rels))
-        for r_idx, r in enumerate(rels):
-            src_t = r['src_table_name'] or ""
-            ref_t = r['ref_table_name'] or ""
-            
-            # 본래테이블 링크 버튼
-            btn_src = QPushButton(src_t)
-            btn_src.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            btn_src.setStyleSheet("color: #2563EB; text-decoration: underline; background: transparent; border: none; font-weight: 600; text-align: center;")
-            btn_src.clicked.connect(lambda checked, t=src_t: self.table_link_clicked.emit(t))
-            btn_src.mouseDoubleClickEvent = lambda event, t=src_t: self.copy_text_to_clipboard(t)
-            btn_src.setToolTip("클릭 시 이동, 더블클릭 시 클립보드에 복사됩니다.")
-            self.table.setCellWidget(r_idx, 0, btn_src)
-
-            col_item = QTableWidgetItem(r['src_column_name'] or "")
-            col_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            col_item.setToolTip("더블클릭 시 클립보드에 복사됩니다.")
-            self.table.setItem(r_idx, 1, col_item)
-
-            # 참조테이블 링크 버튼 (매핑유형이 마스터테이블일 때만 링크)
-            if r['mapping_type'] == '마스터테이블':
-                btn_ref = QPushButton(ref_t)
-                btn_ref.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-                btn_ref.setStyleSheet("color: #2563EB; text-decoration: underline; background: transparent; border: none; font-weight: 600; text-align: center;")
-                btn_ref.clicked.connect(lambda checked, t=ref_t: self.table_link_clicked.emit(t))
-                btn_ref.mouseDoubleClickEvent = lambda event, t=ref_t: self.copy_text_to_clipboard(t)
-                btn_ref.setToolTip("클릭 시 이동, 더블클릭 시 클립보드에 복사됩니다.")
-                self.table.setCellWidget(r_idx, 2, btn_ref)
-            else:
-                item_ref = QTableWidgetItem(ref_t)
-                item_ref.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                item_ref.setForeground(QColor("#059669")) # 공통코드는 에메랄드 그린
-                item_ref.setToolTip("더블클릭 시 클립보드에 복사됩니다.")
-                self.table.setItem(r_idx, 2, item_ref)
-
-    def set_filter(self, keyword):
-        self.combo_search_type.setCurrentText("본래테이블명")
-        self.txt_search.setText(keyword)
-        self.load_data()
-
-    def on_cell_double_clicked(self, row, column):
-        item = self.table.item(row, column)
-        if item and item.text():
-            self.copy_text_to_clipboard(item.text())
-
-    def copy_text_to_clipboard(self, text):
-        if text and text != "-":
-            QApplication.clipboard().setText(text.strip())
-            show_copy_message(f"📋 {text} (이)가 클립보드에 복사되었습니다!", self)
-
-
-from PyQt6.QtCore import QObject, QThread
-class ImportWorker(QObject):
-    """대용량 파일 임포트 처리를 위한 백그라운드 쓰레드 워커 클래스"""
-    finished = pyqtSignal(bool, str) # (성공 여부, 결과/에러 메시지)
-
-    def __init__(self, db_mgr, cols_p, rels_p, codes_p, clear_existing=True):
-        super().__init__()
-        self.db_mgr = db_mgr
-        self.cols_p = cols_p
-        self.rels_p = rels_p
-        self.codes_p = codes_p
-        self.clear_existing = clear_existing
-
-    def run(self):
-        try:
-            self.db_mgr.import_csv_data(self.cols_p, self.rels_p, self.codes_p, clear_existing=self.clear_existing)
-            self.finished.emit(True, "로컬 DB 데이터 로드가 정상적으로 완료되었습니다!")
-        except Exception as e:
-            self.finished.emit(False, str(e))
-
-
-class QueryBulkImportWorker(QObject):
-    """쿼리 폴더 일괄 가져오기를 위한 백그라운드 쓰레드 워커 클래스"""
-    finished = pyqtSignal(bool, int, str) # (성공 여부, 성공 개수, 결과/에러 메시지)
-
-    def __init__(self, db_mgr, paths, target_cat_id, root_dir, use_folder_as_root=False):
-        super().__init__()
-        self.db_mgr = db_mgr
-        self.paths = paths
-        self.target_cat_id = target_cat_id
-        self.root_dir = root_dir
-        self.use_folder_as_root = use_folder_as_root
-
-    def run(self):
-        try:
-            success_count = 0
-            cat_cache = {}
-
-            # 폴더를 최상위 카테고리로 사용하는 경우: 선택 폴더명으로 최상위 카테고리 생성/조회
-            if self.use_folder_as_root and self.root_dir:
-                folder_name = os.path.basename(self.root_dir.rstrip('/\\'))
-                with self.db_mgr.get_connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "SELECT id FROM query_categories WHERE category_name = ? AND parent_id IS NULL",
-                        (folder_name,)
-                    )
-                    row = cursor.fetchone()
-                    if row:
-                        self.target_cat_id = row[0]
-                    else:
-                        from datetime import datetime as _dt
-                        now_str = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
-                        cursor.execute(
-                            "INSERT INTO query_categories (category_name, parent_id, sort_order, created_at) VALUES (?, NULL, 0, ?)",
-                            (folder_name, now_str)
-                        )
-                        conn.commit()
-                        self.target_cat_id = cursor.lastrowid
-                    cat_cache[(None, folder_name)] = self.target_cat_id
-
-            def get_or_create_category(parent_id, name):
-                cache_key = (parent_id, name)
-                if cache_key in cat_cache:
-                    return cat_cache[cache_key]
-                    
-                with self.db_mgr.get_connection() as conn:
-                    cursor = conn.cursor()
-                    if parent_id is None:
-                        cursor.execute("SELECT id FROM query_categories WHERE category_name = ? AND parent_id IS NULL", (name,))
-                    else:
-                        cursor.execute("SELECT id FROM query_categories WHERE category_name = ? AND parent_id = ?", (name, parent_id))
-                    row = cursor.fetchone()
-                    if row:
-                        cat_id = row[0]
-                    else:
-                        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        cursor.execute("INSERT INTO query_categories (category_name, parent_id, sort_order, created_at) VALUES (?, ?, 0, ?)", (name, parent_id, now_str))
-                        conn.commit()
-                        cat_id = cursor.lastrowid
-                        
-                cat_cache[cache_key] = cat_id
-                return cat_id
-
-            encodings = ['utf-8', 'cp949', 'euc-kr', 'utf-16', 'latin-1']
-
-            for path in self.paths:
-                try:
-                    filename = os.path.basename(path)
-                    title = os.path.splitext(filename)[0]
-                    content = ""
-                    
-                    # Robust encoding fallback sequence
-                    for enc in encodings:
-                        try:
-                            with open(path, 'r', encoding=enc) as f:
-                                content = f.read().strip()
-                            break
-                        except UnicodeDecodeError:
-                            continue
-                    else:
-                        # Final fallback with ignore
-                        with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                            content = f.read().strip()
-
-                    if content:
-                        now_str = datetime.now().strftime("%Y-%m-%d")
-                        
-                        # Reconstruct subfolder structure (skip hidden/dev folders)
-                        SKIP_DIRS = {
-                            '.git', '.svn', '.hg', '.idea', '.vscode',
-                            'node_modules', '.venv', 'venv', '.env',
-                            '.vendor', 'vendor', '.vendor_lib',
-                            '__pycache__', '.pytest_cache', '.mypy_cache',
-                            '.tmp_hwpx_extract', 'dist', 'build', '.next',
-                            '.nuxt', 'out', 'coverage',
-                        }
-                        if self.root_dir:
-                            rel_path = os.path.relpath(path, self.root_dir)
-                            relative_dir = os.path.dirname(rel_path)
-                            if relative_dir:
-                                parts = [
-                                    p for p in os.path.normpath(relative_dir).split(os.sep)
-                                    if p and p not in [".", ".."] and not p.startswith('.') and p not in SKIP_DIRS
-                                ]
-                                current_parent_id = self.target_cat_id
-                                for part in parts:
-                                    current_parent_id = get_or_create_category(current_parent_id, part)
-                                dest_cat_id = current_parent_id
-                            else:
-                                dest_cat_id = self.target_cat_id
-                        else:
-                            dest_cat_id = self.target_cat_id
-
-                        self.db_mgr.add_query(dest_cat_id, title, content, f"일괄 임포트됨 ({now_str})")
-                        success_count += 1
-                except Exception as e:
-                    print(f"[Bulk Import Fail] Path: {path}, Error: {str(e)}")
-
-            self.finished.emit(True, success_count, f"총 {success_count}개의 쿼리 파일을 정상 임포트 완료하였습니다.")
-        except Exception as e:
-            self.finished.emit(False, 0, str(e))
-
-
 class TaskTreeWidget(QTreeWidget):
     order_changed = pyqtSignal()
     
@@ -13621,17 +8856,6 @@ class TaskTreeWidget(QTreeWidget):
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
         self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
-
-    def mimeData(self, items):
-        mime_data = super().mimeData(items)
-        if items:
-            item = items[0]
-            d_data = item.data(0, Qt.ItemDataRole.UserRole)
-            if d_data and d_data.get("type") == "table":
-                t_name = d_data.get("table_name")
-                if t_name:
-                    mime_data.setText(t_name)
-        return mime_data
         
     def dragMoveEvent(self, event):
         dragged_item = self.currentItem()
@@ -13643,45 +8867,18 @@ class TaskTreeWidget(QTreeWidget):
         target_item = self.itemAt(pos)
         indicator = self.dropIndicatorPosition()
         
-        # Determine if dragged item is category or table
-        d_data = dragged_item.data(0, Qt.ItemDataRole.UserRole)
-        is_dragged_table = (d_data and d_data.get("type") == "table")
-        is_dragged_category = (d_data and d_data.get("type") == "category")
-        
-        # Determine target item type
-        is_target_table = False
-        is_target_category = False
         if target_item:
             t_data = target_item.data(0, Qt.ItemDataRole.UserRole)
             is_target_table = (t_data and t_data.get("type") == "table")
             is_target_category = (t_data and t_data.get("type") == "category")
             
-        # Adjust indicator
-        if target_item and indicator == QAbstractItemView.DropIndicatorPosition.OnItem:
-            valid_on_item = False
-            if is_target_category:
-                if is_dragged_table:
-                    valid_on_item = True
-                elif is_dragged_category:
-                    # Prevent cycles
-                    p = target_item
-                    is_ancestor = False
-                    while p:
-                        if p == dragged_item:
-                            is_ancestor = True
-                            break
-                        p = p.parent()
-                    if not is_ancestor:
-                        valid_on_item = True
-            
-            if not valid_on_item:
+            if (is_target_table or is_target_category) and indicator == QAbstractItemView.DropIndicatorPosition.OnItem:
                 rect = self.visualRect(self.indexFromItem(target_item))
                 if pos.y() < rect.top() + rect.height() / 2:
                     indicator = QAbstractItemView.DropIndicatorPosition.AboveItem
                 else:
                     indicator = QAbstractItemView.DropIndicatorPosition.BelowItem
                     
-        # Determine target parent
         if target_item is None:
             target_parent = None
         else:
@@ -13690,23 +8887,10 @@ class TaskTreeWidget(QTreeWidget):
             else:
                 target_parent = target_item.parent()
                 
-        # Validate parent/child relationships and prevent cycles
-        # 1. No item can have a table as a parent
-        if target_parent:
-            tp_data = target_parent.data(0, Qt.ItemDataRole.UserRole)
-            if tp_data and tp_data.get("type") == "table":
-                event.ignore()
-                return
-                
-        # 2. Prevent cycle (dragged item cannot contain itself)
-        p = target_parent
-        while p:
-            if p == dragged_item:
-                event.ignore()
-                return
-            p = p.parent()
-            
-        super().dragMoveEvent(event)
+        if dragged_item.parent() != target_parent or indicator == QAbstractItemView.DropIndicatorPosition.OnItem:
+            event.ignore()
+        else:
+            super().dragMoveEvent(event)
             
     def dropEvent(self, event):
         dragged_item = self.currentItem()
@@ -13718,45 +8902,18 @@ class TaskTreeWidget(QTreeWidget):
         target_item = self.itemAt(pos)
         indicator = self.dropIndicatorPosition()
         
-        # Determine if dragged item is category or table
-        d_data = dragged_item.data(0, Qt.ItemDataRole.UserRole)
-        is_dragged_table = (d_data and d_data.get("type") == "table")
-        is_dragged_category = (d_data and d_data.get("type") == "category")
-        
-        # Determine target item type
-        is_target_table = False
-        is_target_category = False
         if target_item:
             t_data = target_item.data(0, Qt.ItemDataRole.UserRole)
             is_target_table = (t_data and t_data.get("type") == "table")
             is_target_category = (t_data and t_data.get("type") == "category")
             
-        # Adjust indicator
-        if target_item and indicator == QAbstractItemView.DropIndicatorPosition.OnItem:
-            valid_on_item = False
-            if is_target_category:
-                if is_dragged_table:
-                    valid_on_item = True
-                elif is_dragged_category:
-                    # Prevent cycles
-                    p = target_item
-                    is_ancestor = False
-                    while p:
-                        if p == dragged_item:
-                            is_ancestor = True
-                            break
-                        p = p.parent()
-                    if not is_ancestor:
-                        valid_on_item = True
-            
-            if not valid_on_item:
+            if (is_target_table or is_target_category) and indicator == QAbstractItemView.DropIndicatorPosition.OnItem:
                 rect = self.visualRect(self.indexFromItem(target_item))
                 if pos.y() < rect.top() + rect.height() / 2:
                     indicator = QAbstractItemView.DropIndicatorPosition.AboveItem
                 else:
                     indicator = QAbstractItemView.DropIndicatorPosition.BelowItem
                     
-        # Determine target parent
         if target_item is None:
             target_parent = None
         else:
@@ -13765,73 +8922,39 @@ class TaskTreeWidget(QTreeWidget):
             else:
                 target_parent = target_item.parent()
                 
-        # Validate parent/child relationships and prevent cycles
-        if target_parent:
-            tp_data = target_parent.data(0, Qt.ItemDataRole.UserRole)
-            if tp_data and tp_data.get("type") == "table":
-                event.ignore()
-                return
-                
-        p = target_parent
-        while p:
-            if p == dragged_item:
-                event.ignore()
-                return
-            p = p.parent()
+        if dragged_item.parent() != target_parent or indicator == QAbstractItemView.DropIndicatorPosition.OnItem:
+            event.ignore()
+            return
             
-        # Perform move
-        old_parent = dragged_item.parent()
-        if old_parent:
-            dragged_idx = old_parent.indexOfChild(dragged_item)
+        parent = dragged_item.parent()
+        if parent:
+            dragged_idx = parent.indexOfChild(dragged_item)
+            target_idx = parent.indexOfChild(target_item)
         else:
             dragged_idx = self.indexOfTopLevelItem(dragged_item)
+            target_idx = self.indexOfTopLevelItem(target_item)
             
-        # Determine new index
-        if indicator == QAbstractItemView.DropIndicatorPosition.OnItem:
-            # Dropped directly on a category folder, append to the end
-            if target_parent:
-                new_idx = target_parent.childCount()
-            else:
-                new_idx = self.topLevelItemCount()
-        else:
-            # Dropped above or below another item
-            if target_parent:
-                target_idx = target_parent.indexOfChild(target_item)
-            else:
-                target_idx = self.indexOfTopLevelItem(target_item)
+        new_idx = target_idx
+        if indicator == QAbstractItemView.DropIndicatorPosition.BelowItem:
+            new_idx = target_idx + 1
+            if dragged_idx < target_idx:
+                new_idx -= 1
+        elif indicator == QAbstractItemView.DropIndicatorPosition.AboveItem:
+            if dragged_idx < target_idx:
+                new_idx -= 1
                 
-            new_idx = target_idx
-            if indicator == QAbstractItemView.DropIndicatorPosition.BelowItem:
-                new_idx = target_idx + 1
+        if new_idx < 0:
+            new_idx = 0
+            
+        if parent:
+            if dragged_idx != new_idx:
+                parent.takeChild(dragged_idx)
+                parent.insertChild(new_idx, dragged_item)
+        else:
+            if dragged_idx != new_idx:
+                self.takeTopLevelItem(dragged_idx)
+                self.insertTopLevelItem(new_idx, dragged_item)
                 
-            # If same parent, adjust for shifting
-            if old_parent == target_parent:
-                if dragged_idx < target_idx:
-                    new_idx -= 1
-                    
-        # Take item
-        if old_parent:
-            old_parent.takeChild(dragged_idx)
-        else:
-            self.takeTopLevelItem(dragged_idx)
-            
-        # Insert item
-        if target_parent:
-            max_count = target_parent.childCount()
-            if new_idx < 0:
-                new_idx = 0
-            if new_idx > max_count:
-                new_idx = max_count
-            target_parent.insertChild(new_idx, dragged_item)
-            target_parent.setExpanded(True)
-        else:
-            max_count = self.topLevelItemCount()
-            if new_idx < 0:
-                new_idx = 0
-            if new_idx > max_count:
-                new_idx = max_count
-            self.insertTopLevelItem(new_idx, dragged_item)
-            
         self.setCurrentItem(dragged_item)
         dragged_item.setSelected(True)
         
@@ -13850,170 +8973,6 @@ class IMELineEdit(QLineEdit):
         if preedit:
             full_text = self.text() + preedit
             self.ime_search.emit(full_text)
-
-
-class TableSelectionDialog(QDialog):
-    def __init__(self, all_tables, current_tables, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("분류 테이블 선택 및 매핑")
-        self.resize(450, 550)
-        
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #FFFFFF;
-            }
-            QLineEdit {
-                background-color: #F8FAFC;
-                color: #1E293B;
-                border: 1px solid #CBD5E1;
-                border-radius: 4px;
-                padding: 6px 10px;
-                font-size: 12px;
-            }
-            QListWidget {
-                background-color: #FFFFFF;
-                border: 1px solid #E2E8F0;
-                border-radius: 6px;
-                padding: 4px;
-            }
-            QListWidget::item {
-                padding: 4px;
-                font-size: 12px;
-                color: #334155;
-            }
-            QPushButton {
-                padding: 6px 14px;
-                font-size: 12px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-        """)
-        
-        layout = QVBoxLayout(self)
-        
-        lbl_info = QLabel("해당 분류에 포함할 테이블들을 체크 또는 언체크하세요:")
-        lbl_info.setStyleSheet("font-size: 12px; color: #475569; font-weight: bold; margin-bottom: 2px;")
-        layout.addWidget(lbl_info)
-        
-        # 검색창
-        search_layout = QHBoxLayout()
-        search_layout.setSpacing(4)
-        
-        self.txt_filter = IMELineEdit()
-        self.txt_filter.setPlaceholderText("테이블명 또는 한글명 입력...")
-        self.txt_filter.setFixedHeight(30)
-        self.txt_filter.setStyleSheet("""
-            QLineEdit {
-                background-color: #F8FAFC;
-                color: #1E293B;
-                border: 1px solid #CBD5E1;
-                border-radius: 4px;
-                padding: 6px 10px;
-                font-size: 12px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #3B82F6;
-                background-color: #FFFFFF;
-            }
-        """)
-        self.txt_filter.textChanged.connect(self.filter_items)
-        self.txt_filter.ime_search.connect(self.filter_items)
-        search_layout.addWidget(self.txt_filter)
-
-        reset_style = """
-            QPushButton {
-                background-color: #EFF6FF;
-                color: #2563EB;
-                border: 1px solid #BFDBFE;
-                border-radius: 4px;
-                padding: 0px;
-                font-size: 14px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #DBEAFE;
-                color: #1D4ED8;
-                border-color: #93C5FD;
-            }
-            QPushButton:pressed {
-                background-color: #BFDBFE;
-            }
-        """
-        self.btn_reset_filter = QPushButton("↺")
-        self.btn_reset_filter.setFixedWidth(28)
-        self.btn_reset_filter.setFixedHeight(30)
-        self.btn_reset_filter.setAutoDefault(False)
-        self.btn_reset_filter.setDefault(False)
-        self.btn_reset_filter.setToolTip("검색 초기화")
-        self.btn_reset_filter.setStyleSheet(reset_style)
-        self.btn_reset_filter.clicked.connect(self.clear_filter)
-        search_layout.addWidget(self.btn_reset_filter)
-        
-        layout.addLayout(search_layout)
-        
-        # 목록
-        self.list_widget = QListWidget()
-        self.items = []
-        for t in all_tables:
-            item = QListWidgetItem(self.list_widget)
-            display_text = f"{t['table_name']}"
-            if t['table_ko_name']:
-                display_text += f" ({t['table_ko_name']})"
-            item.setText(display_text)
-            item.setData(Qt.ItemDataRole.UserRole, t['table_name'])
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            
-            # Check if currently in category
-            if t['table_name'] in current_tables:
-                item.setCheckState(Qt.CheckState.Checked)
-            else:
-                item.setCheckState(Qt.CheckState.Unchecked)
-                
-            self.items.append(item)
-            
-        layout.addWidget(self.list_widget)
-        
-        # 버튼
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
-        
-        btn_ok = QPushButton("적용")
-        btn_ok.setAutoDefault(False)
-        btn_ok.setDefault(False)
-        btn_ok.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_ok.setStyleSheet("background-color: #2563EB; color: #FFFFFF; border: none;")
-        btn_ok.clicked.connect(self.accept)
-        
-        btn_cancel = QPushButton("취소")
-        btn_cancel.setAutoDefault(False)
-        btn_cancel.setDefault(False)
-        btn_cancel.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_cancel.setStyleSheet("background-color: #E2E8F0; color: #475569; border: none;")
-        btn_cancel.clicked.connect(self.reject)
-        
-        btn_layout.addWidget(btn_ok)
-        btn_layout.addWidget(btn_cancel)
-        layout.addLayout(btn_layout)
-
-    def clear_filter(self):
-        self.txt_filter.clear()
-        self.filter_items("")
-
-    def filter_items(self, text=None):
-        if text is None or isinstance(text, bool):
-            text = self.txt_filter.text().strip()
-        for item in self.items:
-            if text.lower() in item.text().lower():
-                item.setHidden(False)
-            else:
-                item.setHidden(True)
-                
-    def get_selected_tables(self):
-        selected = []
-        for item in self.items:
-            if item.checkState() == Qt.CheckState.Checked:
-                selected.append(item.data(Qt.ItemDataRole.UserRole))
-        return selected
 
 
 class LoadingOverlay(QWidget):
@@ -14067,422 +9026,17 @@ class LoadingOverlay(QWidget):
         self.raise_()
 
 
-class SpecExportDialog(QDialog):
-    """테이블 명세서 Excel 내보내기 다이얼로그"""
-    def __init__(self, db_mgr, parent=None):
-        super().__init__(parent)
-        self.db_mgr = db_mgr
-        self.checked_tables = set()   # 검색으로 목록이 바뀌어도 체크 상태 유지
-        self.setWindowTitle("📊 테이블 명세서 내보내기 (Excel)")
-        self.resize(560, 660)
-        self.setStyleSheet("""
-            QDialog { background-color: #FFFFFF; }
-            QLabel { font-size: 12px; color: #334155; font-family: 'Malgun Gothic', sans-serif; }
-            QLineEdit, QComboBox {
-                border: 1px solid #CBD5E1; border-radius: 4px; padding: 5px; font-size: 12px;
-            }
-            QListWidget {
-                border: 1px solid #E2E8F0; border-radius: 4px; font-size: 12px;
-            }
-            QCheckBox { font-size: 12px; color: #334155; }
-            QPushButton {
-                background-color: #F1F5F9; color: #475569; border: 1px solid #CBD5E1;
-                border-radius: 4px; padding: 6px 12px; font-weight: bold; font-size: 12px;
-            }
-            QPushButton:hover { background-color: #E2E8F0; }
-            QPushButton#PrimaryBtn {
-                background-color: #2563EB; color: white; border: none;
-            }
-            QPushButton#PrimaryBtn:hover { background-color: #1D4ED8; }
-        """)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(15, 15, 15, 15)
-        layout.setSpacing(8)
-
-        lbl_info = QLabel("내보낼 테이블을 선택하세요. 테이블별 컬럼 명세와 매핑된 공통코드·관계 정보가 Excel로 저장됩니다.")
-        lbl_info.setWordWrap(True)
-        lbl_info.setStyleSheet("color: #64748B;")
-        layout.addWidget(lbl_info)
-
-        # 검색 영역
-        search_row = QHBoxLayout()
-        self.combo_search_type = QComboBox()
-        self.combo_search_type.addItems(["테이블", "컬럼"])
-        self.combo_search_type.setFixedWidth(70)
-        self.edit_search = QLineEdit()
-        self.edit_search.setPlaceholderText("테이블명, 한글명 검색...")
-        self.chk_fav_only = QCheckBox("⭐ 즐겨찾기만")
-        search_row.addWidget(self.combo_search_type)
-        search_row.addWidget(self.edit_search, 1)
-        search_row.addWidget(self.chk_fav_only)
-        layout.addLayout(search_row)
-
-        # 테이블 목록
-        self.list_tables = QListWidget()
-        layout.addWidget(self.list_tables, 1)
-
-        # 선택 조작
-        sel_row = QHBoxLayout()
-        btn_all = QPushButton("전체선택")
-        btn_none = QPushButton("전체해제")
-        self.lbl_count = QLabel("선택: 0개")
-        self.lbl_count.setStyleSheet("color: #2563EB; font-weight: bold;")
-        sel_row.addWidget(btn_all)
-        sel_row.addWidget(btn_none)
-        sel_row.addStretch()
-        sel_row.addWidget(self.lbl_count)
-        layout.addLayout(sel_row)
-
-        # 옵션
-        opt_row = QHBoxLayout()
-        self.chk_toc = QCheckBox("목차 시트")
-        self.chk_toc.setChecked(True)
-        self.chk_codes = QCheckBox("공통코드 시트")
-        self.chk_codes.setChecked(True)
-        self.chk_rels = QCheckBox("테이블 관계 시트")
-        self.chk_rels.setChecked(True)
-        opt_row.addWidget(QLabel("포함 항목:"))
-        opt_row.addWidget(self.chk_toc)
-        opt_row.addWidget(self.chk_codes)
-        opt_row.addWidget(self.chk_rels)
-        opt_row.addStretch()
-        layout.addLayout(opt_row)
-
-        # 하단 버튼
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        btn_cancel = QPushButton("취소")
-        btn_export = QPushButton("📊 내보내기")
-        btn_export.setObjectName("PrimaryBtn")
-        btn_row.addWidget(btn_cancel)
-        btn_row.addWidget(btn_export)
-        layout.addLayout(btn_row)
-
-        # 시그널 연결
-        self.edit_search.textChanged.connect(self.refresh_list)
-        self.combo_search_type.currentIndexChanged.connect(self.refresh_list)
-        self.chk_fav_only.stateChanged.connect(self.refresh_list)
-        self.list_tables.itemChanged.connect(self.on_item_changed)
-        btn_all.clicked.connect(lambda: self.set_all_checked(True))
-        btn_none.clicked.connect(lambda: self.set_all_checked(False))
-        btn_cancel.clicked.connect(self.reject)
-        btn_export.clicked.connect(self.do_export)
-
-        self.refresh_list()
-
-    def refresh_list(self):
-        keyword = self.edit_search.text().strip()
-        search_type = self.combo_search_type.currentText()
-        rows = self.db_mgr.get_tables_list(keyword if keyword else None, search_type)
-        if self.chk_fav_only.isChecked():
-            rows = [r for r in rows if r.get('is_favorite')]
-        self.list_tables.blockSignals(True)
-        self.list_tables.clear()
-        for r in rows:
-            ko = f" ({r['table_ko_name']})" if r.get('table_ko_name') else ""
-            star = "⭐ " if r.get('is_favorite') else ""
-            item = QListWidgetItem(f"{star}{r['table_name']}{ko}")
-            item.setData(Qt.ItemDataRole.UserRole, r['table_name'])
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Checked if r['table_name'] in self.checked_tables
-                               else Qt.CheckState.Unchecked)
-            self.list_tables.addItem(item)
-        self.list_tables.blockSignals(False)
-        self.update_count()
-
-    def on_item_changed(self, item):
-        name = item.data(Qt.ItemDataRole.UserRole)
-        if item.checkState() == Qt.CheckState.Checked:
-            self.checked_tables.add(name)
-        else:
-            self.checked_tables.discard(name)
-        self.update_count()
-
-    def set_all_checked(self, checked):
-        self.list_tables.blockSignals(True)
-        for i in range(self.list_tables.count()):
-            item = self.list_tables.item(i)
-            item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
-            name = item.data(Qt.ItemDataRole.UserRole)
-            if checked:
-                self.checked_tables.add(name)
-            else:
-                self.checked_tables.discard(name)
-        self.list_tables.blockSignals(False)
-        self.update_count()
-
-    def update_count(self):
-        self.lbl_count.setText(f"선택: {len(self.checked_tables)}개")
-
-    # ── Excel 생성 ─────────────────────────────────────────────
-    @staticmethod
-    def _safe_sheet_name(name, used):
-        """엑셀 시트명 제약(31자, 금지문자) 처리 및 중복 방지"""
-        for ch in '[]:*?/\\':
-            name = name.replace(ch, '_')
-        base = name[:31] if len(name) > 31 else name
-        candidate = base
-        n = 2
-        while candidate.lower() in used:
-            suffix = f"~{n}"
-            candidate = base[:31 - len(suffix)] + suffix
-            n += 1
-        used.add(candidate.lower())
-        return candidate
-
-    def do_export(self):
-        from PyQt6.QtWidgets import QFileDialog, QMessageBox
-        if not self.checked_tables:
-            QMessageBox.warning(self, "선택 필요", "내보낼 테이블을 1개 이상 선택해주세요.")
-            return
-        try:
-            import openpyxl  # noqa: F401
-        except ImportError:
-            QMessageBox.critical(self, "라이브러리 없음",
-                                 "Excel 내보내기에는 openpyxl 라이브러리가 필요합니다.\n\n  pip install openpyxl")
-            return
-
-        default_name = f"테이블명세서_{datetime.now().strftime('%Y%m%d')}.xlsx"
-        path, _ = QFileDialog.getSaveFileName(self, "명세서 저장", default_name, "Excel 파일 (*.xlsx)")
-        if not path:
-            return
-        try:
-            # 사이드바 목록 순서(즐겨찾기 우선, 이름순)대로 내보내기
-            ordered = [r['table_name'] for r in self.db_mgr.get_tables_list()
-                       if r['table_name'] in self.checked_tables]
-            self._build_workbook(path, ordered)
-        except PermissionError:
-            QMessageBox.critical(self, "저장 실패",
-                                 "파일이 다른 프로그램(Excel)에서 열려 있어 저장할 수 없습니다.\n파일을 닫고 다시 시도해주세요.")
-            return
-        except Exception as e:
-            QMessageBox.critical(self, "저장 실패", f"명세서 생성 중 오류가 발생했습니다.\n{str(e)}")
-            return
-
-        msg = QMessageBox(self)
-        msg.setWindowTitle("내보내기 완료")
-        msg.setIcon(QMessageBox.Icon.Information)
-        msg.setText(f"테이블 {len(self.checked_tables)}개의 명세서가 저장되었습니다.\n\n{path}")
-        btn_open = msg.addButton("폴더 열기", QMessageBox.ButtonRole.ActionRole)
-        msg.addButton("확인", QMessageBox.ButtonRole.AcceptRole)
-        msg.exec()
-        if msg.clickedButton() == btn_open:
-            try:
-                os.startfile(os.path.dirname(os.path.abspath(path)))
-            except Exception:
-                pass
-        self.accept()
-
-    def _build_workbook(self, path, table_names):
-        from openpyxl import Workbook
-        from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
-        from openpyxl.utils import get_column_letter
-
-        HEADER_FILL = PatternFill("solid", fgColor="2563EB")
-        HEADER_FONT = Font(bold=True, color="FFFFFF", size=10)
-        TITLE_FONT = Font(bold=True, size=13, color="1E3A8A")
-        META_FONT = Font(size=9, color="64748B")
-        PK_FONT = Font(bold=True, color="D97706", size=10)
-        DATA_FONT = Font(size=10)
-        NOTNULL_FONT = Font(size=10, color="DC2626")
-        thin = Side(style="thin", color="CBD5E1")
-        BORDER = Border(left=thin, right=thin, top=thin, bottom=thin)
-        CENTER = Alignment(horizontal="center", vertical="center")
-        LEFT = Alignment(horizontal="left", vertical="center")
-
-        # 테이블 한글명 조회용 맵
-        ko_map = {r['table_name']: (r.get('table_ko_name') or '')
-                  for r in self.db_mgr.get_tables_list()}
-
-        wb = Workbook()
-        wb.remove(wb.active)
-        used_names = set()
-        today_str = datetime.now().strftime('%Y-%m-%d')
-
-        # 테이블별 컬럼 정보를 미리 수집 (공통코드/관계 시트에서 재사용)
-        table_cols = {t: self.db_mgr.get_table_columns(t) for t in table_names}
-
-        # 1) 목차 시트
-        toc_ws = None
-        sheet_of_table = {}
-        if self.chk_toc.isChecked():
-            toc_ws = wb.create_sheet(self._safe_sheet_name("목차", used_names))
-
-        # 2) 테이블별 시트
-        col_headers = ["번호", "PK", "컬럼명", "컬럼한글명", "데이터타입", "Null여부", "연결테이블", "공통코드"]
-        col_widths = [6, 6, 24, 22, 18, 12, 20, 20]
-        for t in table_names:
-            ws = wb.create_sheet(self._safe_sheet_name(t, used_names))
-            sheet_of_table[t] = ws.title
-
-            ko = ko_map.get(t, '')
-            title = f"{t}" + (f" ({ko})" if ko else "")
-            ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(col_headers))
-            c = ws.cell(row=1, column=1, value=f"■ {title}")
-            c.font = TITLE_FONT
-            cols = table_cols[t]
-            meta = ws.cell(row=2, column=1, value=f"작성일: {today_str}    컬럼수: {len(cols)}")
-            meta.font = META_FONT
-
-            hdr_row = 4
-            for ci, h in enumerate(col_headers, start=1):
-                cell = ws.cell(row=hdr_row, column=ci, value=h)
-                cell.fill = HEADER_FILL
-                cell.font = HEADER_FONT
-                cell.border = BORDER
-                cell.alignment = CENTER
-                ws.column_dimensions[get_column_letter(ci)].width = col_widths[ci - 1]
-
-            for ri, col in enumerate(cols, start=1):
-                r = hdr_row + ri
-                is_pk = col['is_pk'] in ['Y', 'y', 1, '1']
-                dt_len = f"({int(col['length'])})" if col['length'] is not None else ""
-                null_val = "NULL" if col['is_nullable'] in ['Y', 'y', 1, '1'] else "NOT NULL"
-                link_table = ""
-                code_group = ""
-                if col.get('mapping_type') == '마스터테이블':
-                    link_table = col.get('ref_table_name') or ""
-                elif col.get('mapping_type') == '공통코드':
-                    code_group = col.get('ref_table_name') or ""
-                values = [ri, "Y" if is_pk else "", col['column_name'], col['column_ko_name'] or "",
-                          f"{col['data_type']}{dt_len}", null_val, link_table, code_group]
-                for ci, v in enumerate(values, start=1):
-                    cell = ws.cell(row=r, column=ci, value=v)
-                    cell.border = BORDER
-                    cell.font = DATA_FONT
-                    cell.alignment = CENTER if ci in (1, 2, 6) else LEFT
-                    if is_pk and ci in (2, 3, 4):
-                        cell.font = PK_FONT
-                    if ci == 6 and null_val == "NOT NULL":
-                        cell.font = NOTNULL_FONT
-            ws.freeze_panes = f"A{hdr_row + 1}"
-            if cols:
-                ws.auto_filter.ref = f"A{hdr_row}:{get_column_letter(len(col_headers))}{hdr_row + len(cols)}"
-
-        # 3) 목차 내용 채우기 (하이퍼링크)
-        if toc_ws is not None:
-            toc_ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
-            c = toc_ws.cell(row=1, column=1, value=f"■ 테이블 명세서 목차  (총 {len(table_names)}개 / 작성일 {today_str})")
-            c.font = TITLE_FONT
-            headers = ["번호", "테이블명", "테이블한글명", "컬럼수"]
-            widths = [6, 30, 28, 10]
-            for ci, h in enumerate(headers, start=1):
-                cell = toc_ws.cell(row=3, column=ci, value=h)
-                cell.fill = HEADER_FILL
-                cell.font = HEADER_FONT
-                cell.border = BORDER
-                cell.alignment = CENTER
-                toc_ws.column_dimensions[get_column_letter(ci)].width = widths[ci - 1]
-            for ri, t in enumerate(table_names, start=1):
-                r = 3 + ri
-                name_cell = toc_ws.cell(row=r, column=2, value=t)
-                name_cell.hyperlink = f"#'{sheet_of_table[t]}'!A1"
-                name_cell.font = Font(size=10, color="2563EB", underline="single")
-                toc_ws.cell(row=r, column=1, value=ri).alignment = CENTER
-                toc_ws.cell(row=r, column=3, value=ko_map.get(t, ''))
-                toc_ws.cell(row=r, column=4, value=len(table_cols[t])).alignment = CENTER
-                for ci in range(1, 5):
-                    cell = toc_ws.cell(row=r, column=ci)
-                    cell.border = BORDER
-                    if cell.font.size is None or (ci != 2):
-                        cell.font = DATA_FONT if ci != 2 else cell.font
-
-        # 4) 공통코드 시트 (선택 테이블에서 참조하는 그룹만)
-        if self.chk_codes.isChecked():
-            groups = []
-            for t in table_names:
-                for col in table_cols[t]:
-                    if col.get('mapping_type') == '공통코드' and col.get('ref_table_name'):
-                        g = col['ref_table_name']
-                        if g not in groups:
-                            groups.append(g)
-            if groups:
-                ws = wb.create_sheet(self._safe_sheet_name("공통코드", used_names))
-                ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=5)
-                ws.cell(row=1, column=1, value="■ 공통코드 명세 (선택 테이블 참조분)").font = TITLE_FONT
-                headers = ["코드그룹 ID", "코드그룹명", "코드값", "코드한글명", "설명"]
-                widths = [22, 24, 12, 22, 34]
-                for ci, h in enumerate(headers, start=1):
-                    cell = ws.cell(row=3, column=ci, value=h)
-                    cell.fill = HEADER_FILL
-                    cell.font = HEADER_FONT
-                    cell.border = BORDER
-                    cell.alignment = CENTER
-                    ws.column_dimensions[get_column_letter(ci)].width = widths[ci - 1]
-                r = 4
-                for g in groups:
-                    codes = self.db_mgr.get_common_codes_list(g)
-                    for code in codes:
-                        vals = [g, code.get('code_group_name') or '', code.get('code_value') or '',
-                                code.get('code_ko_name') or '', code.get('description') or '']
-                        for ci, v in enumerate(vals, start=1):
-                            cell = ws.cell(row=r, column=ci, value=v)
-                            cell.border = BORDER
-                            cell.font = DATA_FONT
-                            cell.alignment = LEFT
-                        r += 1
-                ws.freeze_panes = "A4"
-
-        # 5) 테이블 관계 시트
-        if self.chk_rels.isChecked():
-            rel_rows = []
-            for t in table_names:
-                for col in table_cols[t]:
-                    if col.get('mapping_type') == '마스터테이블' and col.get('ref_table_name'):
-                        rel_rows.append((t, col['column_name'], col['ref_table_name']))
-            if rel_rows:
-                ws = wb.create_sheet(self._safe_sheet_name("테이블 관계", used_names))
-                ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=3)
-                ws.cell(row=1, column=1, value="■ 테이블 관계 명세 (선택 테이블 기준)").font = TITLE_FONT
-                headers = ["테이블명", "컬럼명", "참조 테이블"]
-                widths = [28, 24, 28]
-                for ci, h in enumerate(headers, start=1):
-                    cell = ws.cell(row=3, column=ci, value=h)
-                    cell.fill = HEADER_FILL
-                    cell.font = HEADER_FONT
-                    cell.border = BORDER
-                    cell.alignment = CENTER
-                    ws.column_dimensions[get_column_letter(ci)].width = widths[ci - 1]
-                for ri, (t, c_name, ref) in enumerate(rel_rows, start=4):
-                    for ci, v in enumerate([t, c_name, ref], start=1):
-                        cell = ws.cell(row=ri, column=ci, value=v)
-                        cell.border = BORDER
-                        cell.font = DATA_FONT
-                        cell.alignment = LEFT
-                ws.freeze_panes = "A4"
-
-        if not wb.sheetnames:
-            wb.create_sheet("명세서")
-        wb.save(path)
-
-
-class OracleGuideApp(QMainWindow):
+class BizGuideApp(QMainWindow):
     """메인 윈도우 애플리케이션 클래스"""
     def __init__(self):
         super().__init__()
         self.db_mgr = DatabaseManager()
-        self.all_tables = []
-        self.loaded_table_count = 0
-        self.open_query_tabs = {}  # 쿼리 상세 탭 관리
+        self.open_query_tabs = {}  # 쿼리 상세 탭 관리 (사이드이펙트 방지용)
         self.open_task_tabs = {}   # 업무 정보 상세 탭 관리
-        self.setWindowTitle("DB 돋보기")
+        self.open_contact_tabs = {} # 주소록 상세 목록 탭 관리
+        self.setWindowTitle("업무 관리")
         self.resize(1250, 800)
         self.setWindowIcon(get_app_icon())
-        
-        # 검색 디바운싱 타이머 설정
-        from PyQt6.QtCore import QTimer
-        self.search_timer = QTimer(self)
-        self.search_timer.setSingleShot(True)
-        self.search_timer.timeout.connect(self.do_search)
-        
-        self.code_search_timer = QTimer(self)
-        self.code_search_timer.setSingleShot(True)
-        self.code_search_timer.timeout.connect(self.do_code_search)
-
-        self.relation_search_timer = QTimer(self)
-        self.relation_search_timer.setSingleShot(True)
-        self.relation_search_timer.timeout.connect(self.do_relation_search)
         
         self.init_ui()
         self.loading_overlay = LoadingOverlay(self)
@@ -14491,26 +9045,8 @@ class OracleGuideApp(QMainWindow):
 
     def _deferred_load(self):
         """이벤트 루프 시작 후 백그라운드에서 데이터를 로드하고 오버레이 표시"""
-        self.loading_overlay.show_message("📦 테이블 목록 로딩 중... (1/5)")
+        self.loading_overlay.show_message("📁 업무 정보 로딩 중...")
         QApplication.processEvents()
-        self.load_tables_list()
-        
-        self.loading_overlay.show_message("📁 업무별 트리 로딩 중... (2/5)")
-        QApplication.processEvents()
-        self.load_tasks_tree()
-        
-        self.loading_overlay.show_message("💬 공통코드 목록 로딩 중... (3/5)")
-        QApplication.processEvents()
-        self.load_codes_list()
-        
-        self.loading_overlay.show_message("🔗 테이블 관계 목록 로딩 중... (4/5)")
-        QApplication.processEvents()
-        self.load_relations_list()
-        
-        self.loading_overlay.show_message("🕒 최근 조회 목록 로딩 중... (5/5)")
-        QApplication.processEvents()
-        self.load_recent_tables_list()
-        
         self.loading_overlay.hide()
 
     def resizeEvent(self, event):
@@ -14549,7 +9085,7 @@ class OracleGuideApp(QMainWindow):
         top_layout = QHBoxLayout()
         top_layout.setContentsMargins(12, 0, 12, 0)
 
-        lbl_app_title = QLabel("🔍 DB 돋보기")
+        lbl_app_title = QLabel("🔍 업무 관리")
         lbl_app_title.setStyleSheet("""
             font-size: 14px; 
             font-weight: 800; 
@@ -14557,114 +9093,9 @@ class OracleGuideApp(QMainWindow):
             letter-spacing: 0.2px;
         """)
         top_layout.addWidget(lbl_app_title)
-        top_layout.addSpacing(30)
-
-        # 메인 영역 전체조회 전용 버튼 배치
-        btn_all_codes = QPushButton("🗂️ 전체 공통코드")
-        btn_all_codes.clicked.connect(self.open_all_common_codes_tab)
-        
-        btn_all_relations = QPushButton("🔗 전체 테이블 관계")
-        btn_all_relations.clicked.connect(self.open_all_relations_tab)
-
-        btn_export_spec = QPushButton("📊 명세서 내보내기")
-        btn_export_spec.clicked.connect(self.on_export_spec_clicked)
-
-        btn_shortcut_style = """
-            QPushButton {
-                background-color: #FFFFFF;
-                color: #334155;
-                border: 1px solid #E2E8F0;
-                font-weight: bold;
-                font-size: 11px;
-                padding: 5px 12px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                border-color: #2563EB;
-                color: #2563EB;
-            }
-        """
-        for btn in [btn_all_codes, btn_all_relations, btn_export_spec]:
-            btn.setStyleSheet(btn_shortcut_style)
-            btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            top_layout.addWidget(btn)
-
         top_layout.addStretch()
-
-        # 설정 메뉴 (톱니바퀴) - 데이터 불러오기 / 공통코드 변환 설정 / 기본 정보 초기화
-        self.settings_menu = QMenu(self)
-        self.settings_menu.setStyleSheet("""
-            QMenu {
-                background-color: #FFFFFF;
-                border: 1px solid #CBD5E1;
-                border-radius: 6px;
-                padding: 6px;
-                font-size: 12px;
-                color: #334155;
-            }
-            QMenu::item {
-                padding: 7px 22px 7px 14px;
-                border-radius: 4px;
-            }
-            QMenu::item:selected {
-                background-color: #EFF6FF;
-                color: #1D4ED8;
-            }
-            QMenu::separator {
-                height: 1px;
-                background-color: #E2E8F0;
-                margin: 5px 8px;
-            }
-        """)
-
-        act_import = QAction("📁  데이터 불러오기", self)
-        act_import.setStatusTip("엑셀/CSV 명세서를 읽어 테이블·컬럼·관계 정보를 적재합니다.")
-        act_import.triggered.connect(self.on_import_clicked)
-        self.settings_menu.addAction(act_import)
-
-        act_code_setup = QAction("🔤  공통코드 설정", self)
-        act_code_setup.setStatusTip("공통코드 테이블과 컬럼 매핑 규칙(최대 3개)을 설정합니다.")
-        act_code_setup.triggered.connect(self.on_code_setup_clicked)
-        self.settings_menu.addAction(act_code_setup)
-
-        self.settings_menu.addSeparator()
-
-        act_reset = QAction("🗑️  기본 정보 초기화", self)
-        act_reset.setStatusTip("저장된 모든 데이터를 삭제하고 빈 상태로 되돌립니다.")
-        act_reset.triggered.connect(self.on_reset_all_data)
-        self.settings_menu.addAction(act_reset)
-
-        btn_settings = QPushButton("⚙️ 설정")
-        btn_settings.setToolTip("설정")
-        btn_settings.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_settings.setMenu(self.settings_menu)
-        btn_settings.setStyleSheet("""
-            QPushButton {
-                background-color: #FFFFFF;
-                color: #475569;
-                border: 1px solid #CBD5E1;
-                font-weight: bold;
-                font-size: 11px;
-                padding: 5px 22px 5px 12px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #F1F5F9;
-                border-color: #2563EB;
-            }
-            QPushButton:pressed {
-                background-color: #E2E8F0;
-            }
-            QPushButton::menu-indicator {
-                subcontrol-origin: padding;
-                subcontrol-position: right center;
-                right: 4px;
-                width: 8px;
-            }
-        """)
-        top_layout.addWidget(btn_settings)
-        top_bar.setLayout(top_layout)
         
+        top_bar.setLayout(top_layout)
         main_layout.addWidget(top_bar, 0)
 
         # 2. 메인 바디 영역
@@ -14676,7 +9107,7 @@ class OracleGuideApp(QMainWindow):
             }
         """)
 
-        # 2-1. 좌측 사이드바 위젯 (QTabWidget 3개 탭 구성)
+        # 2-1. 좌측 사이드바 위젯 (세로 메뉴바 + 콘텐츠 스택)
         sidebar_widget = QWidget()
         sidebar_widget.setObjectName("Sidebar")
         sidebar_widget.setStyleSheet("""
@@ -14689,483 +9120,15 @@ class OracleGuideApp(QMainWindow):
         sidebar_main_layout = QVBoxLayout()
         sidebar_main_layout.setContentsMargins(4, 4, 4, 4)
 
-        self.sidebar_tab = QTabWidget()
-        self.sidebar_tab.setStyleSheet("""
-            QTabWidget::pane {
-                border: none;
-                background-color: #FFFFFF;
-            }
-            QTabBar::tab {
-                font-family: "Malgun Gothic", "맑은 고딕", sans-serif;
-                background-color: #F1F5F9;
-                color: #475569;
-                padding: 5px 8px;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-                font-weight: 600;
-                font-size: 11px;
-                margin-right: 1px;
-                border: 1px solid #E2E8F0;
-                border-bottom: none;
-            }
-            QTabBar::tab:hover {
-                background-color: #E2E8F0;
-            }
-            QTabBar::tab:selected {
-                background-color: #FFFFFF;
-                color: #2563EB;
-                border-bottom: 2px solid #2563EB;
-            }
-        """)
-
-        # [사이드바 탭 1] 테이블 목록
-        tab1_widget = QWidget()
-        tab1_layout = QVBoxLayout()
-        tab1_layout.setContentsMargins(6, 6, 6, 6)
-        tab1_layout.setSpacing(6)
-        
-        # 검색 타입 선택 및 검색창 레이아웃
-        search_bar_layout = QHBoxLayout()
-        search_bar_layout.setContentsMargins(0, 0, 0, 0)
-        search_bar_layout.setSpacing(4)
-
-        self.combo_search_type = QComboBox()
-        self.combo_search_type.addItems(["테이블", "컬럼"])
-        self.combo_search_type.setFixedWidth(65)
-        self.combo_search_type.setFixedHeight(30)
-        self.combo_search_type.setStyleSheet("""
-            QComboBox {
-                background-color: #F8FAFC;
-                color: #1E293B;
-                border: 1px solid #CBD5E1;
-                border-radius: 4px;
-                padding: 4px 6px;
-                font-size: 11px;
-            }
-            QComboBox:focus {
-                border: 1px solid #3B82F6;
-            }
-        """)
-        self.combo_search_type.currentIndexChanged.connect(self.on_search_type_changed)
-
-        self.txt_search = QLineEdit()
-        self.txt_search.setPlaceholderText("테이블명, 한글명 검색...")
-        self.txt_search.setStyleSheet(self.get_sidebar_search_style())
-        self.txt_search.setFixedHeight(30)
-        self.txt_search.returnPressed.connect(self.do_search)
-
-        self.btn_reset_search = QPushButton("↺")
-        self.btn_reset_search.setFixedWidth(28)
-        self.btn_reset_search.setFixedHeight(30)
-        self.btn_reset_search.setToolTip("검색 초기화")
-        self.btn_reset_search.setStyleSheet(self.get_sidebar_reset_button_style())
-        self.btn_reset_search.clicked.connect(self.clear_search_tables)
-
-        search_bar_layout.addWidget(self.combo_search_type)
-        search_bar_layout.addWidget(self.txt_search)
-        search_bar_layout.addWidget(self.btn_reset_search)
-        tab1_layout.addLayout(search_bar_layout)
-
-        self.list_tables = DragDropTableListWidget()
-        self.list_tables.setStyleSheet(self.get_sidebar_list_style())
-        self.list_tables.setDragEnabled(True)
-        self.list_tables.itemDoubleClicked.connect(self.on_table_double_clicked)
-        self.list_tables.verticalScrollBar().valueChanged.connect(self.on_tables_scroll)
-        tab1_layout.addWidget(self.list_tables)
-        tab1_widget.setLayout(tab1_layout)
-        self.sidebar_tab.addTab(tab1_widget, "테이블")
-
-        # [사이드바 신규 탭] 업무별 테이블 목록
-        tab_task_widget = QWidget()
-        tab_task_layout = QVBoxLayout()
-        tab_task_layout.setContentsMargins(6, 6, 6, 6)
-        tab_task_layout.setSpacing(6)
-
-        # 업무별 검색 영역 (콤보박스 + 검색창)
-        search_task_bar_layout = QHBoxLayout()
-        search_task_bar_layout.setSpacing(4)
-        
-        self.combo_search_tasks_type = QComboBox()
-        self.combo_search_tasks_type.addItems(["업무분류명", "테이블명"])
-        self.combo_search_tasks_type.setFixedHeight(30)
-        self.combo_search_tasks_type.setStyleSheet("""
-            QComboBox {
-                background-color: #F8FAFC;
-                color: #1E293B;
-                border: 1px solid #CBD5E1;
-                border-radius: 4px;
-                padding: 4px 6px;
-                font-size: 11px;
-                min-width: 90px;
-                max-width: 95px;
-            }
-        """)
-        
-        def on_search_task_type_changed(text):
-            if text == "테이블명":
-                self.txt_search_tasks.setPlaceholderText("테이블명, 한글명 입력 후 Enter...")
-            else:
-                self.txt_search_tasks.setPlaceholderText("업무분류 경로 입력 후 Enter...")
-            self.do_task_search()
-            
-        self.combo_search_tasks_type.currentTextChanged.connect(on_search_task_type_changed)
-        search_task_bar_layout.addWidget(self.combo_search_tasks_type)
-
-        self.txt_search_tasks = QLineEdit()
-        self.txt_search_tasks.setPlaceholderText("업무분류 경로 입력 후 Enter...")
-        self.txt_search_tasks.setStyleSheet(self.get_sidebar_search_style())
-        self.txt_search_tasks.setFixedHeight(30)
-        self.txt_search_tasks.returnPressed.connect(self.do_task_search)
-
-        self.btn_reset_search_tasks = QPushButton("↺")
-        self.btn_reset_search_tasks.setFixedWidth(28)
-        self.btn_reset_search_tasks.setFixedHeight(30)
-        self.btn_reset_search_tasks.setToolTip("검색 초기화")
-        self.btn_reset_search_tasks.setStyleSheet(self.get_sidebar_reset_button_style())
-        self.btn_reset_search_tasks.clicked.connect(self.clear_search_tasks)
-
-        search_task_bar_layout.addWidget(self.txt_search_tasks)
-        search_task_bar_layout.addWidget(self.btn_reset_search_tasks)
-        
-        tab_task_layout.addLayout(search_task_bar_layout)
-
-        self.tree_tasks = TaskTreeWidget()
-        self.tree_tasks.setHeaderHidden(True)
-        self.tree_tasks.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)  # Ctrl+클릭 다중선택
-        self.tree_tasks.setStyleSheet("""
-            TaskTreeWidget, QTreeWidget {
-                background-color: #FFFFFF;
-                border: 1px solid #CBD5E1;
-                border-radius: 3px;
-                padding: 2px;
-            }
-            TaskTreeWidget::item, QTreeWidget::item {
-                height: 20px;
-                font-size: 11px;
-                color: #334155;
-            }
-            TaskTreeWidget::item:hover, QTreeWidget::item:hover {
-                background-color: #F1F5F9;
-                border-radius: 2px;
-            }
-            TaskTreeWidget::item:selected, QTreeWidget::item:selected {
-                background-color: #EFF6FF;
-                color: #2563EB;
-                font-weight: bold;
-                border-radius: 2px;
-            }
-        """)
-        self.tree_tasks.itemDoubleClicked.connect(self.on_task_tree_item_double_clicked)
-        self.tree_tasks.itemClicked.connect(self.on_task_tree_item_clicked)
-        self.tree_tasks.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.tree_tasks.customContextMenuRequested.connect(self.show_task_tree_context_menu)
-        self.tree_tasks.order_changed.connect(self.save_tree_structure_to_db)
-        tab_task_layout.addWidget(self.tree_tasks)
-        
-        # 폴더 모두 열기 / 모두 닫기 + 분류/테이블 관리 버튼 레이아웃
-        tree_btn_style = """
-            QPushButton {
-                font-size: 10px;
-                padding: 4px 5px;
-                border: 1px solid #CBD5E1;
-                border-radius: 3px;
-                background-color: #FFFFFF;
-                color: #334155;
-            }
-            QPushButton:hover {
-                background-color: #F1F5F9;
-                border-color: #94A3B8;
-            }
-        """
-
-        # 열기/닫기 행
-        tree_btn_layout = QHBoxLayout()
-        tree_btn_layout.setSpacing(4)
-
-        btn_expand_all = QPushButton("📂 모두 열기")
-        btn_expand_all.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_expand_all.setStyleSheet(tree_btn_style)
-        btn_expand_all.clicked.connect(self.tree_tasks.expandAll)
-
-        btn_collapse_all = QPushButton("📁 모두 닫기")
-        btn_collapse_all.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_collapse_all.setStyleSheet(tree_btn_style)
-        btn_collapse_all.clicked.connect(self.tree_tasks.collapseAll)
-
-        tree_btn_layout.addWidget(btn_expand_all)
-        tree_btn_layout.addWidget(btn_collapse_all)
-        tab_task_layout.addLayout(tree_btn_layout)
-
-        # 분류/테이블 관리 행
-        task_action_layout = QHBoxLayout()
-        task_action_layout.setSpacing(4)
-
-        btn_task_cat_add  = QPushButton("➕ 분류추가")
-        btn_task_cat_edit = QPushButton("✏️ 분류수정")
-        btn_task_cat_del  = QPushButton("❌ 분류삭제")
-        btn_task_tbl_add  = QPushButton("📊 테이블등록")
-
-        for btn in [btn_task_cat_add, btn_task_cat_edit, btn_task_cat_del, btn_task_tbl_add]:
-            btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            btn.setStyleSheet(tree_btn_style)
-
-        def _task_cat_add():
-            all_tbl = self.db_mgr.get_all_tables_for_mapping()
-            self.add_new_task_category(all_tbl)
-
-        def _task_cat_edit():
-            item = self.tree_tasks.currentItem()
-            if not item:
-                QMessageBox.information(self, "안내", "수정할 분류를 선택하세요.")
-                return
-            data = item.data(0, Qt.ItemDataRole.UserRole)
-            if not data or data.get("type") != "category":
-                QMessageBox.information(self, "안내", "분류 항목만 수정할 수 있습니다.")
-                return
-            self.rename_task_category_flow(data["full_path"])
-
-        def _task_cat_del():
-            item = self.tree_tasks.currentItem()
-            if not item:
-                QMessageBox.information(self, "안내", "삭제할 분류를 선택하세요.")
-                return
-            data = item.data(0, Qt.ItemDataRole.UserRole)
-            if not data or data.get("type") != "category":
-                QMessageBox.information(self, "안내", "분류 항목만 삭제할 수 있습니다.")
-                return
-            self.delete_task_category_flow(data["full_path"])
-
-        def _task_tbl_add():
-            item = self.tree_tasks.currentItem()
-            cat_path = None
-            if item:
-                data = item.data(0, Qt.ItemDataRole.UserRole)
-                if data:
-                    cat_path = data.get("full_path") or data.get("category_path")
-            all_tbl = self.db_mgr.get_all_tables_for_mapping()
-            if cat_path:
-                self.manage_tables_in_category_flow(cat_path, all_tbl)
-            else:
-                self.add_new_task_category(all_tbl)
-
-        btn_task_cat_add.clicked.connect(_task_cat_add)
-        btn_task_cat_edit.clicked.connect(_task_cat_edit)
-        btn_task_cat_del.clicked.connect(_task_cat_del)
-        btn_task_tbl_add.clicked.connect(_task_tbl_add)
-
-        task_action_layout.addWidget(btn_task_cat_add)
-        task_action_layout.addWidget(btn_task_cat_edit)
-        task_action_layout.addWidget(btn_task_cat_del)
-        task_action_layout.addWidget(btn_task_tbl_add)
-        tab_task_layout.addLayout(task_action_layout)
-
-        # 가져오기 / 내보내기 버튼 행
-        task_share_layout = QHBoxLayout()
-        task_share_layout.setSpacing(4)
-
-        btn_task_import = QPushButton("📥 가져오기")
-        btn_task_export = QPushButton("📤 내보내기")
-
-        for btn in [btn_task_import, btn_task_export]:
-            btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            btn.setStyleSheet(tree_btn_style)
-
-        btn_task_import.clicked.connect(self.on_task_tree_import)
-        btn_task_export.clicked.connect(self.on_task_tree_export)
-
-        task_share_layout.addWidget(btn_task_import)
-        task_share_layout.addWidget(btn_task_export)
-        tab_task_layout.addLayout(task_share_layout)
-
-        tab_task_widget.setLayout(tab_task_layout)
-        self.sidebar_tab.addTab(tab_task_widget, "업무별")
-
-        # [사이드바 탭 2] 최근조회 목록
-        tab_recent_widget = QWidget()
-        tab_recent_layout = QVBoxLayout()
-        tab_recent_layout.setContentsMargins(6, 6, 6, 6)
-        tab_recent_layout.setSpacing(6)
-        
-        self.list_recent = DragDropTableListWidget()
-        self.list_recent.setStyleSheet(self.get_sidebar_list_style())
-        self.list_recent.setDragEnabled(True)
-        self.list_recent.itemDoubleClicked.connect(self.on_recent_table_double_clicked)
-        tab_recent_layout.addWidget(self.list_recent)
-        
-        self.btn_clear_recent = QPushButton("🧹 최근조회 비우기")
-        self.btn_clear_recent.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.btn_clear_recent.setStyleSheet("""
-            QPushButton {
-                background-color: #FFFFFF;
-                color: #EF4444;
-                border: 1px solid #FCA5A5;
-                border-radius: 4px;
-                font-size: 11px;
-                font-weight: bold;
-                padding: 4px;
-            }
-            QPushButton:hover {
-                background-color: #FEF2F2;
-                border-color: #EF4444;
-            }
-        """)
-        self.btn_clear_recent.clicked.connect(self.on_clear_recent_clicked)
-        tab_recent_layout.addWidget(self.btn_clear_recent)
-        
-        tab_recent_widget.setLayout(tab_recent_layout)
-
-        # [사이드바 탭 3] 공통코드 목록
-        tab2_widget = QWidget()
-        tab2_layout = QVBoxLayout()
-        tab2_layout.setContentsMargins(6, 6, 6, 6)
-        tab2_layout.setSpacing(6)
-        
-        # 공통코드 검색 타입 선택 및 검색창 레이아웃
-        code_search_bar_layout = QHBoxLayout()
-        code_search_bar_layout.setContentsMargins(0, 0, 0, 0)
-        code_search_bar_layout.setSpacing(4)
-
-        self.combo_search_type_codes = QComboBox()
-        self.combo_search_type_codes.addItems(["코드그룹", "코드명", "코드한글명"])
-        self.combo_search_type_codes.setFixedWidth(85)
-        self.combo_search_type_codes.setFixedHeight(30)
-        self.combo_search_type_codes.setStyleSheet("""
-            QComboBox {
-                background-color: #F8FAFC;
-                color: #1E293B;
-                border: 1px solid #CBD5E1;
-                border-radius: 4px;
-                padding: 4px 6px;
-                font-size: 11px;
-            }
-            QComboBox:focus {
-                border: 1px solid #3B82F6;
-            }
-        """)
-        self.combo_search_type_codes.currentIndexChanged.connect(self.on_search_type_codes_changed)
-
-        self.txt_search_codes = QLineEdit()
-        self.txt_search_codes.setPlaceholderText("코드그룹명 검색...")
-        self.txt_search_codes.setStyleSheet(self.get_sidebar_search_style())
-        self.txt_search_codes.setFixedHeight(30)
-        self.txt_search_codes.returnPressed.connect(self.do_code_search)
-
-        self.btn_reset_search_codes = QPushButton("↺")
-        self.btn_reset_search_codes.setFixedWidth(28)
-        self.btn_reset_search_codes.setFixedHeight(30)
-        self.btn_reset_search_codes.setToolTip("검색 초기화")
-        self.btn_reset_search_codes.setStyleSheet(self.get_sidebar_reset_button_style())
-        self.btn_reset_search_codes.clicked.connect(self.clear_search_codes)
-
-        code_search_bar_layout.addWidget(self.combo_search_type_codes)
-        code_search_bar_layout.addWidget(self.txt_search_codes)
-        code_search_bar_layout.addWidget(self.btn_reset_search_codes)
-        tab2_layout.addLayout(code_search_bar_layout)
-
-        self.list_codes = QListWidget()
-        self.list_codes.setStyleSheet(self.get_sidebar_list_style())
-        self.list_codes.itemClicked.connect(self.on_sidebar_code_clicked)
-        self.list_codes.itemDoubleClicked.connect(self.on_code_item_double_clicked)
-        tab2_layout.addWidget(self.list_codes)
-        tab2_widget.setLayout(tab2_layout)
-        self.sidebar_tab.addTab(tab2_widget, "공통코드")
-
-        # [사이드바 탭 3] 테이블 관계 목록
-        tab3_widget = QWidget()
-        tab3_layout = QVBoxLayout()
-        tab3_layout.setContentsMargins(6, 6, 6, 6)
-        tab3_layout.setSpacing(6)
-
-        # 관계 검색 타입 선택 및 검색창 레이아웃
-        relation_search_bar_layout = QHBoxLayout()
-        relation_search_bar_layout.setContentsMargins(0, 0, 0, 0)
-        relation_search_bar_layout.setSpacing(4)
-
-        self.combo_search_type_relations = QComboBox()
-        self.combo_search_type_relations.addItems(["본래테이블", "참조테이블"])
-        self.combo_search_type_relations.setFixedWidth(85)
-        self.combo_search_type_relations.setFixedHeight(30)
-        self.combo_search_type_relations.setStyleSheet("""
-            QComboBox {
-                background-color: #F8FAFC;
-                color: #1E293B;
-                border: 1px solid #CBD5E1;
-                border-radius: 4px;
-                padding: 4px 6px;
-                font-size: 11px;
-            }
-            QComboBox:focus {
-                border: 1px solid #3B82F6;
-            }
-        """)
-        self.combo_search_type_relations.currentIndexChanged.connect(self.on_search_type_relations_changed)
-
-        self.txt_search_relations = QLineEdit()
-        self.txt_search_relations.setPlaceholderText("본래테이블명 검색...")
-        self.txt_search_relations.setStyleSheet(self.get_sidebar_search_style())
-        self.txt_search_relations.setFixedHeight(30)
-        self.txt_search_relations.returnPressed.connect(self.do_relation_search)
-
-        self.btn_reset_search_relations = QPushButton("↺")
-        self.btn_reset_search_relations.setFixedWidth(28)
-        self.btn_reset_search_relations.setFixedHeight(30)
-        self.btn_reset_search_relations.setToolTip("검색 초기화")
-        self.btn_reset_search_relations.setStyleSheet(self.get_sidebar_reset_button_style())
-        self.btn_reset_search_relations.clicked.connect(self.clear_search_relations)
-
-        relation_search_bar_layout.addWidget(self.combo_search_type_relations)
-        relation_search_bar_layout.addWidget(self.txt_search_relations)
-        relation_search_bar_layout.addWidget(self.btn_reset_search_relations)
-        tab3_layout.addLayout(relation_search_bar_layout)
-
-        self.list_relations = QListWidget()
-        self.list_relations.setStyleSheet(self.get_sidebar_list_style())
-        self.list_relations.itemClicked.connect(self.on_sidebar_relation_clicked)
-        self.list_relations.itemDoubleClicked.connect(self.on_relation_item_double_clicked)
-        tab3_layout.addWidget(self.list_relations)
-        tab3_widget.setLayout(tab3_layout)
-        self.sidebar_tab.addTab(tab3_widget, "관계")
-        self.sidebar_tab.addTab(tab_recent_widget, "최근조회")
-
-
-        # QStackedWidget을 이용하여 테이블 정보 / 쿼리 정보 컨텐츠 스택 전환
+        # 2-1-A. 콘텐츠 스택
         self.sidebar_stacked = QStackedWidget()
-
-        # 1. 테이블 정보 컨테이너 (기존 사이드바 탭 장착)
-        table_info_container = QWidget()
-        table_info_layout = QVBoxLayout(table_info_container)
-        table_info_layout.setContentsMargins(0, 0, 0, 0)
-        table_info_layout.addWidget(self.sidebar_tab)
-
-        # 2. 쿼리 정보 컨테이너 (신규 트리 탭 위젯 장착)
-        query_info_container = QWidget()
-        query_info_layout = QVBoxLayout(query_info_container)
-        query_info_layout.setContentsMargins(0, 0, 0, 0)
-        
-        self.query_sidebar = QuerySidebarWidget(self.db_mgr, self)
-        query_info_layout.addWidget(self.query_sidebar)
-
-        # 3. 문법 정보 컨테이너 (신규 트리 위젯 장착)
-        grammar_info_container = QWidget()
-        grammar_info_layout = QVBoxLayout(grammar_info_container)
-        grammar_info_layout.setContentsMargins(0, 0, 0, 0)
-        self.grammar_sidebar = GrammarSidebarWidget(self)
-        grammar_info_layout.addWidget(self.grammar_sidebar)
-
-        # 4. 업무 정보 컨테이너 (신규 트리 위젯 장착)
-        task_info_container = QWidget()
-        task_info_layout = QVBoxLayout(task_info_container)
-        task_info_layout.setContentsMargins(0, 0, 0, 0)
         self.task_info_sidebar = TaskInfoSidebarWidget(self.db_mgr, self)
-        task_info_layout.addWidget(self.task_info_sidebar)
+        self.contact_sidebar = ContactSidebarWidget(self.db_mgr, self)
+        self.sidebar_stacked.addWidget(self.task_info_sidebar)
+        self.sidebar_stacked.addWidget(self.contact_sidebar)
 
-        self.sidebar_stacked.addWidget(table_info_container)
-        self.sidebar_stacked.addWidget(query_info_container)
-        self.sidebar_stacked.addWidget(grammar_info_container)
-        self.sidebar_stacked.addWidget(task_info_container)
-
-        # 왼쪽에 세로로 장착할 프리미엄 사이드바 메뉴바 생성
-        self.sidebar_menu = DragMenuContainer()
+        # 2-1-B. 세로 메뉴바
+        self.sidebar_menu = QWidget()
         self.sidebar_menu.setFixedWidth(50)
         self.sidebar_menu.setObjectName("sidebarMenu")
         self.sidebar_menu.setStyleSheet("""
@@ -15180,42 +9143,26 @@ class OracleGuideApp(QMainWindow):
         menu_layout.setSpacing(8)
         menu_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        # 테이블 정보 버튼 (세로 줄바꿈 정방향 렌더링으로 폰트 뭉개짐 원천 제거)
-        self.btn_menu_table = DragMenuButton("테\n이\n블\n\n정\n보")
-        self.btn_menu_table.setCheckable(True)
-        self.btn_menu_table.setChecked(True)
-        self.btn_menu_table.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        from PyQt6.QtWidgets import QButtonGroup
+        self.btn_menu_task = QPushButton("업\n무\n\n관\n리")
+        self.btn_menu_task.setCheckable(True)
+        self.btn_menu_task.setChecked(True)
+        self.btn_menu_task.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
-        # 쿼리 정보 버튼
-        self.btn_menu_query = DragMenuButton("쿼\n리\n\n정\n보")
-        self.btn_menu_query.setCheckable(True)
-        self.btn_menu_query.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.btn_menu_contact = QPushButton("주\n소\n록")
+        self.btn_menu_contact.setCheckable(True)
+        self.btn_menu_contact.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
-        # 문법 정보 버튼
-        self.btn_menu_grammar = DragMenuButton("문\n법\n\n정\n보")
-        self.btn_menu_grammar.setCheckable(True)
-        self.btn_menu_grammar.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-
-        # 업무 정보 버튼
-        self.btn_menu_task_info = DragMenuButton("업\n무\n\n정\n보")
-        self.btn_menu_task_info.setCheckable(True)
-        self.btn_menu_task_info.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-
-        # 업무 달력 버튼
-        self.btn_menu_calendar = DragMenuButton("업\n무\n\n달\n력")
+        self.btn_menu_calendar = QPushButton("업\n무\n\n달\n력")
         self.btn_menu_calendar.setCheckable(True)
         self.btn_menu_calendar.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
-        # 상호 배타 체크 기능 바인딩
         self.menu_group = QButtonGroup(self)
-        self.menu_group.addButton(self.btn_menu_table)
-        self.menu_group.addButton(self.btn_menu_query)
-        self.menu_group.addButton(self.btn_menu_grammar)
-        self.menu_group.addButton(self.btn_menu_task_info)
+        self.menu_group.addButton(self.btn_menu_task)
+        self.menu_group.addButton(self.btn_menu_contact)
         self.menu_group.addButton(self.btn_menu_calendar)
         self.menu_group.setExclusive(True)
 
-        # 공통 버튼 스타일시트 (수직 인디케이터 스트립과 둥근 테두리 조화)
         btn_style = """
             QPushButton {
                 background-color: transparent;
@@ -15223,9 +9170,9 @@ class OracleGuideApp(QMainWindow):
                 border: none;
                 border-left: 3px solid transparent;
                 font-family: "Malgun Gothic", "맑은 고딕", sans-serif;
-                font-size: 12px;
+                font-size: 11px;
                 font-weight: bold;
-                padding: 15px 0px;
+                padding: 12px 0px;
                 line-height: 14px;
                 border-radius: 4px;
             }
@@ -15239,61 +9186,22 @@ class OracleGuideApp(QMainWindow):
                 border-left: 3px solid #2563EB;
             }
         """
-        self.btn_menu_table.setStyleSheet(btn_style)
-        self.btn_menu_query.setStyleSheet(btn_style)
-        self.btn_menu_grammar.setStyleSheet(btn_style)
-        self.btn_menu_task_info.setStyleSheet(btn_style)
+        self.btn_menu_task.setStyleSheet(btn_style)
+        self.btn_menu_contact.setStyleSheet(btn_style)
         self.btn_menu_calendar.setStyleSheet(btn_style)
 
-        # 버튼 클릭 시 스택 화면 전환 바인딩
-        self.btn_menu_table.clicked.connect(lambda: self.sidebar_stacked.setCurrentIndex(0))
-        self.btn_menu_query.clicked.connect(lambda: self.sidebar_stacked.setCurrentIndex(1))
-        self.btn_menu_grammar.clicked.connect(lambda: self.sidebar_stacked.setCurrentIndex(2))
-        self.btn_menu_task_info.clicked.connect(lambda: self.sidebar_stacked.setCurrentIndex(3))
+        self.btn_menu_task.clicked.connect(lambda: self.sidebar_stacked.setCurrentIndex(0))
+        self.btn_menu_contact.clicked.connect(lambda: self.sidebar_stacked.setCurrentIndex(1))
         self.btn_menu_calendar.clicked.connect(self.open_calendar_tab)
 
-        # 드래그 앤 드롭 순서 저장 및 불러오기 기능
-        import json
-        saved_order_str = self.db_mgr.get_setting("sidebar_menu_order", "")
-        saved_order = []
-        if saved_order_str:
-            try:
-                saved_order = json.loads(saved_order_str)
-            except Exception as e:
-                print(f"Error parsing sidebar_menu_order: {e}")
+        menu_layout.addWidget(self.btn_menu_task)
+        menu_layout.addWidget(self.btn_menu_contact)
+        menu_layout.addWidget(self.btn_menu_calendar)
 
-        default_order = [
-            "테\n이\n블\n\n정\n보",
-            "쿼\n리\n\n정\n보",
-            "문\n법\n\n정\n보",
-            "업\n무\n\n정\n보",
-            "업\n무\n\n달\n력"
-        ]
-        buttons_map = {
-            "테\n이\n블\n\n정\n보": self.btn_menu_table,
-            "쿼\n리\n\n정\n보": self.btn_menu_query,
-            "문\n법\n\n정\n보": self.btn_menu_grammar,
-            "업\n무\n\n정\n보": self.btn_menu_task_info,
-            "업\n무\n\n달\n력": self.btn_menu_calendar
-        }
-
-        final_order = []
-        for btn_text in saved_order:
-            if btn_text in buttons_map and btn_text not in final_order:
-                final_order.append(btn_text)
-        for btn_text in default_order:
-            if btn_text not in final_order:
-                final_order.append(btn_text)
-
-        for btn_text in final_order:
-            menu_layout.addWidget(buttons_map[btn_text])
-
-        self.sidebar_menu.order_changed.connect(self.save_sidebar_menu_order)
-
-        # 세로 메뉴바 + 컨텐츠 스택 위젯을 가로로 배치하는 메인 레이아웃 구성 (8px의 세련된 간격 적용)
+        # 세로 메뉴바 + 콘텐츠 스택 위젯을 가로로 배치하는 메인 레이아웃 구성
         sidebar_h_layout = QHBoxLayout()
         sidebar_h_layout.setContentsMargins(0, 0, 0, 0)
-        sidebar_h_layout.setSpacing(8)
+        sidebar_h_layout.setSpacing(6)
         sidebar_h_layout.addWidget(self.sidebar_menu)
         sidebar_h_layout.addWidget(self.sidebar_stacked)
 
@@ -15341,114 +9249,22 @@ class OracleGuideApp(QMainWindow):
         self.tab_widget.tabBar().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tab_widget.tabBar().customContextMenuRequested.connect(self.on_tab_bar_context_menu)
         
-        # 탭이 비어 있을 때 환영 뷰 및 사용 가이드 스크롤 영역
-        self.welcome_widget = QScrollArea()
-        self.welcome_widget.setWidgetResizable(True)
-        self.welcome_widget.setFrameShape(QFrame.Shape.NoFrame)
-        self.welcome_widget.setStyleSheet("QScrollArea { background-color: #F8FAFC; border: none; }")
-        
-        scroll_content = QWidget()
-        scroll_content.setObjectName("WelcomeScrollContent")
-        scroll_content.setStyleSheet("#WelcomeScrollContent { background-color: #F8FAFC; }")
-        
-        scroll_layout = QVBoxLayout(scroll_content)
-        scroll_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        scroll_layout.setContentsMargins(20, 40, 20, 40)
-        
-        # 가로 최대 크기를 800px로 제한하는 중앙 컨테이너
-        center_container = QWidget()
-        center_container.setMaximumWidth(800)
-        center_container.setStyleSheet("background-color: transparent;")
-        
-        welcome_layout = QVBoxLayout(center_container)
-        welcome_layout.setContentsMargins(0, 0, 0, 0)
-        welcome_layout.setSpacing(20)
-        
-        # 헤더 카드
-        header_container = QWidget()
-        header_container.setObjectName("WelcomeHeader")
-        header_container.setStyleSheet("""
-            #WelcomeHeader {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #1E3A8A, stop:1 #3B82F6);
-                border-radius: 12px;
-            }
-        """)
-        header_layout = QVBoxLayout(header_container)
-        header_layout.setContentsMargins(30, 24, 30, 24)
-        header_layout.setSpacing(8)
-        
-        lbl_welcome = QLabel("💡 테이블 명세서 및 쿼리 가이드 사용 안내")
-        lbl_welcome.setStyleSheet("font-size: 16px; color: #FFFFFF; font-weight: bold; font-family: 'Malgun Gothic'; background: transparent;")
-        lbl_sub_welcome = QLabel("수동 매핑 및 테이블 관계/조인 구성을 지원하는 통합 가이드 프로그램입니다.")
-        lbl_sub_welcome.setStyleSheet("font-size: 11px; color: #DBEAFE; font-family: 'Malgun Gothic'; background: transparent;")
-        
-        header_layout.addWidget(lbl_welcome, 0, Qt.AlignmentFlag.AlignCenter)
-        header_layout.addWidget(lbl_sub_welcome, 0, Qt.AlignmentFlag.AlignCenter)
-        welcome_layout.addWidget(header_container)
-
-        # 개별 도움말 카드 목록
-        cards_widget = QWidget()
-        cards_widget.setStyleSheet("background: transparent;")
-        cards_layout = QVBoxLayout(cards_widget)
-        cards_layout.setSpacing(12)
-        cards_layout.setContentsMargins(0, 0, 0, 0)
-        
-        def create_guide_card(icon, title, desc):
-            card = QWidget()
-            card.setObjectName("GuideCard")
-            card.setStyleSheet("""
-                #GuideCard {
-                    background-color: #FFFFFF;
-                    border: 1px solid #E2E8F0;
-                    border-radius: 8px;
-                }
-            """)
-            card_layout = QHBoxLayout(card)
-            card_layout.setContentsMargins(20, 16, 20, 16)
-            card_layout.setSpacing(16)
-            
-            lbl_icon = QLabel(icon)
-            lbl_icon.setStyleSheet("font-size: 22px; background: transparent; border: none;")
-            lbl_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            
-            text_layout = QVBoxLayout()
-            text_layout.setSpacing(4)
-            lbl_title = QLabel(title)
-            lbl_title.setStyleSheet("font-size: 12px; color: #1E293B; font-weight: bold; font-family: 'Malgun Gothic'; background: transparent; border: none;")
-            lbl_desc = QLabel(desc)
-            lbl_desc.setStyleSheet("font-size: 11px; color: #64748B; font-family: 'Malgun Gothic'; background: transparent; border: none;")
-            lbl_desc.setWordWrap(True)
-            
-            text_layout.addWidget(lbl_title)
-            text_layout.addWidget(lbl_desc)
-            
-            card_layout.addWidget(lbl_icon, 0, Qt.AlignmentFlag.AlignTop)
-            card_layout.addLayout(text_layout, 1)
-            return card
-
-        card1 = create_guide_card("🖱️", "테이블 더블클릭 (조회)", 
-                                  "왼쪽 목록('테이블', '업무별', '최근조회')에서 테이블을 <b>더블클릭</b>하면 오른쪽에 해당 테이블의 컬럼 구성, 관계도, SQL 자동 생성 화면이 열립니다.")
-        card2 = create_guide_card("🤝", "테이블 드래그 앤 드롭 (조인 관계 설정)", 
-                                  "열려있는 테이블 상세화면으로 다른 테이블을 <b>드래그 앤 드롭</b>하면 두 테이블 간의 JOIN 조건 설정 창이 열립니다. 복수의 ON 조건 및 다중 테이블 JOIN을 손쉽게 설정할 수 있습니다.")
-        card3 = create_guide_card("⭐", "업무 폴더 및 조인 뷰 등록 (즐겨찾기)", 
-                                  "테이블이 조인된 상태에서 명세서 상단의 <b>[⭐ 업무 폴더 등록]</b> 버튼을 누르면, 원하는 분류 폴더를 선택(또는 새 폴더 생성)하여 가상 조인 뷰로 등록할 수 있습니다. 등록된 뷰는 왼쪽 '업무별' 탭에 보존됩니다.")
-        card4 = create_guide_card("📂", "우클릭 분류 관리 및 드래그 이동", 
-                                  "업무별 탭의 등록된 아이템 및 폴더를 <b>마우스 우클릭</b>하여 이름 변경(Rename), 다른 분류로 이동(Move), 중복 복사(Duplicate), 또는 이 분류에서 제외(Remove) 할 수 있으며, 드래그를 통해 순서를 직접 바꿀 수 있습니다.")
-
-        cards_layout.addWidget(card1)
-        cards_layout.addWidget(card2)
-        cards_layout.addWidget(card3)
-        cards_layout.addWidget(card4)
-        welcome_layout.addWidget(cards_widget)
-        
-        scroll_layout.addWidget(center_container)
-        self.welcome_widget.setWidget(scroll_content)
+        # 탭이 비어 있을 때 환영 뷰
+        self.welcome_widget = QWidget()
+        self.welcome_widget.setStyleSheet("background-color: #FFFFFF;")
+        welcome_layout = QVBoxLayout()
+        welcome_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_welcome = QLabel("📂 조회할 업무를 좌측 트리에서 선택하거나 더블클릭하세요.")
+        lbl_welcome.setStyleSheet("font-size: 13px; color: #475569; font-weight: bold;")
+        lbl_sub_welcome = QLabel("업무 정보 관리 프로그램입니다.")
+        lbl_sub_welcome.setStyleSheet("font-size: 11px; color: #94A3B8; margin-top: 5px;")
+        welcome_layout.addWidget(lbl_welcome)
+        welcome_layout.addWidget(lbl_sub_welcome)
+        self.welcome_widget.setLayout(welcome_layout)
         self.tab_widget.addTab(self.welcome_widget, "시작 페이지")
         self.tab_widget.tabBar().setTabButton(0, QTabBar.ButtonPosition.RightSide, None)
 
-
         self.body_splitter.addWidget(self.tab_widget)
-
         self.body_splitter.setSizes([340, 910])
         main_layout.addWidget(self.body_splitter, 1)
 
@@ -15465,19 +9281,12 @@ class OracleGuideApp(QMainWindow):
         """)
         self.setStatusBar(self.status_bar)
         self.update_status_time()
-
-    def save_sidebar_menu_order(self):
-        layout = self.sidebar_menu.layout()
-        if not layout:
-            return
-        order = []
-        for i in range(layout.count()):
-            w = layout.itemAt(i).widget()
-            if isinstance(w, DragMenuButton):
-                order.append(w.text())
-        import json
-        self.db_mgr.set_setting("sidebar_menu_order", json.dumps(order))
-
+        
+        # Ctrl+W 단축키 설정
+        from PyQt6.QtGui import QShortcut, QKeySequence
+        self.close_tab_shortcut = QShortcut(QKeySequence("Ctrl+W"), self)
+        self.close_tab_shortcut.activated.connect(self.close_active_tab)
+        
     def get_sidebar_search_style(self):
         return """
             QLineEdit {
@@ -15607,22 +9416,16 @@ class OracleGuideApp(QMainWindow):
                 sub_item.setExpanded(True)
                 
             for t in node["tables"]:
-                t = dict(t)
                 child_item = QTreeWidgetItem(parent_item)
-                display_text = t['display_name'] if t.get('display_name') else t['table_name']
-                if not t.get('display_name') and t['table_ko_name']:
+                display_text = f"{t['table_name']}"
+                if t['table_ko_name']:
                     display_text += f" ({t['table_ko_name']})"
-                if t.get('joins_json'):
-                    display_text = f"🔗 {display_text}"
                 child_item.setText(0, display_text)
                 child_item.setData(0, Qt.ItemDataRole.UserRole, {
                     "type": "table",
-                    "id": t['id'],
                     "table_name": t['table_name'],
                     "table_ko_name": t['table_ko_name'],
-                    "category_path": node.get("full_path", "기타"),
-                    "display_name": t.get('display_name'),
-                    "joins_json": t.get('joins_json')
+                    "category_path": node.get("full_path", "기타")
                 })
                 child_item.setFont(0, QFont("Malgun Gothic", 9))
                 child_item.setForeground(0, QColor("#475569"))
@@ -15638,12 +9441,7 @@ class OracleGuideApp(QMainWindow):
     def on_task_tree_item_double_clicked(self, item, column):
         data = item.data(0, Qt.ItemDataRole.UserRole)
         if data and data.get("type") == "table":
-            self.open_table_tab(
-                data["table_name"], 
-                data.get("table_ko_name"), 
-                joins_json=data.get("joins_json"), 
-                display_name=data.get("display_name")
-            )
+            self.open_table_tab(data["table_name"], data["table_ko_name"])
 
     def on_task_tree_item_clicked(self, item, column):
         pass
@@ -15799,13 +9597,7 @@ class OracleGuideApp(QMainWindow):
                     order_idx = traverse(child_item, new_parts, order_idx)
                 elif data["type"] == "table":
                     cat_path = "/".join(current_path_parts) if current_path_parts else "기타"
-                    table_updates.append((
-                        data["table_name"], 
-                        cat_path, 
-                        order_idx,
-                        data.get("display_name"),
-                        data.get("joins_json")
-                    ))
+                    table_updates.append((data["table_name"], cat_path, order_idx))
                     order_idx += 1
             return order_idx
 
@@ -15884,72 +9676,19 @@ class OracleGuideApp(QMainWindow):
         elif data["type"] == "table":
             table_name = data["table_name"]
             category_path = data.get("category_path", "기타")
-            record_id = data.get("id")
 
-            act_rename_item = menu.addAction("✏️ 이름 변경")
             act_move_cat = menu.addAction("🔄 다른 분류로 이동")
             act_add_cat = menu.addAction("➕ 다른 분류에 추가 등록 (중복 허용)")
             act_remove_cat = menu.addAction("❌ 이 분류에서 제외")
 
             action = menu.exec(self.tree_tasks.viewport().mapToGlobal(position))
 
-            if action == act_rename_item:
-                if record_id:
-                    new_name, ok = QInputDialog.getText(
-                        self, "이름 변경", 
-                        "표시할 이름을 입력하세요:",
-                        QLineEdit.EchoMode.Normal,
-                        data.get("display_name") or table_name
-                    )
-                    if ok and new_name.strip():
-                        self.db_mgr.update_task_item_display_name(record_id, new_name.strip())
-                        self.load_tasks_tree()
-                        QMessageBox.information(self, "완료", f"이름이 '{new_name.strip()}'(으)로 변경되었습니다.")
-            elif action == act_move_cat:
-                if record_id:
-                    cats = self.db_mgr.get_unique_categories()
-                    if "기타" not in cats:
-                        cats.append("기타")
-                    chosen_cat, ok = QInputDialog.getItem(
-                        self, "분류 이동", 
-                        f"'{data.get('display_name') or table_name}' 테이블을 이동할 분류를 선택하거나 입력하세요:", 
-                        cats, 0, True
-                    )
-                    if ok and chosen_cat.strip():
-                        self.db_mgr.update_table_category_by_id(record_id, chosen_cat.strip())
-                        self.load_tasks_tree()
-                        QMessageBox.information(self, "완료", f"이동 완료되었습니다.")
-                else:
-                    self.move_table_category_flow(table_name, category_path)
+            if action == act_move_cat:
+                self.move_table_category_flow(table_name, category_path)
             elif action == act_add_cat:
-                if record_id:
-                    cats = self.db_mgr.get_unique_categories()
-                    if "기타" not in cats:
-                        cats.append("기타")
-                    chosen_cat, ok = QInputDialog.getItem(
-                        self, "분류 복사", 
-                        f"'{data.get('display_name') or table_name}' 테이블을 추가 등록할 분류를 선택하거나 입력하세요:", 
-                        cats, 0, True
-                    )
-                    if ok and chosen_cat.strip():
-                        self.db_mgr.duplicate_table_category_by_id(record_id, chosen_cat.strip())
-                        self.load_tasks_tree()
-                        QMessageBox.information(self, "완료", f"추가 매핑 완료되었습니다.")
-                else:
-                    self.add_table_to_additional_category_flow(table_name)
+                self.add_table_to_additional_category_flow(table_name)
             elif action == act_remove_cat:
-                if record_id:
-                    res = QMessageBox.question(
-                        self, "제외 확인",
-                        f"'{data.get('display_name') or table_name}' 테이블을 이 분류에서 제외하시겠습니까?",
-                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                    )
-                    if res == QMessageBox.StandardButton.Yes:
-                        self.db_mgr.remove_table_category_by_id(record_id)
-                        self.load_tasks_tree()
-                        QMessageBox.information(self, "완료", f"제외 완료되었습니다.")
-                else:
-                    self.remove_table_from_category_flow(table_name, category_path)
+                self.remove_table_from_category_flow(table_name, category_path)
 
     def bulk_remove_tables_from_category(self, table_items):
         """업무별 트리에서 선택된 테이블 여러 개를 한꺼번에 분류에서 제외"""
@@ -15969,13 +9708,9 @@ class OracleGuideApp(QMainWindow):
             return
         for it in table_items:
             data = it.data(0, Qt.ItemDataRole.UserRole)
-            record_id = data.get("id")
-            if record_id:
-                self.db_mgr.remove_table_category_by_id(record_id)
-            else:
-                self.db_mgr.remove_table_from_category(
-                    data["table_name"], data.get("category_path", "기타")
-                )
+            self.db_mgr.remove_table_from_category(
+                data["table_name"], data.get("category_path", "기타")
+            )
         self.load_tasks_tree()
         QMessageBox.information(self, "완료", f"{len(table_items)}개의 테이블을 분류에서 제외했습니다.")
 
@@ -16131,11 +9866,10 @@ class OracleGuideApp(QMainWindow):
         next_count = min(self.loaded_table_count + 100, total)
         chunk = self.all_tables[self.loaded_table_count:next_count]
         
-        search_text = self.txt_search.text() if hasattr(self, 'txt_search') else ""
         self.list_tables.setUpdatesEnabled(False)
         for t in chunk:
             item = QListWidgetItem(self.list_tables)
-            custom_widget = TableListWidgetItem(t['table_name'], t['table_ko_name'], t['is_favorite'], search_text)
+            custom_widget = TableListWidgetItem(t['table_name'], t['table_ko_name'], t['is_favorite'])
             custom_widget.favorite_toggled.connect(self.on_favorite_toggled)
             
             item.setSizeHint(QSize(100, 32))
@@ -16179,7 +9913,7 @@ class OracleGuideApp(QMainWindow):
         chunk = self.all_tables[0:limit]
         for t in chunk:
             item = QListWidgetItem(self.list_tables)
-            custom_widget = TableListWidgetItem(t['table_name'], t['table_ko_name'], t['is_favorite'], search_text)
+            custom_widget = TableListWidgetItem(t['table_name'], t['table_ko_name'], t['is_favorite'])
             custom_widget.favorite_toggled.connect(self.on_favorite_toggled)
             
             item.setSizeHint(QSize(100, 32))
@@ -16249,7 +9983,7 @@ class OracleGuideApp(QMainWindow):
             show_copy_message(f"📋 {rel_desc} (이)가 클립보드에 복사되었습니다!", self)
 
     # --- 우측 메인 영역 탭 제어 로직 ---
-    def open_table_tab(self, table_name, table_ko_name=None, joins_json=None, display_name=None):
+    def open_table_tab(self, table_name, table_ko_name=None):
         self.db_mgr.add_recent_table(table_name)
         self.load_recent_tables_list()
 
@@ -16264,11 +9998,8 @@ class OracleGuideApp(QMainWindow):
             if tab_widget.__class__.__name__ == "TableDetailWidget":
                 if hasattr(tab_widget, 'table_name') and tab_widget.table_name:
                     if tab_widget.table_name.strip().upper() == table_name.strip().upper():
-                        existing_joins = getattr(tab_widget, 'joins_json', None)
-                        existing_display = getattr(tab_widget, 'display_name', None)
-                        if existing_joins == joins_json and existing_display == display_name:
-                            self.tab_widget.setCurrentIndex(idx)
-                            return
+                        self.tab_widget.setCurrentIndex(idx)
+                        return
 
         if not table_ko_name:
             with self.db_mgr.get_connection() as conn:
@@ -16277,15 +10008,13 @@ class OracleGuideApp(QMainWindow):
                 row = cursor.fetchone()
                 table_ko_name = row['table_ko_name'] if row else ""
 
-        detail_view = TableDetailWidget(table_name, table_ko_name, self.db_mgr, joins_json=joins_json, display_name=display_name)
+        detail_view = TableDetailWidget(table_name, table_ko_name, self.db_mgr)
         detail_view.link_clicked.connect(self.open_table_tab)
         
         # 💡 관계 편집 발생 시 메인 리스트(관계 사이드바, 전체 관계 탭) 갱신 연동
         detail_view.relation_changed.connect(self.refresh_all_lists_after_edit)
         
-        tab_title = display_name if display_name else (table_ko_name if table_ko_name else table_name)
-        if joins_json:
-            tab_title = f"🔗 {tab_title}"
+        tab_title = table_ko_name if table_ko_name else table_name
         new_idx = self.tab_widget.addTab(detail_view, tab_title)
         self.tab_widget.setCurrentIndex(new_idx)
 
@@ -16349,11 +10078,6 @@ class OracleGuideApp(QMainWindow):
         self.tab_widget.setCurrentIndex(new_idx)
         return all_rels_view
 
-    def on_export_spec_clicked(self):
-        """테이블 명세서 Excel 내보내기 다이얼로그 열기"""
-        dlg = SpecExportDialog(self.db_mgr, self)
-        dlg.exec()
-
     def confirm_close_tab(self, index):
         widget = self.tab_widget.widget(index)
         if hasattr(widget, 'is_dirty') and widget.is_dirty:
@@ -16396,6 +10120,33 @@ class OracleGuideApp(QMainWindow):
                 return False
         return True
 
+    def close_active_tab(self):
+        curr_idx = self.tab_widget.currentIndex()
+        if curr_idx != -1:
+            self.close_tab(curr_idx)
+
+    def open_contact_list_tab(self, category_id, category_name, filter_contact_name=None):
+        key = ("contact_category", category_id)
+        if key in self.open_contact_tabs:
+            tab_widget = self.open_contact_tabs[key]
+            self.tab_widget.setCurrentWidget(tab_widget)
+            tab_widget.is_loading = True
+            if filter_contact_name:
+                tab_widget.txt_filter.setText(filter_contact_name)
+            else:
+                tab_widget.txt_filter.clear()
+            tab_widget.is_loading = False
+            tab_widget.refresh_table()
+            return
+
+        detail_tab = ContactListTabWidget(self.db_mgr, category_id, category_name, self)
+        new_idx = self.tab_widget.addTab(detail_tab, f"👥 {category_name}")
+        self.open_contact_tabs[key] = detail_tab
+        self.tab_widget.setCurrentIndex(new_idx)
+        if filter_contact_name:
+            detail_tab.txt_filter.setText(filter_contact_name)
+            detail_tab.apply_filter()
+
     def close_tab(self, index):
         tab_text = self.tab_widget.tabText(index)
         if tab_text in ["시작 페이지"]:
@@ -16415,6 +10166,11 @@ class OracleGuideApp(QMainWindow):
                 del self.open_task_tabs[k]
                 break
 
+        for k, v in list(self.open_contact_tabs.items()):
+            if v == widget:
+                del self.open_contact_tabs[k]
+                break
+
         self.tab_widget.removeTab(index)
         if self.tab_widget.count() == 0:
             self.tab_widget.addTab(self.welcome_widget, "시작 페이지")
@@ -16423,15 +10179,9 @@ class OracleGuideApp(QMainWindow):
 
     def on_tab_bar_context_menu(self, point):
         index = self.tab_widget.tabBar().tabAt(point)
-        if index < 0:
-            return
-        
-        target_widget = self.tab_widget.widget(index)
-        tab_text = self.tab_widget.tabText(index)
-        if tab_text == "시작 페이지":
-            return
-
         menu = QMenu(self)
+        
+        # 스타일이 적용된 ContextMenu 구성
         menu.setStyleSheet("""
             QMenu {
                 background-color: #FFFFFF;
@@ -16450,27 +10200,20 @@ class OracleGuideApp(QMainWindow):
             }
         """)
 
-        # 1. 이 탭 닫기
-        action_close_this = QAction("이 탭 닫기", self)
-        action_close_this.triggered.connect(lambda checked=False, idx=index: self.close_tab(idx))
-        menu.addAction(action_close_this)
-
-        # 2. 이 탭 제외 모두 닫기
-        action_close_others = QAction("이 탭 제외 모두 닫기", self)
-        action_close_others.triggered.connect(lambda checked=False, idx=index: self.close_other_tabs(idx))
-        menu.addAction(action_close_others)
-
-        # 3. 해당 유형 탭 외에 모두 닫기
-        target_type = target_widget.__class__
-        action_close_type_others = QAction("해당 유형 탭 외에 모두 닫기", self)
-        action_close_type_others.triggered.connect(lambda checked=False, t_type=target_type: self.close_other_type_tabs(t_type))
-        menu.addAction(action_close_type_others)
-
-        # 4. 모든 탭 닫기
-        action_close_all = QAction("모든 탭 닫기", self)
+        action_close_all = QAction("❌ 모든 탭 닫기", self)
         action_close_all.triggered.connect(self.close_all_tabs)
-        menu.addAction(action_close_all)
+        
+        action_close_others = None
+        if index >= 0:
+            tab_text = self.tab_widget.tabText(index)
+            if tab_text != "시작 페이지":
+                action_close_others = QAction("🚫 이 탭 외에 모두 닫기", self)
+                action_close_others.triggered.connect(lambda Checked=False, idx=index: self.close_other_tabs(idx))
 
+        if action_close_others:
+            menu.addAction(action_close_others)
+        menu.addAction(action_close_all)
+        
         menu.exec(self.tab_widget.tabBar().mapToGlobal(point))
 
     def close_all_tabs(self):
@@ -16489,15 +10232,6 @@ class OracleGuideApp(QMainWindow):
                     if not self.close_tab(idx):
                         break
 
-    def close_other_type_tabs(self, target_type):
-        for idx in range(self.tab_widget.count() - 1, -1, -1):
-            w = self.tab_widget.widget(idx)
-            tab_text = self.tab_widget.tabText(idx)
-            if tab_text != "시작 페이지":
-                if not isinstance(w, target_type):
-                    if not self.close_tab(idx):
-                        break
-
     def open_grammar_detail_tab(self, grammar_data):
         key = ("grammar", grammar_data['title'])
         if key in self.open_query_tabs:
@@ -16511,18 +10245,23 @@ class OracleGuideApp(QMainWindow):
         self.tab_widget.setCurrentWidget(detail_tab)
 
     def open_task_detail_tab(self, task_id):
-        key = f"task_{task_id}"
-        if key in self.open_query_tabs:
-            self.tab_widget.setCurrentWidget(self.open_query_tabs[key])
+        key = ("task", task_id)
+        if key in self.open_task_tabs:
+            self.tab_widget.setCurrentWidget(self.open_task_tabs[key])
+            return
+
+        doc = self.db_mgr.get_task_document_by_id(task_id)
+        if not doc:
+            QMessageBox.warning(self, "경고", "해당 업무 문서가 존재하지 않습니다.")
             return
 
         detail_tab = TaskDetailTabWidget(self.db_mgr, task_id, self)
-        new_idx = self.tab_widget.addTab(detail_tab, f"📄 {self.db_mgr.get_task_document_by_id(task_id)['title']}")
-        self.open_query_tabs[key] = detail_tab
+        new_idx = self.tab_widget.addTab(detail_tab, f"📄 {doc['title']}")
+        self.open_task_tabs[key] = detail_tab
         self.tab_widget.setCurrentWidget(detail_tab)
 
     def open_calendar_tab(self):
-        self.sidebar_stacked.setCurrentIndex(3)
+        self.sidebar_stacked.setCurrentIndex(0)
         self.btn_menu_calendar.setChecked(True)
 
         for idx in range(self.tab_widget.count()):
@@ -16581,7 +10320,7 @@ class OracleGuideApp(QMainWindow):
     def on_import_clicked(self):
         dialog = CSVImportDialog(self.db_mgr, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            cols_p, codes_p, rels_p, clear_existing = dialog.get_paths()
+            cols_p, codes_p, rels_p = dialog.get_paths()
             
             cols_p = cols_p if cols_p else None
             rels_p = rels_p if rels_p else None
@@ -16603,7 +10342,7 @@ class OracleGuideApp(QMainWindow):
 
             # QThread 및 Worker 생성 및 연결
             self.import_thread = QThread()
-            self.import_worker = ImportWorker(self.db_mgr, cols_p, rels_p, codes_p, clear_existing=clear_existing)
+            self.import_worker = ImportWorker(self.db_mgr, cols_p, rels_p, codes_p)
             self.import_worker.moveToThread(self.import_thread)
             
             self.import_thread.started.connect(self.import_worker.run)
@@ -16659,7 +10398,9 @@ class OracleGuideApp(QMainWindow):
     def on_recent_table_double_clicked(self, item):
         table_name = item.data(Qt.ItemDataRole.UserRole)
         if table_name:
-            self.open_table_tab(table_name)
+            from PyQt6.QtWidgets import QApplication
+            QApplication.clipboard().setText(table_name)
+            show_copy_message(f"📋 {table_name} (이)가 클립보드에 복사되었습니다!", self)
 
     def on_clear_recent_clicked(self):
         self.db_mgr.clear_recent_tables()
@@ -16669,122 +10410,6 @@ class OracleGuideApp(QMainWindow):
     def on_code_setup_clicked(self):
         dialog = CommonCodeSetupDialog(self.db_mgr, self)
         dialog.exec()
-
-    # 초기화 시 비우지 않는 테이블 (스키마 관리용)
-    RESET_KEEP_TABLES = {"sqlite_sequence"}
-
-    def on_reset_all_data(self):
-        """저장된 모든 데이터를 지우고 빈 상태로 되돌린다."""
-        answer = QMessageBox.warning(
-            self, "기본 정보 초기화",
-            "저장된 <b>모든 데이터가 삭제</b>되고 아무것도 없는 빈 상태가 됩니다."
-            "<br><br>"
-            "· 테이블·컬럼·관계 명세<br>"
-            "· 보관된 쿼리 전체<br>"
-            "· 업무 문서 및 첨부파일<br>"
-            "· 공통코드 및 변환 설정<br>"
-            "· 최근 조회 이력<br><br>"
-            "<b>이 작업은 되돌릴 수 없습니다.</b> 계속하시겠습니까?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel)
-        if answer != QMessageBox.StandardButton.Yes:
-            return
-
-        # 실수 방지를 위해 한 번 더 확인
-        confirm_text, ok = QInputDialog.getText(
-            self, "초기화 확인",
-            "정말 초기화하려면 아래에 <b>초기화</b> 를 입력하세요.")
-        if not ok or confirm_text.strip() != "초기화":
-            QMessageBox.information(self, "취소됨", "초기화가 취소되었습니다.")
-            return
-
-        # 되돌릴 수 없으므로 DB와 첨부파일을 백업해 둔다
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_dir = os.path.join(base_dir, f"backup_{stamp}")
-        attach_dir = os.path.join(base_dir, "attachments")
-        try:
-            os.makedirs(backup_dir, exist_ok=True)
-            if os.path.exists(DB_FILE):
-                shutil.copy2(DB_FILE, os.path.join(backup_dir, "metadata.db"))
-            if os.path.isdir(attach_dir):
-                shutil.copytree(attach_dir, os.path.join(backup_dir, "attachments"))
-        except Exception as e:
-            answer = QMessageBox.question(
-                self, "백업 실패",
-                f"기존 데이터 백업에 실패했습니다.\n\n{e}\n\n"
-                "백업 없이 그대로 진행하시겠습니까?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No)
-            if answer != QMessageBox.StandardButton.Yes:
-                return
-            backup_dir = None
-
-        QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
-        try:
-            with self.db_mgr.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("PRAGMA foreign_keys = OFF")
-                names = [r[0] for r in cursor.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
-                for name in names:
-                    if name in self.RESET_KEEP_TABLES:
-                        continue
-                    cursor.execute(f'DELETE FROM "{name}"')
-                # AUTOINCREMENT 카운터도 되돌린다
-                if "sqlite_sequence" in names:
-                    cursor.execute("DELETE FROM sqlite_sequence")
-                # 재시작 시 예시 데이터가 다시 채워지지 않도록 표시
-                cursor.execute(
-                    "INSERT OR REPLACE INTO app_metadata (key, value) VALUES ('seeded', 'Y')")
-                cursor.execute("PRAGMA foreign_keys = ON")
-                conn.commit()
-
-            # 지운 데이터가 파일에 남지 않도록 실제로 회수한다
-            vac = sqlite3.connect(DB_FILE)
-            vac.execute("VACUUM")
-            vac.close()
-
-            # 첨부파일 폴더 비우기
-            if os.path.isdir(attach_dir):
-                shutil.rmtree(attach_dir)
-            os.makedirs(attach_dir, exist_ok=True)
-        except Exception as e:
-            QApplication.restoreOverrideCursor()
-            msg = f"초기화 중 오류가 발생했습니다.\n\n{e}"
-            if backup_dir:
-                msg += f"\n\n기존 데이터는 아래에 백업되어 있습니다.\n{backup_dir}"
-            QMessageBox.critical(self, "초기화 실패", msg)
-            return
-        finally:
-            QApplication.restoreOverrideCursor()
-
-        msg = "모든 데이터가 삭제되어 빈 상태가 되었습니다."
-        if backup_dir:
-            msg += f"\n\n초기화 전 데이터는 아래 폴더에 백업했습니다.\n{os.path.basename(backup_dir)}"
-        msg += "\n\n변경 내용을 적용하려면 프로그램을 다시 시작해야 합니다.\n지금 다시 시작할까요?"
-
-        answer = QMessageBox.question(
-            self, "초기화 완료", msg,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes)
-        if answer == QMessageBox.StandardButton.Yes:
-            self._restart_application()
-
-    def _restart_application(self):
-        """현재 프로세스를 종료하고 프로그램을 다시 실행한다."""
-        import subprocess
-        try:
-            if getattr(sys, "frozen", False):
-                args = [sys.executable]
-            else:
-                args = [sys.executable, os.path.abspath(sys.argv[0])] + sys.argv[1:]
-            subprocess.Popen(args, cwd=base_dir, close_fds=True)
-        except Exception as e:
-            QMessageBox.warning(
-                self, "재시작 실패",
-                f"자동 재시작에 실패했습니다. 프로그램을 직접 다시 실행해 주세요.\n\n{e}")
-            return
-        QApplication.quit()
 
     def on_task_tree_export(self):
         """업무별 분류 구조를 체크박스 트리로 선택 후 Excel로 내보내기"""
@@ -17520,6 +11145,1268 @@ class HierarchySelectionDialog(QDialog):
 # 쿼리 보관함 및 즐겨찾기, 최근조회 쿼리 탭 위젯 관련 다이얼로그 및 위젯 정의
 # -----------------------------------------------------------------------------
 
+class ContactCategoryAddEditDialog(QDialog):
+    """주소록 분류 카테고리 추가/수정용 다이얼로그"""
+    def __init__(self, current_name="", parent=None, show_top_level_option=True):
+        super().__init__(parent)
+        self.setWindowTitle("분류 폴더 관리")
+        self.show_top_level_option = show_top_level_option
+        h = 155 if show_top_level_option else 120
+        self.setFixedSize(320, h)
+        self.init_ui(current_name)
+
+    def init_ui(self, current_name):
+        layout = QVBoxLayout()
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(10)
+
+        form = QFormLayout()
+        self.txt_name = QLineEdit()
+        self.txt_name.setText(current_name)
+        self.txt_name.setPlaceholderText("예: 본청, 홍보팀")
+        self.txt_name.setStyleSheet("padding: 5px; font-size: 12px; border: 1px solid #CBD5E1; border-radius: 4px;")
+        form.addRow("분류 이름:", self.txt_name)
+        layout.addLayout(form)
+
+        # 최상위 체크박스
+        self.chk_top_level = None
+        if self.show_top_level_option:
+            self.chk_top_level = QCheckBox("최상위 그룹으로 만들기")
+            self.chk_top_level.setStyleSheet("""
+                QCheckBox {
+                    color: #334155;
+                    font-size: 12px;
+                    spacing: 6px;
+                }
+                QCheckBox::indicator {
+                    width: 15px;
+                    height: 15px;
+                    border: 1px solid #94A3B8;
+                    border-radius: 3px;
+                    background-color: #F8FAFC;
+                }
+                QCheckBox::indicator:checked {
+                    background-color: #2563EB;
+                    border-color: #2563EB;
+                    image: url(none);
+                }
+                QCheckBox::indicator:hover {
+                    border-color: #3B82F6;
+                }
+            """)
+            layout.addWidget(self.chk_top_level)
+
+        btn_layout = QHBoxLayout()
+        btn_save = QPushButton("💾 저장")
+        btn_save.clicked.connect(self.on_save_clicked)
+        btn_close = QPushButton("닫기")
+        btn_close.clicked.connect(self.reject)
+        
+        btn_save.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_close.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_save.setStyleSheet("background-color: #2563EB; color: white; font-weight: bold; padding: 6px 14px; border-radius: 4px; font-size: 11px;")
+        btn_close.setStyleSheet("background-color: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; padding: 6px 14px; border-radius: 4px; font-size: 11px;")
+        
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_save)
+        btn_layout.addWidget(btn_close)
+        layout.addLayout(btn_layout)
+        self.setLayout(layout)
+
+    def on_save_clicked(self):
+        if not self.txt_name.text().strip():
+            QMessageBox.warning(self, "경고", "분류 이름은 필수 입력 항목입니다.")
+            return
+        self.accept()
+
+    def get_name(self):
+        return self.txt_name.text().strip()
+
+    def is_top_level(self):
+        if self.chk_top_level:
+            return self.chk_top_level.isChecked()
+        return False
+
+
+class ContactAddEditDialog(QDialog):
+    """연락처 추가/수정용 다이얼로그"""
+    def __init__(self, name="", phone="", company="", notes="", category_id=None, categories=[], parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("연락처 관리")
+        self.setFixedSize(360, 310)
+        self.categories = categories
+        self.init_ui(name, phone, company, notes, category_id)
+
+    def init_ui(self, name, phone, company, notes, category_id):
+        layout = QVBoxLayout()
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(10)
+
+        form = QFormLayout()
+        self.txt_name = QLineEdit()
+        self.txt_name.setText(name)
+        self.txt_name.setPlaceholderText("이름 (필수)")
+        self.txt_name.setStyleSheet("padding: 5px; font-size: 12px; border: 1px solid #CBD5E1; border-radius: 4px;")
+
+        self.txt_phone = QLineEdit()
+        self.txt_phone.setText(phone)
+        self.txt_phone.setPlaceholderText("예: 010-1234-5678")
+        self.txt_phone.setStyleSheet("padding: 5px; font-size: 12px; border: 1px solid #CBD5E1; border-radius: 4px;")
+
+        self.txt_company = QLineEdit()
+        self.txt_company.setText(company)
+        self.txt_company.setPlaceholderText("회사/부서명")
+        self.txt_company.setStyleSheet("padding: 5px; font-size: 12px; border: 1px solid #CBD5E1; border-radius: 4px;")
+
+        self.combo_category = QComboBox()
+        self.combo_category.addItem("미분류", None)
+        selected_idx = 0
+        for idx, cat in enumerate(self.categories):
+            self.combo_category.addItem(cat['category_name'], cat['id'])
+            if cat['id'] == category_id:
+                selected_idx = idx + 1
+        self.combo_category.setCurrentIndex(selected_idx)
+        self.combo_category.setStyleSheet("padding: 5px; font-size: 12px; border: 1px solid #CBD5E1; border-radius: 4px;")
+
+        self.txt_notes = QTextEdit()
+        self.txt_notes.setText(notes)
+        self.txt_notes.setPlaceholderText("비고 사항 입력...")
+        self.txt_notes.setStyleSheet("padding: 5px; font-size: 12px; border: 1px solid #CBD5E1; border-radius: 4px;")
+        self.txt_notes.setFixedHeight(80)
+
+        form.addRow("이름 *:", self.txt_name)
+        form.addRow("전화번호:", self.txt_phone)
+        form.addRow("회사명:", self.txt_company)
+        form.addRow("분류 폴더:", self.combo_category)
+        form.addRow("비고:", self.txt_notes)
+        layout.addLayout(form)
+
+        btn_layout = QHBoxLayout()
+        btn_save = QPushButton("💾 저장")
+        btn_save.clicked.connect(self.on_save_clicked)
+        btn_close = QPushButton("닫기")
+        btn_close.clicked.connect(self.reject)
+        
+        btn_save.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_close.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_save.setStyleSheet("background-color: #2563EB; color: white; font-weight: bold; padding: 6px 14px; border-radius: 4px; font-size: 11px;")
+        btn_close.setStyleSheet("background-color: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; padding: 6px 14px; border-radius: 4px; font-size: 11px;")
+        
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_save)
+        btn_layout.addWidget(btn_close)
+        layout.addLayout(btn_layout)
+        self.setLayout(layout)
+
+    def on_save_clicked(self):
+        if not self.txt_name.text().strip():
+            QMessageBox.warning(self, "경고", "이름은 필수 입력 항목입니다.")
+            return
+        self.accept()
+
+    def get_data(self):
+        return {
+            "name": self.txt_name.text().strip(),
+            "phone": self.txt_phone.text().strip(),
+            "company": self.txt_company.text().strip(),
+            "category_id": self.combo_category.currentData(),
+            "notes": self.txt_notes.toPlainText().strip()
+        }
+
+
+class ContactTreeWidget(QTreeWidget):
+    itemMoved = pyqtSignal()
+
+    def __init__(self, db_mgr, parent=None):
+        super().__init__(parent)
+        self.db_mgr = db_mgr
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        self.setDropIndicatorShown(True)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+
+    def dragMoveEvent(self, event):
+        target_item = self.itemAt(event.position().toPoint())
+        dragged_items = self.selectedItems()
+        if not dragged_items:
+            event.ignore()
+            return
+            
+        dragged = dragged_items[0]
+        dragged_type = dragged.data(0, Qt.ItemDataRole.UserRole + 1)
+        
+        if target_item:
+            target_type = target_item.data(0, Qt.ItemDataRole.UserRole + 1)
+            
+            # 순환 참조 방지
+            if dragged_type == "category":
+                dragged_id = dragged.data(0, Qt.ItemDataRole.UserRole)
+                ancestor = target_item
+                while ancestor:
+                    a_id = ancestor.data(0, Qt.ItemDataRole.UserRole)
+                    a_type = ancestor.data(0, Qt.ItemDataRole.UserRole + 1)
+                    if a_type == "category" and a_id == dragged_id:
+                        event.ignore()
+                        return
+                    ancestor = ancestor.parent()
+                    
+        super().dragMoveEvent(event)
+
+    def dropEvent(self, event):
+        target_item = self.itemAt(event.position().toPoint())
+        dragged_items = self.selectedItems()
+        if not dragged_items:
+            event.ignore()
+            return
+            
+        dragged = dragged_items[0]
+        dragged_id = dragged.data(0, Qt.ItemDataRole.UserRole)
+        dragged_type = dragged.data(0, Qt.ItemDataRole.UserRole + 1)
+        indicator = self.dropIndicatorPosition()
+        
+        parent_cat_id = None
+        dest_parent = None
+        
+        if target_item:
+            target_type = target_item.data(0, Qt.ItemDataRole.UserRole + 1)
+            
+            if indicator == QAbstractItemView.DropIndicatorPosition.OnItem:
+                if target_type == "category":
+                    parent_cat_id = target_item.data(0, Qt.ItemDataRole.UserRole)
+                    dest_parent = target_item
+                elif target_type == "contact":
+                    dest_parent = target_item.parent()
+                    if dest_parent:
+                        parent_cat_id = dest_parent.data(0, Qt.ItemDataRole.UserRole)
+                else:
+                    event.ignore()
+                    return
+            else:
+                dest_parent = target_item.parent()
+                if dest_parent:
+                    parent_cat_id = dest_parent.data(0, Qt.ItemDataRole.UserRole)
+        
+        if dragged_type == "category" and parent_cat_id == dragged_id:
+            event.ignore()
+            return
+            
+        if dragged_type == "category" and parent_cat_id is not None:
+            ancestor = dest_parent
+            is_descendant = False
+            while ancestor:
+                a_id = ancestor.data(0, Qt.ItemDataRole.UserRole)
+                a_type = ancestor.data(0, Qt.ItemDataRole.UserRole + 1)
+                if a_type == "category" and a_id == dragged_id:
+                    is_descendant = True
+                    break
+                ancestor = ancestor.parent()
+            if is_descendant:
+                event.ignore()
+                return
+
+        # Qt의 기본 드롭 처리 실행 (노드가 안전하게 새 위치로 이동함)
+        super().dropEvent(event)
+            
+        # DB 갱신
+        if dragged_type == "contact":
+            self.db_mgr.update_contact_category_id(dragged_id, parent_cat_id)
+        elif dragged_type == "category":
+            self.db_mgr.update_contact_category_parent(dragged_id, parent_cat_id)
+            
+        self.itemMoved.emit()
+
+
+class ContactListTabWidget(QWidget):
+    """우측 주소록 상세 목록 테이블 위젯"""
+    def __init__(self, db_mgr, category_id, category_name, main_win, parent=None):
+        super().__init__(parent)
+        self.db_mgr = db_mgr
+        self.category_id = category_id
+        self.category_name = category_name
+        self.main_win = main_win
+        self.all_selected = False
+        self.is_modified = False
+        self.is_loading = False
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(10)
+
+        # 1. 상단 타이틀 및 경로 표시 영역
+        title_layout = QHBoxLayout()
+        lbl_title = QLabel(f"👥 [{self.category_name}] 연락처 목록")
+        lbl_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #1E3A8A;")
+        title_layout.addWidget(lbl_title)
+        title_layout.addStretch()
+        layout.addLayout(title_layout)
+
+        # 2. 검색 및 퀵 액션 바
+        toolbar_layout = QHBoxLayout()
+        toolbar_layout.setSpacing(8)
+
+        self.txt_filter = QLineEdit()
+        self.txt_filter.setPlaceholderText("이름, 회사, 전화번호 등으로 필터링...")
+        self.txt_filter.setStyleSheet("padding: 5px; font-size: 11px; border: 1px solid #CBD5E1; border-radius: 4px; max-width: 250px;")
+        self.txt_filter.returnPressed.connect(self.apply_filter)
+        toolbar_layout.addWidget(self.txt_filter)
+
+        self.btn_search = QPushButton("🔍")
+        self.btn_search.setStyleSheet("background-color: #F1F5F9; border: 1px solid #CBD5E1; padding: 5px 8px; border-radius: 4px; font-size: 11px;")
+        self.btn_search.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.btn_search.clicked.connect(self.apply_filter)
+        toolbar_layout.addWidget(self.btn_search)
+
+        toolbar_layout.addStretch()
+
+        self.btn_del_selected = QPushButton("❌ 선택삭제")
+        self.btn_del_selected.setStyleSheet("background-color: #EF4444; color: white; font-weight: bold; padding: 5px 10px; border-radius: 4px; font-size: 11px;")
+        self.btn_del_selected.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.btn_del_selected.clicked.connect(self.delete_selected_contacts)
+        toolbar_layout.addWidget(self.btn_del_selected)
+
+        self.btn_add_contact = QPushButton("➕ 연락처 추가")
+        self.btn_add_contact.setStyleSheet("background-color: #2563EB; color: white; font-weight: bold; padding: 5px 10px; border-radius: 4px; font-size: 11px;")
+        self.btn_add_contact.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.btn_add_contact.clicked.connect(self.add_contact_here)
+        toolbar_layout.addWidget(self.btn_add_contact)
+
+        self.btn_save_all = QPushButton("💾 일괄 저장")
+        self.btn_save_all.setStyleSheet("background-color: #10B981; color: white; font-weight: bold; padding: 5px 10px; border-radius: 4px; font-size: 11px;")
+        self.btn_save_all.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.btn_save_all.clicked.connect(self.save_all_contacts)
+        toolbar_layout.addWidget(self.btn_save_all)
+
+        layout.addLayout(toolbar_layout)
+
+        # 3. 테이블 위젯
+        self.table = QTableWidget()
+        self.table.setColumnCount(7)
+        self.table.setHorizontalHeaderLabels(["선택", "순번", "폴더", "이름", "전화번호", "회사명", "비고"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setStyleSheet("""
+            QTableWidget {
+                border: 1px solid #E2E8F0;
+                gridline-color: #F1F5F9;
+                background-color: #FFFFFF;
+                font-size: 12px;
+            }
+            QHeaderView::section {
+                background-color: #F8FAFC;
+                color: #475569;
+                padding: 6px;
+                font-weight: bold;
+                border: 1px solid #E2E8F0;
+            }
+        """)
+        
+        self.table.horizontalHeader().sectionClicked.connect(self.on_header_clicked)
+        self.table.itemChanged.connect(self.on_item_changed)
+        
+        layout.addWidget(self.table)
+
+        # 4. 하단 설명 라벨 추가
+        self.lbl_info = QLabel("💡 항목(이름, 전화번호, 회사명, 비고)을 더블클릭하면 목록에서 바로 수정할 수 있으며, 상단의 '💾 일괄 저장' 버튼을 누르면 최종 반영됩니다.")
+        self.lbl_info.setStyleSheet("font-size: 11px; color: #64748B; padding: 2px;")
+        layout.addWidget(self.lbl_info)
+        
+        self.refresh_table()
+
+    @property
+    def is_dirty(self):
+        return getattr(self, 'is_modified', False)
+
+    def on_save_clicked(self):
+        self.save_all_contacts()
+
+    def on_item_changed(self, item):
+        if getattr(self, 'is_loading', False):
+            return
+        if not self.is_modified:
+            self.is_modified = True
+            self.update_tab_title()
+
+    def update_tab_title(self):
+        tab_widget = self.main_win.tab_widget
+        idx = tab_widget.indexOf(self)
+        if idx != -1:
+            title = tab_widget.tabText(idx)
+            base_title = title.replace("*", "").strip()
+            if self.is_modified:
+                tab_widget.setTabText(idx, base_title + "*")
+            else:
+                tab_widget.setTabText(idx, base_title)
+
+    def refresh_table(self):
+        self.is_loading = True
+        self.table.setRowCount(0)
+        self.all_selected = False
+        self.contacts = self.db_mgr.get_contacts_by_category_recursive(self.category_id)
+        self.apply_filter()
+        self.is_modified = False
+        self.update_tab_title()
+        self.is_loading = False
+
+    def on_header_clicked(self, index):
+        if index == 0:
+            self.all_selected = not self.all_selected
+            for r in range(self.table.rowCount()):
+                chk_widget = self.table.cellWidget(r, 0)
+                if chk_widget:
+                    chk = chk_widget.findChild(QCheckBox)
+                    if chk:
+                        chk.blockSignals(True)
+                        chk.setChecked(self.all_selected)
+                        chk.blockSignals(False)
+
+    def apply_filter(self):
+        self.is_loading = True
+        self.table.setRowCount(0)
+        search_text = self.txt_filter.text().strip().lower()
+        
+        filtered_contacts = []
+        for c in self.contacts:
+            if not search_text:
+                filtered_contacts.append(c)
+            else:
+                name = c['name'].lower() if c['name'] else ""
+                phone = c['phone'].lower() if c['phone'] else ""
+                company = c['company'].lower() if c['company'] else ""
+                notes = c['notes'].lower() if c['notes'] else ""
+                if search_text in name or search_text in phone or search_text in company or search_text in notes:
+                    filtered_contacts.append(c)
+
+        cats = self.db_mgr.get_contact_categories()
+        cat_dict = {ca['id']: ca for ca in cats}
+
+        self.table.setRowCount(len(filtered_contacts))
+        for row_idx, c in enumerate(filtered_contacts):
+            folder_id = c['category_id']
+            final_folder_name = cat_dict[folder_id]['category_name'] if folder_id and folder_id in cat_dict else "미분류"
+
+            chk_widget = QWidget()
+            chk_layout = QHBoxLayout(chk_widget)
+            chk_layout.setContentsMargins(0, 0, 0, 0)
+            chk_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            chk = QCheckBox()
+            chk.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            chk_layout.addWidget(chk)
+            self.table.setCellWidget(row_idx, 0, chk_widget)
+
+            num_item = QTableWidgetItem(str(row_idx + 1))
+            num_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            num_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+            self.table.setItem(row_idx, 1, num_item)
+
+            folder_item = QTableWidgetItem(final_folder_name)
+            folder_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            folder_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+            self.table.setItem(row_idx, 2, folder_item)
+
+            name_item = QTableWidgetItem(c['name'])
+            name_item.setData(Qt.ItemDataRole.UserRole, c)
+            name_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            name_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEditable)
+            self.table.setItem(row_idx, 3, name_item)
+
+            phone_item = QTableWidgetItem(c['phone'] or "")
+            phone_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            phone_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEditable)
+            self.table.setItem(row_idx, 4, phone_item)
+
+            company_item = QTableWidgetItem(c['company'] or "")
+            company_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            company_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEditable)
+            self.table.setItem(row_idx, 5, company_item)
+
+            notes_val = c['notes'] or ""
+            notes_display = " " + notes_val if notes_val else " "
+            notes_item = QTableWidgetItem(notes_display)
+            notes_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            notes_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEditable)
+            self.table.setItem(row_idx, 6, notes_item)
+
+        self.table.setColumnWidth(0, 45)  # 선택
+        self.table.setColumnWidth(1, 45)  # 순번
+        self.table.setColumnWidth(2, 100) # 폴더
+        self.table.setColumnWidth(3, 120) # 이름
+        self.table.setColumnWidth(4, 130) # 전화번호
+        self.table.setColumnWidth(5, 130) # 회사명
+        self.table.setColumnWidth(6, 250) # 비고
+        self.is_loading = False
+
+    def delete_selected_contacts(self):
+        to_delete = []
+        for r in range(self.table.rowCount()):
+            chk_widget = self.table.cellWidget(r, 0)
+            if chk_widget:
+                chk = chk_widget.findChild(QCheckBox)
+                if chk and chk.isChecked():
+                    name_item = self.table.item(r, 3)
+                    if name_item:
+                        c_data = name_item.data(Qt.ItemDataRole.UserRole)
+                        if c_data:
+                            to_delete.append(c_data)
+                            
+        if not to_delete:
+            QMessageBox.information(self, "안내", "삭제할 연락처를 선택해 주세요.")
+            return
+            
+        reply = QMessageBox.question(
+            self, "삭제 확인",
+            f"선택한 {len(to_delete)}개의 연락처를 삭제하시겠습니까?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            for c in to_delete:
+                self.db_mgr.delete_contact(c['id'])
+            self.refresh_table()
+            if hasattr(self.main_win, 'contact_sidebar'):
+                self.main_win.contact_sidebar.refresh_tree()
+            self.main_win.status_bar.showMessage(f"❌ {len(to_delete)}개의 연락처가 삭제되었습니다.", 3000)
+
+    def save_all_contacts(self):
+        updated_count = 0
+        for r in range(self.table.rowCount()):
+            name_item = self.table.item(r, 3)
+            phone_item = self.table.item(r, 4)
+            company_item = self.table.item(r, 5)
+            notes_item = self.table.item(r, 6)
+
+            if not name_item:
+                continue
+
+            c_data = name_item.data(Qt.ItemDataRole.UserRole)
+            if not c_data:
+                continue
+
+            name = name_item.text().strip()
+            if not name:
+                QMessageBox.warning(self, "경고", f"순번 {r+1}의 이름이 비어있어 저장할 수 없습니다.")
+                return
+
+            phone = phone_item.text().strip() if phone_item else ""
+            company = company_item.text().strip() if company_item else ""
+            
+            notes = notes_item.text() if notes_item else ""
+            if notes.startswith(" "):
+                notes = notes[1:]
+
+            self.db_mgr.update_contact(c_data['id'], name, phone, company, notes, c_data['category_id'])
+            updated_count += 1
+
+        self.refresh_table()
+        if hasattr(self.main_win, 'contact_sidebar'):
+            self.main_win.contact_sidebar.refresh_tree()
+        self.main_win.status_bar.showMessage(f"✅ {updated_count}개의 연락처 정보가 일괄 저장되었습니다.", 3000)
+
+    def add_contact_here(self):
+        cats = self.db_mgr.get_contact_categories()
+        dlg = ContactAddEditDialog(categories=cats, category_id=self.category_id, parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            data = dlg.get_data()
+            self.db_mgr.add_contact(data['name'], data['phone'], data['company'], data['notes'], data['category_id'])
+            self.refresh_table()
+            if hasattr(self.main_win, 'contact_sidebar'):
+                self.main_win.contact_sidebar.refresh_tree()
+            self.main_win.status_bar.showMessage("✅ 연락처가 추가되었습니다.", 3000)
+
+
+class ContactSidebarWidget(QWidget):
+    """좌측 주소록 트리 관리 위젯"""
+    def __init__(self, db_mgr, main_win, parent=None):
+        super().__init__(parent)
+        self.db_mgr = db_mgr
+        self.main_win = main_win
+        self.init_ui()
+
+    def init_ui(self):
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(6)
+
+        # 1. 상단 검색 영역
+        search_bar = QHBoxLayout()
+        search_bar.setSpacing(4)
+
+        self.combo_search_type = QComboBox()
+        self.combo_search_type.addItems(["이름", "회사명", "전화번호"])
+        self.combo_search_type.setFixedHeight(30)
+        self.combo_search_type.setStyleSheet("""
+            QComboBox {
+                background-color: #F8FAFC;
+                color: #1E293B;
+                border: 1px solid #CBD5E1;
+                border-radius: 4px;
+                padding: 4px 6px;
+                font-size: 11px;
+                min-width: 80px;
+                max-width: 85px;
+            }
+            QComboBox:focus {
+                border: 1px solid #3B82F6;
+            }
+        """)
+
+        self.txt_search = QLineEdit()
+        self.txt_search.setPlaceholderText("이름 검색 후 Enter...")
+        self.txt_search.setFixedHeight(30)
+        self.txt_search.setStyleSheet(self.main_win.get_sidebar_search_style())
+
+        def on_search_type_changed(text):
+            self.txt_search.setPlaceholderText(f"{text} 검색 후 Enter...")
+            self.apply_search()
+
+        self.combo_search_type.currentTextChanged.connect(on_search_type_changed)
+        self.txt_search.returnPressed.connect(self.apply_search)
+
+        self.btn_reset_search = QPushButton("↺")
+        self.btn_reset_search.setFixedWidth(28)
+        self.btn_reset_search.setFixedHeight(30)
+        self.btn_reset_search.setToolTip("검색 초기화")
+        self.btn_reset_search.setStyleSheet(self.main_win.get_sidebar_reset_button_style())
+        self.btn_reset_search.clicked.connect(self.clear_search)
+
+        search_bar.addWidget(self.combo_search_type)
+        search_bar.addWidget(self.txt_search)
+        search_bar.addWidget(self.btn_reset_search)
+        main_layout.addLayout(search_bar)
+
+        # 2. 트리 위젯 장착
+        self.tree = ContactTreeWidget(self.db_mgr, self)
+        self.tree.setHeaderHidden(True)
+        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self.show_context_menu)
+        self.tree.itemClicked.connect(self.on_item_clicked)
+        self.tree.itemMoved.connect(self.on_tree_item_moved)
+        self.tree.setStyleSheet("""
+            QTreeWidget {
+                background-color: #FFFFFF;
+                border: 1px solid #CBD5E1;
+                border-radius: 3px;
+                padding: 2px;
+            }
+            QTreeWidget::item {
+                height: 20px;
+                font-size: 11px;
+                color: #334155;
+            }
+            QTreeWidget::item:hover {
+                background-color: #F1F5F9;
+                border-radius: 2px;
+            }
+            QTreeWidget::item:selected {
+                background-color: #EFF6FF;
+                color: #2563EB;
+                font-weight: bold;
+                border-radius: 2px;
+            }
+        """)
+        main_layout.addWidget(self.tree)
+
+        # 3. 폴더 열기/닫기 행
+        expand_layout = QHBoxLayout()
+        expand_layout.setSpacing(4)
+        
+        btn_expand = QPushButton("📂 모두 열기")
+        btn_collapse = QPushButton("📁 모두 닫기")
+        
+        exp_btn_style = """
+            QPushButton {
+                font-size: 10px;
+                padding: 4px 5px;
+                border: 1px solid #CBD5E1;
+                border-radius: 3px;
+                background-color: #FFFFFF;
+                color: #334155;
+            }
+            QPushButton:hover {
+                background-color: #F1F5F9;
+            }
+        """
+        for btn in [btn_expand, btn_collapse]:
+            btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            btn.setStyleSheet(exp_btn_style)
+            expand_layout.addWidget(btn)
+            
+        btn_expand.clicked.connect(self.tree.expandAll)
+        btn_collapse.clicked.connect(self.tree.collapseAll)
+        main_layout.addLayout(expand_layout)
+
+        # 4. 주소록 관리 버튼 행
+        action_layout = QHBoxLayout()
+        action_layout.setSpacing(4)
+
+        self.btn_add_cat = QPushButton("➕ 분류추가")
+        self.btn_edit = QPushButton("✏️ 수정")
+        self.btn_del = QPushButton("❌ 삭제")
+        self.btn_add = QPushButton("👤 연락처등록")
+
+        for btn in [self.btn_add_cat, self.btn_edit, self.btn_del, self.btn_add]:
+            btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            btn.setStyleSheet(exp_btn_style)
+            action_layout.addWidget(btn)
+
+        self.btn_add_cat.clicked.connect(self.add_category_flow)
+        self.btn_edit.clicked.connect(self.edit_flow)
+        self.btn_del.clicked.connect(self.delete_flow)
+        self.btn_add.clicked.connect(self.add_flow)
+
+        main_layout.addLayout(action_layout)
+
+        # 5. 가져오기 / 내보내기 버튼 행
+        share_layout = QHBoxLayout()
+        share_layout.setSpacing(4)
+
+        self.btn_import = QPushButton("📥 가져오기")
+        self.btn_export = QPushButton("📤 내보내기")
+
+        for btn in [self.btn_import, self.btn_export]:
+            btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            btn.setStyleSheet(exp_btn_style)
+            share_layout.addWidget(btn)
+
+        self.btn_import.clicked.connect(self.import_flow)
+        self.btn_export.clicked.connect(self.export_flow)
+
+        main_layout.addLayout(share_layout)
+        
+        self.refresh_tree()
+
+    def on_tree_item_moved(self):
+        self.refresh_tree()
+        self.refresh_active_contact_tabs()
+
+    def refresh_tree(self, force_expand_ids=None):
+        self.tree.blockSignals(True)
+        selected_paths = []
+        for item in self.tree.selectedItems():
+            selected_paths.append(self.get_item_path_data(item))
+            
+        expanded_cat_ids = set()
+        iterator = QTreeWidgetItemIterator(self.tree)
+        while iterator.value():
+            item = iterator.value()
+            if item.isExpanded() and item.data(0, Qt.ItemDataRole.UserRole + 1) == "category":
+                expanded_cat_ids.add(item.data(0, Qt.ItemDataRole.UserRole))
+            iterator += 1
+
+        if force_expand_ids:
+            expanded_cat_ids.update(force_expand_ids)
+
+        self.tree.clear()
+        
+        cats = self.db_mgr.get_contact_categories()
+        contacts = self.db_mgr.get_all_contacts()
+        
+        from collections import defaultdict
+        cat_map = defaultdict(list)
+        for c in cats:
+            cat_map[c['parent_id']].append(c)
+            
+        cat_node_map = {}
+
+        def build_nodes(parent_widget, parent_id):
+            current_cats = cat_map[parent_id]
+            for c in sorted(current_cats, key=lambda x: (x['sort_order'], x['category_name'])):
+                node = QTreeWidgetItem(parent_widget)
+                node.setText(0, f"📂 {c['category_name']}")
+                node.setData(0, Qt.ItemDataRole.UserRole, c['id'])
+                node.setData(0, Qt.ItemDataRole.UserRole + 1, "category")
+                node.setData(0, Qt.ItemDataRole.UserRole + 2, c['category_name'])
+                
+                # 처음에 폴더 다 열어놓기 (처음이거나 백업된 상태가 있으면 복원, 기본적으로 모두 열어둠)
+                node.setExpanded(c['id'] in expanded_cat_ids or not expanded_cat_ids)
+                
+                cat_node_map[c['id']] = node
+                build_nodes(node, c['id'])
+                
+                cat_contacts = [ct for ct in contacts if ct['category_id'] == c['id']]
+                for ct in sorted(cat_contacts, key=lambda x: x['name']):
+                    item = QTreeWidgetItem(node)
+                    display_text = ct['name']
+                    if ct['company']:
+                        display_text += f" ({ct['company']})"
+                    item.setText(0, f"👤 {display_text}")
+                    item.setData(0, Qt.ItemDataRole.UserRole, ct['id'])
+                    item.setData(0, Qt.ItemDataRole.UserRole + 1, "contact")
+                    item.setData(0, Qt.ItemDataRole.UserRole + 2, ct)
+
+        build_nodes(self.tree, None)
+        
+        uncategorized_contacts = [ct for ct in contacts if ct['category_id'] is None]
+        for ct in sorted(uncategorized_contacts, key=lambda x: x['name']):
+            item = QTreeWidgetItem(self.tree)
+            display_text = ct['name']
+            if ct['company']:
+                display_text += f" ({ct['company']})"
+            item.setText(0, f"👤 {display_text}")
+            item.setData(0, Qt.ItemDataRole.UserRole, ct['id'])
+            item.setData(0, Qt.ItemDataRole.UserRole + 1, "contact")
+            item.setData(0, Qt.ItemDataRole.UserRole + 2, ct)
+
+        iterator = QTreeWidgetItemIterator(self.tree)
+        while iterator.value():
+            item = iterator.value()
+            path_data = self.get_item_path_data(item)
+            if path_data in selected_paths:
+                item.setSelected(True)
+            iterator += 1
+            
+        self.tree.blockSignals(False)
+
+    def get_item_path_data(self, item):
+        path = []
+        curr = item
+        while curr:
+            path.append((curr.data(0, Qt.ItemDataRole.UserRole + 1), curr.data(0, Qt.ItemDataRole.UserRole)))
+            curr = curr.parent()
+        return tuple(reversed(path))
+
+    def show_context_menu(self, pos):
+        selected_items = self.tree.selectedItems()
+        if not selected_items:
+            return
+
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu { background-color: #FFFFFF; border: 1px solid #CBD5E1; }
+            QMenu::item { padding: 6px 20px; font-size: 11px; color: #334155; }
+            QMenu::item:selected { background-color: #EFF6FF; color: #2563EB; }
+        """)
+
+        if len(selected_items) > 1:
+            act_del = menu.addAction("❌ 선택한 항목들 삭제")
+            action = menu.exec(self.tree.viewport().mapToGlobal(pos))
+            if action == act_del:
+                self.delete_flow()
+        else:
+            item = selected_items[0]
+            node_type = item.data(0, Qt.ItemDataRole.UserRole + 1)
+            item_id = item.data(0, Qt.ItemDataRole.UserRole)
+
+            if node_type == "category":
+                act_add_sub = menu.addAction("➕ 하위 분류 추가")
+                act_add_contact = menu.addAction("👤 하위 연락처 등록")
+                act_edit = menu.addAction("✏️ 분류명 수정")
+                act_del = menu.addAction("❌ 분류 삭제")
+
+                action = menu.exec(self.tree.viewport().mapToGlobal(pos))
+                if action == act_add_sub:
+                    self.add_category_flow()
+                elif action == act_add_contact:
+                    self.add_flow()
+                elif action == act_edit:
+                    self.edit_flow()
+                elif action == act_del:
+                    self.delete_flow()
+            elif node_type == "contact":
+                act_edit = menu.addAction("✏️ 연락처 수정")
+                act_del = menu.addAction("❌ 연락처 삭제")
+
+                action = menu.exec(self.tree.viewport().mapToGlobal(pos))
+                if action == act_edit:
+                    c_data = item.data(0, Qt.ItemDataRole.UserRole + 2)
+                    self.edit_contact_popup(c_data)
+                elif action == act_del:
+                    self.delete_flow()
+
+    def edit_contact_popup(self, c_data):
+        cats = self.db_mgr.get_contact_categories()
+        dlg = ContactAddEditDialog(
+            name=c_data['name'],
+            phone=c_data['phone'],
+            company=c_data['company'],
+            notes=c_data['notes'],
+            category_id=c_data['category_id'],
+            categories=cats,
+            parent=self
+        )
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            data = dlg.get_data()
+            self.db_mgr.update_contact(c_data['id'], data['name'], data['phone'], data['company'], data['notes'], data['category_id'])
+            self.refresh_tree()
+            self.refresh_active_contact_tabs()
+            self.main_win.status_bar.showMessage("✅ 연락처 정보가 수정되었습니다.", 3000)
+
+    def apply_search(self):
+        query = self.txt_search.text().strip().lower()
+        if not query:
+            self.refresh_tree()
+            return
+            
+        self.tree.blockSignals(True)
+        self.refresh_tree()
+        
+        iterator = QTreeWidgetItemIterator(self.tree)
+        while iterator.value():
+            item = iterator.value()
+            item_type = item.data(0, Qt.ItemDataRole.UserRole + 1)
+            
+            if item_type == "contact":
+                c_data = item.data(0, Qt.ItemDataRole.UserRole + 2)
+                name = c_data['name'].lower() if c_data['name'] else ""
+                phone = c_data['phone'].lower() if c_data['phone'] else ""
+                company = c_data['company'].lower() if c_data['company'] else ""
+                
+                matches = (query in name or query in phone or query in company)
+                item.setHidden(not matches)
+                if matches:
+                    parent = item.parent()
+                    while parent:
+                        parent.setHidden(False)
+                        parent.setExpanded(True)
+                        parent = parent.parent()
+            else:
+                item.setHidden(True)
+            iterator += 1
+        self.tree.blockSignals(False)
+
+    def clear_search(self):
+        self.txt_search.clear()
+        self.refresh_tree()
+
+    def add_category_flow(self):
+        selected_items = self.tree.selectedItems()
+        parent_id = None
+        
+        if selected_items:
+            selected_item = selected_items[0]
+            item_type = selected_item.data(0, Qt.ItemDataRole.UserRole + 1)
+            if item_type == "category":
+                parent_id = selected_item.data(0, Qt.ItemDataRole.UserRole)
+            elif selected_item.parent():
+                parent_id = selected_item.parent().data(0, Qt.ItemDataRole.UserRole)
+
+        # 폴더추가할 때 최상위 그룹 체크박스를 항상 출력
+        dlg = ContactCategoryAddEditDialog(parent=self, show_top_level_option=True)
+        if parent_id is None and dlg.chk_top_level:
+            dlg.chk_top_level.setChecked(True)
+
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            cat_name = dlg.get_name()
+            if dlg.is_top_level():
+                parent_id = None
+            new_cat_id = self.db_mgr.add_contact_category(cat_name, parent_id)
+            
+            # 신규 추가된 하위 폴더와 그 부모 폴더가 자동으로 펼쳐지도록 구현
+            f_ids = {new_cat_id}
+            if parent_id is not None:
+                f_ids.add(parent_id)
+            self.refresh_tree(force_expand_ids=f_ids)
+            self.main_win.status_bar.showMessage("📁 주소록 분류 폴더가 추가되었습니다.", 3000)
+
+    def add_flow(self):
+        selected_items = self.tree.selectedItems()
+        category_id = None
+        if selected_items:
+            selected_item = selected_items[0]
+            item_type = selected_item.data(0, Qt.ItemDataRole.UserRole + 1)
+            if item_type == "category":
+                category_id = selected_item.data(0, Qt.ItemDataRole.UserRole)
+            elif selected_item.parent():
+                category_id = selected_item.parent().data(0, Qt.ItemDataRole.UserRole)
+
+        cats = self.db_mgr.get_contact_categories()
+        dlg = ContactAddEditDialog(categories=cats, category_id=category_id, parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            data = dlg.get_data()
+            self.db_mgr.add_contact(data['name'], data['phone'], data['company'], data['notes'], data['category_id'])
+            self.refresh_tree()
+            self.refresh_active_contact_tabs()
+            self.main_win.status_bar.showMessage("✅ 연락처가 추가되었습니다.", 3000)
+
+    def edit_flow(self):
+        selected_items = self.tree.selectedItems()
+        if not selected_items:
+            QMessageBox.information(self, "안내", "수정할 분류 폴더 또는 연락처를 선택하세요.")
+            return
+
+        selected_item = selected_items[0]
+        item_type = selected_item.data(0, Qt.ItemDataRole.UserRole + 1)
+        item_id = selected_item.data(0, Qt.ItemDataRole.UserRole)
+
+        if item_type == "category":
+            old_name = selected_item.data(0, Qt.ItemDataRole.UserRole + 2)
+            dlg = ContactCategoryAddEditDialog(current_name=old_name, parent=self, show_top_level_option=False)
+            if dlg.exec() == QDialog.DialogCode.Accepted:
+                new_name = dlg.get_name()
+                self.db_mgr.update_contact_category(item_id, new_name)
+                self.refresh_tree()
+                self.main_win.status_bar.showMessage("✅ 분류 폴더명이 수정되었습니다.", 3000)
+        elif item_type == "contact":
+            c_data = selected_item.data(0, Qt.ItemDataRole.UserRole + 2)
+            self.edit_contact_popup(c_data)
+
+    def delete_flow(self):
+        selected_items = self.tree.selectedItems()
+        if not selected_items:
+            QMessageBox.information(self, "안내", "삭제할 분류 폴더 또는 연락처를 선택하세요.")
+            return
+
+        if len(selected_items) > 1:
+            reply = QMessageBox.question(
+                self, "일괄 삭제 확인",
+                f"선택한 {len(selected_items)}개의 항목을 삭제하시겠습니까?\n폴더 삭제 시 하위 폴더와 연락처도 모두 함께 삭제됩니다.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+            
+            cats_to_delete = []
+            contacts_to_delete = []
+            for item in selected_items:
+                i_type = item.data(0, Qt.ItemDataRole.UserRole + 1)
+                i_id = item.data(0, Qt.ItemDataRole.UserRole)
+                if i_type == "category":
+                    cats_to_delete.append(i_id)
+                elif i_type == "contact":
+                    contacts_to_delete.append(i_id)
+            
+            for cat_id in cats_to_delete:
+                self.db_mgr.delete_contact_category(cat_id)
+            for contact_id in contacts_to_delete:
+                self.db_mgr.delete_contact(contact_id)
+                
+            self.refresh_tree()
+            self.refresh_active_contact_tabs()
+            self.main_win.status_bar.showMessage(f"❌ {len(selected_items)}개의 항목이 일괄 삭제되었습니다.", 3000)
+        else:
+            selected_item = selected_items[0]
+            item_type = selected_item.data(0, Qt.ItemDataRole.UserRole + 1)
+            item_id = selected_item.data(0, Qt.ItemDataRole.UserRole)
+
+            if item_type == "category":
+                name = selected_item.data(0, Qt.ItemDataRole.UserRole + 2)
+                reply = QMessageBox.question(
+                    self, "삭제 확인",
+                    f"정말로 '{name}' 폴더를 삭제하시겠습니까?\n"
+                    "폴더를 삭제하면 그 내부의 모든 하위 폴더와 연락처 정보가 함께 영구 삭제됩니다.",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    self.db_mgr.delete_contact_category(item_id)
+                    self.refresh_tree()
+                    self.refresh_active_contact_tabs()
+                    self.main_win.status_bar.showMessage("❌ 분류 폴더와 연락처가 삭제되었습니다.", 3000)
+            elif item_type == "contact":
+                c_data = selected_item.data(0, Qt.ItemDataRole.UserRole + 2)
+                reply = QMessageBox.question(
+                    self, "삭제 확인",
+                    f"정말로 '{c_data['name']}'님의 연락처를 삭제하시겠습니까?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    self.db_mgr.delete_contact(item_id)
+                    self.refresh_tree()
+                    self.refresh_active_contact_tabs()
+                    self.main_win.status_bar.showMessage("❌ 연락처가 삭제되었습니다.", 3000)
+
+    def refresh_active_contact_tabs(self):
+        if hasattr(self.main_win, 'open_contact_tabs'):
+            for tab in list(self.main_win.open_contact_tabs.values()):
+                try:
+                    tab.refresh_table()
+                except Exception:
+                    pass
+
+    def on_item_clicked(self, item, column):
+        item_type = item.data(0, Qt.ItemDataRole.UserRole + 1)
+        item_id = item.data(0, Qt.ItemDataRole.UserRole)
+        
+        if item_type == "category":
+            name = item.data(0, Qt.ItemDataRole.UserRole + 2)
+            self.main_win.open_contact_list_tab(item_id, name)
+        elif item_type == "contact":
+            c_data = item.data(0, Qt.ItemDataRole.UserRole + 2)
+            parent = item.parent()
+            if parent:
+                p_id = parent.data(0, Qt.ItemDataRole.UserRole)
+                p_name = parent.data(0, Qt.ItemDataRole.UserRole + 2)
+            else:
+                p_id = None
+                p_name = "미분류"
+            self.main_win.open_contact_list_tab(p_id, p_name, filter_contact_name=c_data['name'])
+
+    def export_flow(self):
+        """주소록 내보내기 (Excel 파일 - 분류 경로 포함)"""
+        import pandas as pd
+        contacts = self.db_mgr.get_all_contacts()
+        if not contacts:
+            QMessageBox.information(self, "알림", "내보낼 연락처가 없습니다.")
+            return
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "주소록 내보내기 (Excel)", "",
+            "Excel 파일 (*.xlsx)"
+        )
+        if not file_path:
+            return
+
+        cats = self.db_mgr.get_contact_categories()
+        cat_dict = {c['id']: c for c in cats}
+
+        def get_category_path(cat_id):
+            if not cat_id or cat_id not in cat_dict:
+                return ""
+            path = []
+            curr_id = cat_id
+            while curr_id and curr_id in cat_dict:
+                c = cat_dict[curr_id]
+                path.append(c['category_name'])
+                curr_id = c['parent_id']
+            return " > ".join(reversed(path))
+
+        try:
+            data = []
+            for c in contacts:
+                data.append({
+                    "분류": get_category_path(c['category_id']),
+                    "이름": c['name'],
+                    "전화번호": c['phone'],
+                    "회사명": c['company'],
+                    "비고": c['notes']
+                })
+            df = pd.DataFrame(data)
+            df.to_excel(file_path, index=False)
+            self.main_win.status_bar.showMessage("✅ 주소록이 성공적으로 내보내졌습니다.", 3000)
+        except Exception as e:
+            QMessageBox.critical(self, "오류", f"주소록을 내보내는 중 오류가 발생했습니다:\n{str(e)}")
+
+    def import_flow(self):
+        """주소록 가져오기 (Excel 파일 - 분류 계층 구조 생성 포함)"""
+        import pandas as pd
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "주소록 가져오기 (Excel)", "",
+            "Excel 파일 (*.xlsx *.xls)"
+        )
+        if not file_path:
+            return
+
+        try:
+            df = self.db_mgr._read_file_to_df(file_path)
+            if df is None or df.empty:
+                QMessageBox.warning(self, "경고", "엑셀 파일에서 데이터를 읽을 수 없거나 파일이 비어 있습니다.")
+                return
+
+            col_mapping = {}
+            for col in df.columns:
+                col_str = str(col).strip()
+                if col_str in ["이름", "name"]:
+                    col_mapping["name"] = col
+                elif col_str in ["전화번호", "전화", "phone", "연락처"]:
+                    col_mapping["phone"] = col
+                elif col_str in ["회사명", "회사", "부서명", "부서", "company"]:
+                    col_mapping["company"] = col
+                elif col_str in ["비고", "메모", "notes", "설명"]:
+                    col_mapping["notes"] = col
+                elif col_str in ["분류", "폴더", "category", "folder"]:
+                    col_mapping["category"] = col
+
+            if "name" not in col_mapping:
+                QMessageBox.critical(self, "오류", "엑셀 파일에 '이름' 또는 'name' 컬럼이 존재하지 않습니다.")
+                return
+
+            reply = QMessageBox.question(
+                self, "가져오기 옵션",
+                "가져오기 전에 기존 주소록 데이터를 모두 삭제하시겠습니까?\n\n"
+                "'예': 기존 데이터 삭제 후 새로 가져옴\n"
+                "'아니오': 기존 데이터를 유지하고 추가로 가져옴\n"
+                "'취소': 가져오기 취소",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.No
+            )
+
+            if reply == QMessageBox.StandardButton.Cancel:
+                return
+
+            if reply == QMessageBox.StandardButton.Yes:
+                with self.db_mgr.get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM contacts")
+                    cursor.execute("DELETE FROM contact_categories")
+                    conn.commit()
+
+            cats = self.db_mgr.get_contact_categories()
+            cat_dict = {c['id']: c for c in cats}
+            
+            def get_full_path_str(cat_id):
+                if not cat_id or cat_id not in cat_dict:
+                    return ""
+                path = []
+                curr_id = cat_id
+                while curr_id and curr_id in cat_dict:
+                    c = cat_dict[curr_id]
+                    path.append(c['category_name'])
+                    curr_id = c['parent_id']
+                return " > ".join(reversed(path))
+                
+            cat_path_map = {get_full_path_str(c['id']): c['id'] for c in cats if get_full_path_str(c['id'])}
+
+            def resolve_category_path(path_str):
+                if not path_str or pd.isna(path_str):
+                    return None
+                p_str = str(path_str).strip()
+                if not p_str or p_str.lower() in ('nan', '<nan>', 'null', 'none', '미분류'):
+                    return None
+                    
+                if p_str in cat_path_map:
+                    return cat_path_map[p_str]
+                    
+                parts = [pt.strip() for pt in p_str.split(">") if pt.strip()]
+                curr_parent_id = None
+                curr_path_accum = []
+                
+                for part in parts:
+                    curr_path_accum.append(part)
+                    accum_str = " > ".join(curr_path_accum)
+                    if accum_str in cat_path_map:
+                        curr_parent_id = cat_path_map[accum_str]
+                    else:
+                        parent_id = curr_parent_id
+                        curr_parent_id = self.db_mgr.add_contact_category(part, parent_id)
+                        cat_path_map[accum_str] = curr_parent_id
+                        cat_dict[curr_parent_id] = {"id": curr_parent_id, "category_name": part, "parent_id": parent_id}
+                        
+                return curr_parent_id
+
+            imported_count = 0
+            for _, row in df.iterrows():
+                name_val = row[col_mapping["name"]]
+                if pd.isna(name_val):
+                    continue
+                name = str(name_val).strip()
+                if not name:
+                    continue
+                
+                phone = str(row[col_mapping["phone"]]).strip() if "phone" in col_mapping and pd.notna(row[col_mapping["phone"]]) else ""
+                company = str(row[col_mapping["company"]]).strip() if "company" in col_mapping and pd.notna(row[col_mapping["company"]]) else ""
+                notes = str(row[col_mapping["notes"]]).strip() if "notes" in col_mapping and pd.notna(row[col_mapping["notes"]]) else ""
+                
+                cat_path = row[col_mapping["category"]] if "category" in col_mapping else None
+                category_id = resolve_category_path(cat_path)
+
+                self.db_mgr.add_contact(name, phone, company, notes, category_id)
+                imported_count += 1
+
+            self.refresh_tree()
+            self.refresh_active_contact_tabs()
+            self.main_win.status_bar.showMessage(f"✅ {imported_count}개의 연락처를 성공적으로 가져왔습니다.", 3000)
+
+        except Exception as e:
+            QMessageBox.critical(self, "오류", f"주소록을 가져오는 중 오류가 발생했습니다:\n{str(e)}")
+
+
 class CategoryAddEditDialog(QDialog):
     """카테고리 추가/수정용 다이얼로그"""
     def __init__(self, current_name="", parent=None, show_top_level_option=False):
@@ -17597,2368 +12484,6 @@ class CategoryAddEditDialog(QDialog):
         return False
 
 
-class QueryAddEditDialog(QDialog):
-    """쿼리 추가/수정용 다이얼로그"""
-    def __init__(self, db_mgr, current_cat_id=None, query_data=None, parent=None):
-        super().__init__(parent)
-        self.db_mgr = db_mgr
-        self.query_data = query_data
-        self.setWindowTitle("보관 쿼리 등록/수정")
-        self.setMinimumSize(550, 450)
-        self.init_ui(current_cat_id)
-
-    def init_ui(self, current_cat_id):
-        layout = QVBoxLayout()
-        layout.setContentsMargins(15, 15, 15, 15)
-        layout.setSpacing(10)
-
-        form = QFormLayout()
-        
-        # 카테고리 콤보박스
-        self.combo_cat = QComboBox()
-        self.refresh_categories(current_cat_id)
-        
-        # 새 카테고리 바로 추가용 버튼
-        btn_new_cat = QPushButton("➕ 새 카테고리")
-        btn_new_cat.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_new_cat.clicked.connect(self.on_new_cat_clicked)
-        btn_new_cat.setStyleSheet("padding: 2px 8px; font-size: 11px;")
-        
-        cat_layout = QHBoxLayout()
-        cat_layout.addWidget(self.combo_cat, 1)
-        cat_layout.addWidget(btn_new_cat)
-        
-        form.addRow("카테고리 분류:", cat_layout)
-
-        # 제목
-        self.txt_title = QLineEdit()
-        self.txt_title.setPlaceholderText("예: 사용자 정보 조회 쿼리")
-        form.addRow("쿼리 제목:", self.txt_title)
-
-        # 설명
-        self.txt_desc = QLineEdit()
-        self.txt_desc.setPlaceholderText("예: 특정 조건에 맞는 사용자와 부서를 조인 조회하는 SQL")
-        form.addRow("쿼리 설명:", self.txt_desc)
-        
-        layout.addLayout(form)
-
-        # 쿼리 본문
-        layout.addWidget(QLabel("📝 SQL 구문:"))
-        self.txt_content = QTextEdit()
-        self.txt_content.setFont(QFont("Consolas", 10))
-        self.txt_content.setAcceptRichText(False)
-        self.txt_content.setPlaceholderText("SELECT * FROM DUAL;")
-        layout.addWidget(self.txt_content)
-
-        # 데이터가 있으면 수정 모드로 세팅
-        if self.query_data:
-            self.txt_title.setText(self.query_data.get('query_title', ''))
-            self.txt_desc.setText(self.query_data.get('description', ''))
-            self.txt_content.setPlainText(self.query_data.get('query_content', ''))
-
-        # 버튼 영역
-        btn_layout = QHBoxLayout()
-        btn_save = QPushButton("💾 저장")
-        btn_save.clicked.connect(self.on_save_clicked)
-        btn_close = QPushButton("닫기")
-        btn_close.clicked.connect(self.reject)
-        
-        btn_save.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_close.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_save.setStyleSheet("background-color: #2563EB; color: white; font-weight: bold; padding: 6px 15px; border-radius: 4px;")
-        btn_close.setStyleSheet("background-color: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; padding: 6px 15px; border-radius: 4px;")
-
-        btn_layout.addStretch()
-        btn_layout.addWidget(btn_save)
-        btn_layout.addWidget(btn_close)
-        layout.addLayout(btn_layout)
-
-        self.setLayout(layout)
-
-    def refresh_categories(self, select_cat_id=None):
-        self.combo_cat.clear()
-        cats = self.db_mgr.get_query_categories()
-        for idx, c in enumerate(cats):
-            self.combo_cat.addItem(c['category_name'], c['id'])
-            if select_cat_id and c['id'] == select_cat_id:
-                self.combo_cat.setCurrentIndex(idx)
-            elif self.query_data and c['id'] == self.query_data.get('category_id'):
-                self.combo_cat.setCurrentIndex(idx)
-
-    def on_new_cat_clicked(self):
-        dialog = CategoryAddEditDialog("", self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            name = dialog.get_name()
-            if not name:
-                return
-            try:
-                new_id = self.db_mgr.add_query_category(name)
-                self.refresh_categories(new_id)
-            except ValueError as e:
-                QMessageBox.warning(self, "경고", str(e))
-
-    def on_save_clicked(self):
-        title = self.txt_title.text().strip()
-        content = self.txt_content.toPlainText().strip()
-        desc = self.txt_desc.text().strip()
-        
-        if not title:
-            QMessageBox.warning(self, "경고", "쿼리 제목을 입력해 주세요.")
-            return
-        if not content:
-            QMessageBox.warning(self, "경고", "SQL 구문을 입력해 주세요.")
-            return
-        if self.combo_cat.currentIndex() < 0:
-            QMessageBox.warning(self, "경고", "카테고리를 생성하거나 선택해 주세요.")
-            return
-            
-        cat_id = self.combo_cat.currentData()
-        
-        try:
-            if self.query_data:
-                # 수정 모드
-                self.db_mgr.update_query(self.query_data['id'], title, content, desc, cat_id)
-            else:
-                # 추가 모드
-                self.db_mgr.add_query(cat_id, title, content, desc)
-            self.accept()
-        except Exception as e:
-            QMessageBox.critical(self, "에러", f"저장 중 오류가 발생했습니다:\n{str(e)}")
-
-
-class BulkImportSetupDialog(QDialog):
-    """대량 쿼리 가져오기용 설정 다이얼로그"""
-    def __init__(self, db_mgr, parent=None):
-        super().__init__(parent)
-        self.db_mgr = db_mgr
-        self.selected_paths = []
-        self.selected_root_dir = None
-        self.target_cat_id = None
-        self.use_folder_as_root = False   # 선택 폴더명을 최상위 카테고리로 사용 여부
-        self.setWindowTitle("대량 쿼리 가져오기 (Import SQLs)")
-        self.setFixedSize(480, 230)
-        self.init_ui()
-
-    def init_ui(self):
-        layout = QVBoxLayout()
-        layout.setContentsMargins(15, 15, 15, 15)
-        layout.setSpacing(10)
-
-        lbl_guide = QLabel("💡 쿼리 파일(.sql, .txt)의 파일명을 제목으로, 파일 내용을 쿼리로 일괄 등록합니다.")
-        lbl_guide.setStyleSheet("font-size: 11px; color: #475569; font-weight: 500;")
-        layout.addWidget(lbl_guide)
-
-        # ── 카테고리 선택 행 ──
-        self.form = QFormLayout()
-        self.form.setSpacing(6)
-
-        self.combo_cat = QComboBox()
-        self._reload_cats()
-
-        btn_new_cat = QPushButton("➕ 새 카테고리")
-        btn_new_cat.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_new_cat.clicked.connect(self.on_new_cat_clicked)
-        btn_new_cat.setStyleSheet("padding: 2px 8px; font-size: 11px;")
-
-        cat_layout = QHBoxLayout()
-        cat_layout.addWidget(self.combo_cat, 1)
-        cat_layout.addWidget(btn_new_cat)
-        self.form.addRow("대상 카테고리:", cat_layout)
-        layout.addLayout(self.form)
-
-        # ── 폴더 최상위 옵션 (폴더 일괄 선택 시에만 의미 있음) ──
-        self.chk_folder_as_root = QCheckBox("📌  선택한 폴더를 최상위 카테고리로 사용  (카테고리 지정 무시)")
-        self.chk_folder_as_root.setToolTip(
-            "체크 시: 선택한 폴더명이 최상위 카테고리가 되고, 하위 폴더 구조가 그대로 서브카테고리로 생성됩니다.\n"
-            "미체크 시: 위에서 지정한 카테고리 아래에 하위 폴더 구조가 추가됩니다."
-        )
-        self.chk_folder_as_root.setStyleSheet("font-size: 11px; color: #1E40AF; font-weight: 500; padding: 2px 0;")
-        self.chk_folder_as_root.toggled.connect(self._on_root_toggled)
-        layout.addWidget(self.chk_folder_as_root)
-
-        # 구분선
-        from PyQt6.QtWidgets import QFrame
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("color: #E2E8F0;")
-        layout.addWidget(sep)
-
-        # ── 하단 버튼 ──
-        btn_layout = QHBoxLayout()
-        btn_files = QPushButton("🗂️ 다중 파일 선택")
-        btn_files.clicked.connect(self.on_files_clicked)
-        self.btn_folder = QPushButton("📂 폴더 일괄 선택")
-        self.btn_folder.clicked.connect(self.on_folder_clicked)
-        btn_close = QPushButton("취소")
-        btn_close.clicked.connect(self.reject)
-
-        for btn in [btn_files, self.btn_folder, btn_close]:
-            btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-
-        btn_files.setStyleSheet("background-color: #2563EB; color: white; font-weight: bold; padding: 6px 12px; border-radius: 4px;")
-        self.btn_folder.setStyleSheet("background-color: #059669; color: white; font-weight: bold; padding: 6px 12px; border-radius: 4px;")
-        btn_close.setStyleSheet("background-color: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; padding: 6px 12px; border-radius: 4px;")
-
-        btn_layout.addWidget(btn_files)
-        btn_layout.addWidget(self.btn_folder)
-        btn_layout.addStretch()
-        btn_layout.addWidget(btn_close)
-        layout.addLayout(btn_layout)
-        self.setLayout(layout)
-
-    def _reload_cats(self):
-        self.combo_cat.clear()
-        cats = self.db_mgr.get_query_categories()
-        for c in cats:
-            self.combo_cat.addItem(c['category_name'], c['id'])
-
-    def _on_root_toggled(self, checked):
-        """'폴더를 최상위로' 체크박스 토글 시 카테고리 콤보 활성/비활성"""
-        self.combo_cat.setEnabled(not checked)
-        # 콤보 옆 새 카테고리 버튼도 함께
-        for i in range(self.form.rowCount()):
-            item = self.form.itemAt(i, QFormLayout.ItemRole.FieldRole)
-            if item:
-                w = item.widget() or item.layout()
-                if w:
-                    if hasattr(w, 'setEnabled'):
-                        w.setEnabled(not checked)
-                    elif hasattr(w, 'count'):
-                        for j in range(w.count()):
-                            wi = w.itemAt(j)
-                            if wi and wi.widget():
-                                wi.widget().setEnabled(not checked)
-
-    def refresh_categories(self, select_cat_id=None):
-        self.combo_cat.clear()
-        cats = self.db_mgr.get_query_categories()
-        for idx, c in enumerate(cats):
-            self.combo_cat.addItem(c['category_name'], c['id'])
-            if select_cat_id and c['id'] == select_cat_id:
-                self.combo_cat.setCurrentIndex(idx)
-
-    def on_new_cat_clicked(self):
-        dialog = CategoryAddEditDialog("", self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            name = dialog.get_name()
-            if not name:
-                return
-            try:
-                new_id = self.db_mgr.add_query_category(name)
-                self.refresh_categories(new_id)
-            except ValueError as e:
-                QMessageBox.warning(self, "경고", str(e))
-
-    def on_files_clicked(self):
-        """다중 파일 선택: 폴더를 선택하면 해당 폴더의 직속 .sql/.txt 파일만 가져옴 (비재귀)"""
-        if self.combo_cat.currentIndex() < 0:
-            QMessageBox.warning(self, "경고", "카테고리를 선택하거나 새로 추가해 주세요.")
-            return
-        folder = QFileDialog.getExistingDirectory(self, "가져올 쿼리 파일들이 있는 폴더 선택")
-        if not folder:
-            return
-        # 직속 파일만 수집 (하위 폴더 미포함)
-        import os as _os
-        paths = [
-            _os.path.join(folder, f)
-            for f in _os.listdir(folder)
-            if f.lower().endswith(('.sql', '.txt')) and _os.path.isfile(_os.path.join(folder, f))
-        ]
-        if not paths:
-            QMessageBox.warning(self, "안내", "선택한 폴더 안에 .sql 또는 .txt 파일이 없습니다.")
-            return
-        self.selected_paths = paths
-        self.selected_root_dir = None   # 비재귀이므로 루트 구조 없음
-        self.target_cat_id = self.combo_cat.currentData()
-        self.use_folder_as_root = False
-        self.accept()
-
-
-    def on_folder_clicked(self):
-        """폴더 일괄 선택: 재귀적으로 모든 .sql/.txt 파일 수집 + 서브폴더 → 카테고리 구조 생성"""
-        # 체크박스 활성화 (폴더 일괄 선택 시에만 사용 가능)
-        self.chk_folder_as_root.setEnabled(True)
-        self.chk_folder_as_root.setStyleSheet("font-size: 11px; color: #1E40AF; font-weight: 500; padding: 2px 0;")
-
-        # '최상위로' 체크가 없으면 카테고리가 선택돼야 함
-        if not self.chk_folder_as_root.isChecked() and self.combo_cat.currentIndex() < 0:
-            QMessageBox.warning(self, "경고", "카테고리를 선택하거나 '폴더를 최상위 카테고리로 사용'을 체크해 주세요.")
-            return
-        folder = QFileDialog.getExistingDirectory(self, "가져올 쿼리 파일들이 있는 폴더 선택")
-        if not folder:
-            return
-
-        SKIP_DIRS = {
-            '.git', '.svn', '.hg', '.idea', '.vscode',
-            'node_modules', '.venv', 'venv', '.env',
-            '.vendor', 'vendor', '.vendor_lib',
-            '__pycache__', '.pytest_cache', '.mypy_cache',
-            '.tmp_hwpx_extract', 'dist', 'build', '.next',
-            '.nuxt', 'out', 'coverage',
-        }
-        paths = []
-        for root, dirs, files in os.walk(folder):
-            dirs[:] = [
-                d for d in dirs
-                if not d.startswith('.') and d not in SKIP_DIRS
-            ]
-            for f in files:
-                if f.lower().endswith(('.sql', '.txt')):
-                    paths.append(os.path.join(root, f))
-        if not paths:
-            QMessageBox.warning(self, "안내", "선택한 폴더 하위에 .sql 또는 .txt 파일이 없습니다.")
-            return
-
-        self.selected_paths = paths
-        self.selected_root_dir = folder
-        self.use_folder_as_root = self.chk_folder_as_root.isChecked()
-        if self.use_folder_as_root:
-            self.target_cat_id = None   # Worker에서 폴더명으로 최상위 카테고리 생성
-        else:
-            self.target_cat_id = self.combo_cat.currentData()
-        self.accept()
-
-
-
-
-class QueryTreeWidget(QTreeWidget):
-    itemMoved = pyqtSignal()  # 드래그앤드롭으로 노드가 정상 이동되었음을 알리는 시그널
-
-    def __init__(self, db_mgr, parent=None):
-        super().__init__(parent)
-        self.db_mgr = db_mgr
-        self.setDragEnabled(True)
-        self.setAcceptDrops(True)
-        self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
-        self.setDropIndicatorShown(True)
-
-    def dragMoveEvent(self, event):
-        target_item = self.itemAt(event.position().toPoint())
-        dragged_items = self.selectedItems()
-        if not dragged_items:
-            event.ignore()
-            return
-            
-        dragged = dragged_items[0]
-        dragged_type = dragged.data(0, Qt.ItemDataRole.UserRole + 1)
-        
-        if target_item:
-            target_type = target_item.data(0, Qt.ItemDataRole.UserRole + 1)
-            indicator = self.dropIndicatorPosition()
-            
-            # 자기 자신이나 자신의 자식 조상으로 드래그해 들어가는 순환 참조 금지
-            if dragged_type == "category":
-                dragged_id = dragged.data(0, Qt.ItemDataRole.UserRole)
-                ancestor = target_item
-                while ancestor:
-                    a_id = ancestor.data(0, Qt.ItemDataRole.UserRole)
-                    a_type = ancestor.data(0, Qt.ItemDataRole.UserRole + 1)
-                    if a_type == "category" and a_id == dragged_id:
-                        event.ignore()
-                        return
-                    ancestor = ancestor.parent()
-                    
-        super().dragMoveEvent(event)
-
-    def dropEvent(self, event):
-        target_item = self.itemAt(event.position().toPoint())
-        dragged_items = self.selectedItems()
-        if not dragged_items:
-            event.ignore()
-            return
-            
-        dragged = dragged_items[0]
-        dragged_id = dragged.data(0, Qt.ItemDataRole.UserRole)
-        dragged_type = dragged.data(0, Qt.ItemDataRole.UserRole + 1)
-        indicator = self.dropIndicatorPosition()
-        
-        # 1. 드롭할 위치의 타겟 부모 카테고리 ID 및 대상 부모 노드 파악
-        parent_cat_id = None
-        dest_parent = None
-        
-        if target_item:
-            target_type = target_item.data(0, Qt.ItemDataRole.UserRole + 1)
-            
-            if indicator == QAbstractItemView.DropIndicatorPosition.OnItem:
-                if target_type == "category":
-                    parent_cat_id = target_item.data(0, Qt.ItemDataRole.UserRole)
-                    dest_parent = target_item
-                elif target_type == "query":
-                    # 쿼리 위에 떨어지는 경우, 해당 쿼리의 부모 카테고리를 대상으로 설정
-                    dest_parent = target_item.parent()
-                    if dest_parent:
-                        parent_cat_id = dest_parent.data(0, Qt.ItemDataRole.UserRole)
-                    else:
-                        parent_cat_id = None
-                else:
-                    event.ignore()
-                    return
-            else:
-                # 형제 사이(위/아래)로 들어가는 경우
-                dest_parent = target_item.parent()
-                if dest_parent:
-                    parent_cat_id = dest_parent.data(0, Qt.ItemDataRole.UserRole)
-                else:
-                    parent_cat_id = None
-        else:
-            # 빈 화면에 드롭 시 최상위 루트
-            parent_cat_id = None
-            dest_parent = None
-            
-        # 2. 이동 제약 조건 필터링
-        if dragged_type == "query" and parent_cat_id is None:
-            # 쿼리는 반드시 분류 안에 소속되어야 하므로 최상위 루트로 이동 방지
-            event.ignore()
-            return
-            
-        if dragged_type == "category" and parent_cat_id == dragged_id:
-            event.ignore()
-            return
-            
-        # 순환 참조 최종 차단 (드롭 직전 체크)
-        if dragged_type == "category" and parent_cat_id is not None:
-            ancestor = dest_parent
-            is_descendant = False
-            while ancestor:
-                a_id = ancestor.data(0, Qt.ItemDataRole.UserRole)
-                a_type = ancestor.data(0, Qt.ItemDataRole.UserRole + 1)
-                if a_type == "category" and a_id == dragged_id:
-                    is_descendant = True
-                    break
-                ancestor = ancestor.parent()
-            if is_descendant:
-                event.ignore()
-                return
-
-        # 3. DB에 위치 변경 사항 저장
-        try:
-            if dragged_type == "query":
-                self.db_mgr.move_query_to_category(dragged_id, parent_cat_id)
-            elif dragged_type == "category":
-                self.db_mgr.update_category_parent(dragged_id, parent_cat_id)
-        except Exception as e:
-            print(f"[DragDrop DB Update Error] {str(e)}")
-            event.ignore()
-            return
-
-        # 4. 형제 노드들 간의 정렬 순서 계산 및 DB 업데이트
-        try:
-            # 대상 부모 노드의 기존 자식 목록 가져오기
-            if dest_parent:
-                siblings = [dest_parent.child(i) for i in range(dest_parent.childCount())]
-            else:
-                siblings = [self.topLevelItem(i) for i in range(self.topLevelItemCount())]
-                
-            # 드래그된 아이템을 기존 목록에서 제거 (존재할 경우)
-            if dragged in siblings:
-                siblings.remove(dragged)
-                
-            # 새 위치에 삽입
-            if target_item:
-                if indicator == QAbstractItemView.DropIndicatorPosition.OnItem:
-                    if target_type == "category":
-                        siblings.append(dragged)
-                    elif target_type == "query":
-                        # 쿼리 위에 온 경우 타겟 쿼리 다음으로 삽입
-                        if target_item in siblings:
-                            idx = siblings.index(target_item)
-                            siblings.insert(idx + 1, dragged)
-                        else:
-                            siblings.append(dragged)
-                elif indicator == QAbstractItemView.DropIndicatorPosition.AboveItem:
-                    if target_item in siblings:
-                        idx = siblings.index(target_item)
-                        siblings.insert(idx, dragged)
-                    else:
-                        siblings.append(dragged)
-                elif indicator == QAbstractItemView.DropIndicatorPosition.BelowItem:
-                    if target_item in siblings:
-                        idx = siblings.index(target_item)
-                        siblings.insert(idx + 1, dragged)
-                    else:
-                        siblings.append(dragged)
-            else:
-                siblings.append(dragged)
-                
-            # DB의 sort_order 일괄 갱신
-            for i, item in enumerate(siblings):
-                item_id = item.data(0, Qt.ItemDataRole.UserRole)
-                item_type = item.data(0, Qt.ItemDataRole.UserRole + 1)
-                if item_type == "category":
-                    self.db_mgr.update_category_sort_order(item_id, i)
-                elif item_type == "query":
-                    self.db_mgr.update_query_sort_order(item_id, i)
-        except Exception as e:
-            print(f"[DragDrop Sort Update Error] {str(e)}")
-
-        event.accept()
-        self.itemMoved.emit()
-
-
-class QuerySidebarWidget(QWidget):
-    """좌측 하단 쿼리 정보 트리 위젯"""
-    def __init__(self, db_mgr, main_win, parent=None):
-        super().__init__(parent)
-        self.db_mgr = db_mgr
-        self.main_win = main_win
-        self.init_ui()
-
-    def init_ui(self):
-        # 전체 레이아웃 (수직)
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(6)
-
-        # 1. 탭 위젯 생성 및 레이아웃 추가 (상단 배치)
-        self.tabs = QTabWidget()
-        self.tabs.setStyleSheet("""
-            QTabWidget::pane {
-                border: none;
-                background-color: #FFFFFF;
-            }
-            QTabBar::tab {
-                font-family: "Malgun Gothic", "맑은 고딕", sans-serif;
-                background-color: #F1F5F9;
-                color: #475569;
-                padding: 5px 8px;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-                font-weight: 600;
-                font-size: 11px;
-                margin-right: 1px;
-                border: 1px solid #E2E8F0;
-                border-bottom: none;
-            }
-            QTabBar::tab:hover {
-                background-color: #E2E8F0;
-            }
-            QTabBar::tab:selected {
-                background-color: #FFFFFF;
-                color: #2563EB;
-                border-bottom: 2px solid #2563EB;
-            }
-        """)
-        main_layout.addWidget(self.tabs)
-
-        # 공통 스타일 설정
-        combo_style = """
-            QComboBox {
-                background-color: #F8FAFC;
-                color: #1E293B;
-                border: 1px solid #CBD5E1;
-                border-radius: 4px;
-                padding: 4px 6px;
-                font-size: 11px;
-                min-width: 80px;
-                max-width: 85px;
-            }
-            QComboBox:focus {
-                border: 1px solid #3B82F6;
-            }
-        """
-
-        # 공통 트리 스타일 설정 (테이블 정보의 업무별 트리와 동일)
-        tree_style = """
-            QTreeWidget {
-                background-color: #FFFFFF;
-                border: 1px solid #CBD5E1;
-                border-radius: 3px;
-                padding: 2px;
-            }
-            QTreeWidget::item {
-                height: 20px;
-                font-size: 11px;
-                color: #334155;
-            }
-            QTreeWidget::item:hover {
-                background-color: #F1F5F9;
-                border-radius: 2px;
-            }
-            QTreeWidget::item:selected {
-                background-color: #EFF6FF;
-                color: #2563EB;
-                font-weight: bold;
-                border-radius: 2px;
-            }
-        """
-
-        # 1. 쿼리 보관함 탭
-        self.tab_cat = QWidget()
-        cat_layout = QVBoxLayout(self.tab_cat)
-        cat_layout.setContentsMargins(6, 6, 6, 6)
-        cat_layout.setSpacing(6)
-
-        # 보관함 검색 영역
-        search_cat_bar = QHBoxLayout()
-        search_cat_bar.setSpacing(4)
-        
-        self.combo_query_search_type = QComboBox()
-        self.combo_query_search_type.addItems(["쿼리제목", "sql내용", "설명"])
-        self.combo_query_search_type.setFixedHeight(30)
-        self.combo_query_search_type.setStyleSheet(combo_style)
-        
-        self.txt_query_search = QLineEdit()
-        self.txt_query_search.setPlaceholderText("쿼리 제목 검색 후 Enter...")
-        self.txt_query_search.setFixedHeight(30)
-        self.txt_query_search.setStyleSheet(self.main_win.get_sidebar_search_style())
-        
-        def on_query_search_type_changed(text):
-            if text == "sql내용":
-                self.txt_query_search.setPlaceholderText("SQL 구문 검색 후 Enter...")
-            elif text == "설명":
-                self.txt_query_search.setPlaceholderText("설명 검색 후 Enter...")
-            else:
-                self.txt_query_search.setPlaceholderText("쿼리 제목 검색 후 Enter...")
-            self.apply_search_to_tree(self.tree_cat, self.txt_query_search.text(), text)
-
-        self.combo_query_search_type.currentTextChanged.connect(on_query_search_type_changed)
-        self.txt_query_search.returnPressed.connect(lambda: self.apply_search_to_tree(self.tree_cat, self.txt_query_search.text(), self.combo_query_search_type.currentText()))
-        
-        search_cat_bar.addWidget(self.combo_query_search_type)
-        search_cat_bar.addWidget(self.txt_query_search)
-
-        self.btn_reset_query_search = QPushButton("↺")
-        self.btn_reset_query_search.setFixedWidth(28)
-        self.btn_reset_query_search.setFixedHeight(30)
-        self.btn_reset_query_search.setToolTip("검색 초기화")
-        self.btn_reset_query_search.setStyleSheet(self.main_win.get_sidebar_reset_button_style())
-        self.btn_reset_query_search.clicked.connect(self.clear_query_search)
-        search_cat_bar.addWidget(self.btn_reset_query_search)
-
-        cat_layout.addLayout(search_cat_bar)
-        
-        self.tree_cat = QueryTreeWidget(self.db_mgr)
-        self.tree_cat.setHeaderHidden(True)
-        self.tree_cat.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)  # Ctrl+클릭 다중선택
-        self.tree_cat.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.tree_cat.customContextMenuRequested.connect(self.on_context_menu_cat)
-        self.tree_cat.itemClicked.connect(self.on_tree_item_clicked)
-        self.tree_cat.itemMoved.connect(self.refresh_cat_tree)
-        self.tree_cat.setStyleSheet(tree_style)
-        cat_layout.addWidget(self.tree_cat)
-        
-        # 보관함 하단 도구 툴바: 모두 열기/닫기 행 추가
-        cat_expand_layout = QHBoxLayout()
-        cat_expand_layout.setSpacing(4)
-        btn_cat_expand = QPushButton("📂 모두 열기")
-        btn_cat_collapse = QPushButton("📁 모두 닫기")
-        cat_exp_style = """
-            QPushButton {
-                font-size: 10px;
-                padding: 4px 5px;
-                border: 1px solid #CBD5E1;
-                border-radius: 3px;
-                background-color: #FFFFFF;
-                color: #334155;
-            }
-            QPushButton:hover {
-                background-color: #F1F5F9;
-            }
-        """
-        for _b in [btn_cat_expand, btn_cat_collapse]:
-            _b.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            _b.setStyleSheet(cat_exp_style)
-        btn_cat_expand.clicked.connect(self.tree_cat.expandAll)
-        btn_cat_collapse.clicked.connect(self.tree_cat.collapseAll)
-        cat_expand_layout.addWidget(btn_cat_expand)
-        cat_expand_layout.addWidget(btn_cat_collapse)
-        cat_layout.addLayout(cat_expand_layout)
-
-        # 분류/쿼리 관리 버튼 툴바
-        cat_tb = QHBoxLayout()
-        btn_cat_add = QPushButton("➕ 분류추가")
-        btn_cat_edit = QPushButton("✏️ 분류수정")
-        btn_cat_del = QPushButton("❌ 분류삭제")
-        btn_query_add = QPushButton("➕ 쿼리등록")
-        btn_bulk_import = QPushButton("📥 가져오기")
-        btn_bulk_export = QPushButton("📤 내보내기")
-        
-        # 버튼에 호버 효과 추가
-        btn_common_style = """
-            QPushButton {
-                font-size: 10px;
-                padding: 4px 6px;
-                border: 1px solid #CBD5E1;
-                border-radius: 3px;
-                background-color: #FFFFFF;
-                color: #334155;
-            }
-            QPushButton:hover {
-                background-color: #F1F5F9;
-                border-color: #CBD5E1;
-            }
-        """
-        for btn in [btn_cat_add, btn_cat_edit, btn_cat_del, btn_query_add]:
-            btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            btn.setStyleSheet(btn_common_style)
-            
-        _share_btn_style = """
-            QPushButton {
-                font-size: 10px;
-                padding: 4px 5px;
-                border: 1px solid #CBD5E1;
-                border-radius: 3px;
-                background-color: #FFFFFF;
-                color: #334155;
-            }
-            QPushButton:hover {
-                background-color: #F1F5F9;
-                border-color: #94A3B8;
-            }
-        """
-        for _b in [btn_bulk_import, btn_bulk_export]:
-            _b.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            _b.setStyleSheet(_share_btn_style)
-            from PyQt6.QtWidgets import QSizePolicy as _QSP
-            _b.setSizePolicy(_QSP.Policy.Expanding, _QSP.Policy.Fixed)
-            
-        btn_cat_add.clicked.connect(self.on_cat_add_clicked)
-        btn_cat_edit.clicked.connect(self.on_cat_edit_clicked)
-        btn_cat_del.clicked.connect(self.on_cat_del_clicked)
-        btn_query_add.clicked.connect(self.on_query_add_clicked)
-        btn_bulk_import.clicked.connect(self.on_bulk_import_clicked)
-        btn_bulk_export.clicked.connect(self.on_bulk_export_clicked)
-        
-        cat_tb.addWidget(btn_cat_add)
-        cat_tb.addWidget(btn_cat_edit)
-        cat_tb.addWidget(btn_cat_del)
-        cat_tb.addWidget(btn_query_add)
-        cat_layout.addLayout(cat_tb)
-        
-        cat_tb2 = QHBoxLayout()
-        cat_tb2.setSpacing(4)
-        cat_tb2.addWidget(btn_bulk_import)
-        cat_tb2.addWidget(btn_bulk_export)
-        cat_layout.addLayout(cat_tb2)
-
-        # 2. 즐겨찾는 쿼리 탭
-        self.tab_fav = QWidget()
-        fav_layout = QVBoxLayout(self.tab_fav)
-        fav_layout.setContentsMargins(6, 6, 6, 6)
-        fav_layout.setSpacing(6)
-
-        # 즐겨찾기 검색 영역
-        search_fav_bar = QHBoxLayout()
-        search_fav_bar.setSpacing(4)
-        
-        self.combo_query_search_type_fav = QComboBox()
-        self.combo_query_search_type_fav.addItems(["쿼리제목", "sql내용", "설명"])
-        self.combo_query_search_type_fav.setFixedHeight(30)
-        self.combo_query_search_type_fav.setStyleSheet(combo_style)
-        
-        self.txt_query_search_fav = QLineEdit()
-        self.txt_query_search_fav.setPlaceholderText("쿼리 제목 검색 후 Enter...")
-        self.txt_query_search_fav.setFixedHeight(30)
-        self.txt_query_search_fav.setStyleSheet(self.main_win.get_sidebar_search_style())
-        
-        def on_query_search_type_changed_fav(text):
-            if text == "sql내용":
-                self.txt_query_search_fav.setPlaceholderText("SQL 구문 검색 후 Enter...")
-            elif text == "설명":
-                self.txt_query_search_fav.setPlaceholderText("설명 검색 후 Enter...")
-            else:
-                self.txt_query_search_fav.setPlaceholderText("쿼리 제목 검색 후 Enter...")
-            self.apply_search_to_tree(self.tree_fav, self.txt_query_search_fav.text(), text)
-
-        self.combo_query_search_type_fav.currentTextChanged.connect(on_query_search_type_changed_fav)
-        self.txt_query_search_fav.returnPressed.connect(lambda: self.apply_search_to_tree(self.tree_fav, self.txt_query_search_fav.text(), self.combo_query_search_type_fav.currentText()))
-        
-        search_fav_bar.addWidget(self.combo_query_search_type_fav)
-        search_fav_bar.addWidget(self.txt_query_search_fav)
-
-        self.btn_reset_query_search_fav = QPushButton("↺")
-        self.btn_reset_query_search_fav.setFixedWidth(28)
-        self.btn_reset_query_search_fav.setFixedHeight(30)
-        self.btn_reset_query_search_fav.setToolTip("검색 초기화")
-        self.btn_reset_query_search_fav.setStyleSheet(self.main_win.get_sidebar_reset_button_style())
-        self.btn_reset_query_search_fav.clicked.connect(self.clear_query_search_fav)
-        search_fav_bar.addWidget(self.btn_reset_query_search_fav)
-
-        fav_layout.addLayout(search_fav_bar)
-        
-        self.tree_fav = QTreeWidget()
-        self.tree_fav.setHeaderHidden(True)
-        self.tree_fav.itemClicked.connect(self.on_tree_item_clicked)
-        self.tree_fav.setStyleSheet(tree_style)
-        fav_layout.addWidget(self.tree_fav)
-        
-        # 3. 최근조회 쿼리 탭
-        self.tab_recent = QWidget()
-        rec_layout = QVBoxLayout(self.tab_recent)
-        rec_layout.setContentsMargins(6, 6, 6, 6)
-        rec_layout.setSpacing(6)
-
-        # 최근조회 검색 영역
-        search_rec_bar = QHBoxLayout()
-        search_rec_bar.setSpacing(4)
-        
-        self.combo_query_search_type_recent = QComboBox()
-        self.combo_query_search_type_recent.addItems(["쿼리제목", "sql내용", "설명"])
-        self.combo_query_search_type_recent.setFixedHeight(30)
-        self.combo_query_search_type_recent.setStyleSheet(combo_style)
-        
-        self.txt_query_search_recent = QLineEdit()
-        self.txt_query_search_recent.setPlaceholderText("쿼리 제목 검색 후 Enter...")
-        self.txt_query_search_recent.setFixedHeight(30)
-        self.txt_query_search_recent.setStyleSheet(self.main_win.get_sidebar_search_style())
-        
-        def on_query_search_type_changed_recent(text):
-            if text == "sql내용":
-                self.txt_query_search_recent.setPlaceholderText("SQL 구문 검색 후 Enter...")
-            elif text == "설명":
-                self.txt_query_search_recent.setPlaceholderText("설명 검색 후 Enter...")
-            else:
-                self.txt_query_search_recent.setPlaceholderText("쿼리 제목 검색 후 Enter...")
-            self.apply_search_to_tree(self.tree_recent, self.txt_query_search_recent.text(), text)
-
-        self.combo_query_search_type_recent.currentTextChanged.connect(on_query_search_type_changed_recent)
-        self.txt_query_search_recent.returnPressed.connect(lambda: self.apply_search_to_tree(self.tree_recent, self.txt_query_search_recent.text(), self.combo_query_search_type_recent.currentText()))
-        
-        search_rec_bar.addWidget(self.combo_query_search_type_recent)
-        search_rec_bar.addWidget(self.txt_query_search_recent)
-
-        self.btn_reset_query_search_recent = QPushButton("↺")
-        self.btn_reset_query_search_recent.setFixedWidth(28)
-        self.btn_reset_query_search_recent.setFixedHeight(30)
-        self.btn_reset_query_search_recent.setToolTip("검색 초기화")
-        self.btn_reset_query_search_recent.setStyleSheet(self.main_win.get_sidebar_reset_button_style())
-        self.btn_reset_query_search_recent.clicked.connect(self.clear_query_search_recent)
-        search_rec_bar.addWidget(self.btn_reset_query_search_recent)
-
-        rec_layout.addLayout(search_rec_bar)
-        
-        self.tree_recent = QTreeWidget()
-        self.tree_recent.setHeaderHidden(True)
-        self.tree_recent.itemClicked.connect(self.on_tree_item_clicked)
-        self.tree_recent.setStyleSheet(tree_style)
-        rec_layout.addWidget(self.tree_recent)
-        
-        # 최근조회 하단 도구 툴바
-        rec_tb = QHBoxLayout()
-        btn_rec_clear = QPushButton("🧹 최근이력 전체비우기")
-        btn_rec_clear.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_rec_clear.setStyleSheet("""
-            QPushButton {
-                font-size: 11px;
-                padding: 4px 10px;
-                border: 1px solid #FCA5A5;
-                border-radius: 3px;
-                background-color: #FFF5F5;
-                color: #E53E3E;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #FEE2E2;
-            }
-        """)
-        btn_rec_clear.clicked.connect(self.on_recent_clear_clicked)
-        rec_tb.addStretch()
-        rec_tb.addWidget(btn_rec_clear)
-        rec_layout.addLayout(rec_tb)
-
-        self.tabs.addTab(self.tab_cat, "보관함")
-        self.tabs.addTab(self.tab_fav, "즐겨찾기")
-        self.tabs.addTab(self.tab_recent, "최근조회")
-
-        # 초기 데이터 로드
-        self.refresh_cat_tree()
-        self.refresh_fav_tree()
-        self.refresh_recent_tree()
-
-    def clear_query_search(self):
-        self.txt_query_search.clear()
-        self.apply_search_to_tree(self.tree_cat, "", self.combo_query_search_type.currentText())
-
-    def clear_query_search_fav(self):
-        self.txt_query_search_fav.clear()
-        self.apply_search_to_tree(self.tree_fav, "", self.combo_query_search_type_fav.currentText())
-
-    def clear_query_search_recent(self):
-        self.txt_query_search_recent.clear()
-        self.apply_search_to_tree(self.tree_recent, "", self.combo_query_search_type_recent.currentText())
-
-    def apply_search_to_tree(self, tree_widget, text, search_type="쿼리제목"):
-        text_val = text.lower().strip()
-        
-        def apply_filter(item, val, ancestor_matched=False):
-            if not val:
-                item.setHidden(False)
-                for i in range(item.childCount()):
-                    apply_filter(item.child(i), val, False)
-                return True
-
-            node_type = item.data(0, Qt.ItemDataRole.UserRole + 1)
-            matches = ancestor_matched
-            if not matches:
-                if node_type in ["query", "recent_query"]:
-                    title = item.text(0).lower()
-                    desc = (item.data(0, Qt.ItemDataRole.UserRole + 2) or "").lower()
-                    sql = (item.data(0, Qt.ItemDataRole.UserRole + 3) or "").lower()
-                    
-                    if search_type == "sql내용":
-                        matches = (val in sql)
-                    elif search_type == "설명":
-                        matches = (val in desc)
-                    else:  # "쿼리제목"
-                        matches = (val in title)
-                else:
-                    name = item.text(0).lower()
-                    matches = (val in name)
-
-            child_visible = False
-            for i in range(item.childCount()):
-                if apply_filter(item.child(i), val, matches):
-                    child_visible = True
-
-            visible = matches or child_visible
-            item.setHidden(not visible)
-            if visible and val:
-                item.setExpanded(True)
-            return visible
-
-        tree_widget.blockSignals(True)
-        for i in range(tree_widget.topLevelItemCount()):
-            apply_filter(tree_widget.topLevelItem(i), text_val, False)
-        tree_widget.blockSignals(False)
-
-    def refresh_cat_tree(self):
-        self.tree_cat.blockSignals(True)
-        self.tree_cat.clear()
-        
-        # 전체 카테고리 로드 및 부모 매핑 테이블 구성
-        cats = self.db_mgr.get_query_categories()
-        from collections import defaultdict
-        cat_map = defaultdict(list)
-        for c in cats:
-            cat_map[c['parent_id']].append(c)
-            
-        def populate_node(parent_item, parent_id):
-            # 1. 하위 카테고리 폴더 노드 먼저 추가
-            sub_cats = cat_map.get(parent_id, [])
-            for c in sub_cats:
-                cat_item = QTreeWidgetItem(parent_item)
-                cat_item.setText(0, f"📁 {c['category_name']}")
-                cat_item.setData(0, Qt.ItemDataRole.UserRole, c['id'])
-                cat_item.setData(0, Qt.ItemDataRole.UserRole + 1, "category")
-                cat_item.setFlags(cat_item.flags() | Qt.ItemFlag.ItemIsDragEnabled | Qt.ItemFlag.ItemIsDropEnabled)
-                populate_node(cat_item, c['id'])
-                
-            # 2. 하위 쿼리 노드 그 다음에 추가
-            if parent_id is not None:
-                queries = self.db_mgr.get_queries_by_category(parent_id)
-                for q in queries:
-                    q_item = QTreeWidgetItem(parent_item)
-                    fav_star = "⭐ " if q.get('is_favorite') == 1 else ""
-                    q_item.setText(0, f"{fav_star}📄 {q['query_title']}")
-                    q_item.setData(0, Qt.ItemDataRole.UserRole, q['id'])
-                    q_item.setData(0, Qt.ItemDataRole.UserRole + 1, "query")
-                    q_item.setData(0, Qt.ItemDataRole.UserRole + 2, q.get('description', '') or '')
-                    q_item.setData(0, Qt.ItemDataRole.UserRole + 3, q.get('query_content', '') or '')
-                    q_item.setFlags(q_item.flags() | Qt.ItemFlag.ItemIsDragEnabled | Qt.ItemFlag.ItemIsDropEnabled)
-
-        # 최상위(None) 노드부터 렌더링 시작
-        populate_node(self.tree_cat, None)
-        
-        self.tree_cat.expandAll()
-        self.tree_cat.blockSignals(False)
-
-        if hasattr(self, 'txt_query_search'):
-            self.apply_search_to_tree(self.tree_cat, self.txt_query_search.text(), self.combo_query_search_type.currentText())
-
-    def refresh_fav_tree(self):
-        self.tree_fav.clear()
-        favs = self.db_mgr.get_favorite_queries()
-        
-        cat_map = {}
-        for q in favs:
-            c_name = q['category_name']
-            if c_name not in cat_map:
-                cat_map[c_name] = []
-            cat_map[c_name].append(q)
-            
-        for c_name, q_list in cat_map.items():
-            cat_item = QTreeWidgetItem(self.tree_fav)
-            cat_item.setText(0, f"📁 {c_name}")
-            cat_item.setData(0, Qt.ItemDataRole.UserRole + 1, "category")
-            
-            for q in q_list:
-                q_item = QTreeWidgetItem(cat_item)
-                q_item.setText(0, f"⭐ 📄 {q['query_title']}")
-                q_item.setData(0, Qt.ItemDataRole.UserRole, q['id'])
-                q_item.setData(0, Qt.ItemDataRole.UserRole + 1, "query")
-                q_item.setData(0, Qt.ItemDataRole.UserRole + 2, q.get('description', '') or '')
-                q_item.setData(0, Qt.ItemDataRole.UserRole + 3, q.get('query_content', '') or '')
-                
-        self.tree_fav.expandAll()
-
-        if hasattr(self, 'txt_query_search_fav'):
-            self.apply_search_to_tree(self.tree_fav, self.txt_query_search_fav.text(), self.combo_query_search_type_fav.currentText())
-
-    def refresh_recent_tree(self):
-        self.tree_recent.clear()
-        recents = self.db_mgr.get_recent_queries()
-        
-        date_map = {}
-        for r in recents:
-            date_str = r['copied_at'].split(' ')[0] if r['copied_at'] else "이전 이력"
-            if date_str not in date_map:
-                date_map[date_str] = []
-            date_map[date_str].append(r)
-            
-        for date_str, r_list in sorted(date_map.items(), reverse=True):
-            date_item = QTreeWidgetItem(self.tree_recent)
-            date_item.setText(0, f"📅 {date_str}")
-            date_item.setData(0, Qt.ItemDataRole.UserRole + 1, "date")
-            
-            for r in r_list:
-                r_item = QTreeWidgetItem(date_item)
-                r_item.setText(0, f"🕒 {r['query_title']}")
-                r_item.setData(0, Qt.ItemDataRole.UserRole, r['id'])
-                r_item.setData(0, Qt.ItemDataRole.UserRole + 1, "recent_query")
-                r_item.setData(0, Qt.ItemDataRole.UserRole + 2, r.get('description', '') or '')
-                r_item.setData(0, Qt.ItemDataRole.UserRole + 3, r.get('query_content', '') or '')
-                
-        self.tree_recent.expandAll()
-
-        if hasattr(self, 'txt_query_search_recent'):
-            self.apply_search_to_tree(self.tree_recent, self.txt_query_search_recent.text(), self.combo_query_search_type_recent.currentText())
-
-
-    def on_tree_item_clicked(self, item, column):
-        node_type = item.data(0, Qt.ItemDataRole.UserRole + 1)
-        if node_type == "query":
-            q_id = item.data(0, Qt.ItemDataRole.UserRole)
-            self.main_win.open_query_detail_tab(q_id)
-        elif node_type == "recent_query":
-            r_id = item.data(0, Qt.ItemDataRole.UserRole)
-            self.main_win.open_recent_detail_tab(r_id)
-
-    def on_context_menu_cat(self, pos):
-        item = self.tree_cat.itemAt(pos)
-        selected_items = self.tree_cat.selectedItems()
-        menu = QMenu(self)
-
-        # --- 다중선택 쿼리 일괄 삭제 ---
-        query_items = [it for it in selected_items
-                       if it.data(0, Qt.ItemDataRole.UserRole + 1) == "query"]
-        if len(query_items) >= 2:
-            act_bulk_del = QAction(f"❌ 선택한 쿼리 {len(query_items)}개 일괄 삭제", self)
-            act_bulk_del.triggered.connect(lambda: self.bulk_delete_queries(query_items))
-            menu.addAction(act_bulk_del)
-            menu.exec(self.tree_cat.mapToGlobal(pos))
-            return
-
-        if not item:
-            # 빈 곳 우클릭 시 최상위 분류 추가 메뉴 지원
-            act_add_root = QAction("➕ 새 최상위 분류 추가", self)
-            act_add_root.triggered.connect(lambda: self.add_category_root())
-            menu.addAction(act_add_root)
-            menu.exec(self.tree_cat.mapToGlobal(pos))
-            return
-
-        node_type = item.data(0, Qt.ItemDataRole.UserRole + 1)
-        cat_id = item.data(0, Qt.ItemDataRole.UserRole)
-
-        if node_type == "category":
-            act_edit = QAction("✏️ 분류 수정", self)
-            act_del = QAction("❌ 분류 삭제", self)
-            act_add_sub = QAction("➕ 하위 분류 추가", self)
-            act_add_q = QAction("➕ 새 쿼리 등록", self)
-
-            act_edit.triggered.connect(lambda: self.edit_category(cat_id, item.text(0).replace("📁 ", "")))
-            act_del.triggered.connect(lambda: self.delete_category(cat_id, item.text(0).replace("📁 ", "")))
-            act_add_sub.triggered.connect(lambda: self.add_category_sub(cat_id))
-            act_add_q.triggered.connect(lambda: self.add_query_to_cat(cat_id))
-
-            menu.addAction(act_edit)
-            menu.addAction(act_del)
-            menu.addSeparator()
-            menu.addAction(act_add_sub)
-            menu.addAction(act_add_q)
-        elif node_type == "query":
-            act_open = QAction("📄 쿼리 상세/편집 열기", self)
-            act_del_q = QAction("❌ 쿼리 삭제", self)
-
-            act_open.triggered.connect(lambda: self.main_win.open_query_detail_tab(cat_id))
-            act_del_q.triggered.connect(lambda: self.delete_query(cat_id))
-
-            menu.addAction(act_open)
-            menu.addAction(act_del_q)
-
-        menu.exec(self.tree_cat.mapToGlobal(pos))
-
-    def bulk_delete_queries(self, query_items):
-        """쿼리 보관함에서 선택된 쿼리 여러 개를 한꺼번에 삭제"""
-        titles = []
-        ids = []
-        for it in query_items:
-            qid = it.data(0, Qt.ItemDataRole.UserRole)
-            info = self.db_mgr.get_query_by_id(qid)
-            if info:
-                titles.append(info['query_title'])
-                ids.append(qid)
-        if not ids:
-            return
-        preview = "\n".join(f"• {t}" for t in titles[:10])
-        if len(titles) > 10:
-            preview += f"\n... 외 {len(titles)-10}건"
-        res = QMessageBox.question(
-            self, "쿼리 일괄 삭제",
-            f"선택한 {len(ids)}개의 쿼리를 모두 삭제하시겠습니까?\n\n{preview}",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        if res != QMessageBox.StandardButton.Yes:
-            return
-        main_win = self.main_win
-        for qid in ids:
-            self.db_mgr.delete_query(qid)
-            key = ("query", qid)
-            if key in main_win.open_query_tabs:
-                tab_widget = main_win.open_query_tabs[key]
-                idx = main_win.tab_widget.indexOf(tab_widget)
-                if idx != -1:
-                    main_win.tab_widget.removeTab(idx)
-                del main_win.open_query_tabs[key]
-        self.refresh_cat_tree()
-        self.refresh_fav_tree()
-        QMessageBox.information(self, "완료", f"{len(ids)}개의 쿼리를 삭제했습니다.")
-
-    def on_cat_add_clicked(self):
-        # 현재 선택된 아이템의 부모 카테고리 결정 (있으면 하위 카테고리 생성)
-        item = self.tree_cat.currentItem()
-        parent_id = None
-        parent_name = ""
-        if item and item.data(0, Qt.ItemDataRole.UserRole + 1) == "category":
-            parent_id = item.data(0, Qt.ItemDataRole.UserRole)
-            parent_name = item.text(0).replace("📁 ", "")
-
-        dialog = CategoryAddEditDialog("", self, show_top_level_option=True)
-        dialog.setWindowTitle(f"새 분류 추가 ({parent_name if parent_name else '최상위'})")
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            name = dialog.get_name()
-            if not name: return
-            # 최상위 체크 시 parent_id 무시
-            effective_parent_id = None if dialog.is_top_level() else parent_id
-            try:
-                self.db_mgr.add_query_category(name, parent_id=effective_parent_id)
-                self.refresh_cat_tree()
-            except ValueError as e:
-                QMessageBox.warning(self, "경고", str(e))
-
-    def add_category_root(self):
-        dialog = CategoryAddEditDialog("", self)
-        dialog.setWindowTitle("새 최상위 분류 추가")
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            name = dialog.get_name()
-            if not name: return
-            try:
-                self.db_mgr.add_query_category(name, parent_id=None)
-                self.refresh_cat_tree()
-            except ValueError as e:
-                QMessageBox.warning(self, "경고", str(e))
-
-    def add_category_sub(self, parent_cat_id):
-        parent_name = ""
-        iterator = QTreeWidgetItemIterator(self.tree_cat)
-        while iterator.value():
-            it = iterator.value()
-            if it.data(0, Qt.ItemDataRole.UserRole + 1) == "category" and it.data(0, Qt.ItemDataRole.UserRole) == parent_cat_id:
-                parent_name = it.text(0).replace("📁 ", "")
-                break
-            iterator += 1
-
-        dialog = CategoryAddEditDialog("", self)
-        dialog.setWindowTitle(f"하위 분류 추가 (➔ {parent_name})")
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            name = dialog.get_name()
-            if not name: return
-            try:
-                self.db_mgr.add_query_category(name, parent_id=parent_cat_id)
-                self.refresh_cat_tree()
-            except ValueError as e:
-                QMessageBox.warning(self, "경고", str(e))
-
-    def on_cat_edit_clicked(self):
-        item = self.tree_cat.currentItem()
-        if not item or item.data(0, Qt.ItemDataRole.UserRole + 1) != "category":
-            QMessageBox.warning(self, "안내", "수정할 분류(카테고리) 노드를 선택해 주세요.")
-            return
-        cat_id = item.data(0, Qt.ItemDataRole.UserRole)
-        name = item.text(0).replace("📁 ", "")
-        self.edit_category(cat_id, name)
-
-    def edit_category(self, cat_id, current_name):
-        dialog = CategoryAddEditDialog(current_name, self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            name = dialog.get_name()
-            if not name: return
-            try:
-                self.db_mgr.update_query_category(cat_id, name)
-                self.refresh_cat_tree()
-                self.refresh_fav_tree()
-            except ValueError as e:
-                QMessageBox.warning(self, "경고", str(e))
-
-    def on_cat_del_clicked(self):
-        item = self.tree_cat.currentItem()
-        if not item or item.data(0, Qt.ItemDataRole.UserRole + 1) != "category":
-            QMessageBox.warning(self, "안내", "삭제할 분류(카테고리) 노드를 선택해 주세요.")
-            return
-        cat_id = item.data(0, Qt.ItemDataRole.UserRole)
-        name = item.text(0).replace("📁 ", "")
-        self.delete_category(cat_id, name)
-
-    def delete_category(self, cat_id, name):
-        res = QMessageBox.question(
-            self, "분류 삭제", f"[{name}] 분류를 삭제하시겠습니까?\n하위의 모든 하위분류 및 쿼리도 함께 영구 삭제됩니다.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        if res == QMessageBox.StandardButton.Yes:
-            self.db_mgr.delete_query_category(cat_id)
-            self.refresh_cat_tree()
-            self.refresh_fav_tree()
-            main_win = self.main_win
-            for (t_type, q_id), tab_widget in list(main_win.open_query_tabs.items()):
-                if t_type == "query":
-                    still_exists = self.db_mgr.get_query_by_id(q_id)
-                    if not still_exists:
-                        idx = main_win.tab_widget.indexOf(tab_widget)
-                        if idx != -1:
-                            main_win.tab_widget.removeTab(idx)
-                            del main_win.open_query_tabs[(t_type, q_id)]
-
-    def on_query_add_clicked(self):
-        item = self.tree_cat.currentItem()
-        cat_id = None
-        if item:
-            if item.data(0, Qt.ItemDataRole.UserRole + 1) == "category":
-                cat_id = item.data(0, Qt.ItemDataRole.UserRole)
-            elif item.data(0, Qt.ItemDataRole.UserRole + 1) == "query":
-                cat_id = item.parent().data(0, Qt.ItemDataRole.UserRole)
-        self.add_query_to_cat(cat_id)
-
-    def add_query_to_cat(self, cat_id):
-        dialog = QueryAddEditDialog(self.db_mgr, current_cat_id=cat_id, parent=self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.refresh_cat_tree()
-            show_copy_message("✅ 새 쿼리가 등록되었습니다.", self)
-
-    def delete_query(self, query_id):
-        still_exists = self.db_mgr.get_query_by_id(query_id)
-        if not still_exists: return
-        q_title = still_exists['query_title']
-        res = QMessageBox.question(self, "쿼리 삭제", f"[{q_title}] 쿼리를 삭제하시겠습니까?",
-                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if res == QMessageBox.StandardButton.Yes:
-            self.db_mgr.delete_query(query_id)
-            self.refresh_cat_tree()
-            self.refresh_fav_tree()
-            main_win = self.main_win
-            key = ("query", query_id)
-            if key in main_win.open_query_tabs:
-                tab_widget = main_win.open_query_tabs[key]
-                idx = main_win.tab_widget.indexOf(tab_widget)
-                if idx != -1:
-                    main_win.tab_widget.removeTab(idx)
-                del main_win.open_query_tabs[key]
-
-    def on_bulk_import_clicked(self):
-        dialog = BulkImportSetupDialog(self.db_mgr, self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            paths = dialog.selected_paths
-            target_cat_id = dialog.target_cat_id
-            root_dir = dialog.selected_root_dir
-            if not paths: return
-                
-            # 로딩 진행 모달창 띄우기
-            from PyQt6.QtWidgets import QProgressDialog
-            self.progress_dlg = QProgressDialog("쿼리 파일을 가져오는 중입니다...\n(파일이 많은 경우 다소 시간이 걸릴 수 있습니다.)", None, 0, 0, self)
-            self.progress_dlg.setWindowTitle("일괄 가져오기 진행 중")
-            self.progress_dlg.setWindowModality(Qt.WindowModality.WindowModal)
-            self.progress_dlg.setMinimumDuration(0)
-            self.progress_dlg.setValue(0)
-            self.progress_dlg.setCancelButton(None)
-            self.progress_dlg.show()
-
-            self.import_thread = QThread()
-            self.import_worker = QueryBulkImportWorker(self.db_mgr, paths, target_cat_id, root_dir,
-                                                            use_folder_as_root=dialog.use_folder_as_root)
-            self.import_worker.moveToThread(self.import_thread)
-
-            self.import_thread.started.connect(self.import_worker.run)
-            self.import_worker.finished.connect(self.on_bulk_import_finished)
-            self.import_thread.start()
-
-    def on_bulk_import_finished(self, success, count, msg):
-        self.progress_dlg.close()
-        self.import_thread.quit()
-        self.import_thread.wait()
-        
-        if success:
-            self.refresh_cat_tree()
-            QMessageBox.information(self, "완료", msg)
-        else:
-            QMessageBox.critical(self, "오류", f"일괄 가져오기 중 에러가 발생했습니다:\n{msg}")
-
-    def on_bulk_export_clicked(self):
-        """쿼리 내보내기 - 체크박스 트리로 폴더/쿼리 선택 후 폴더 구조로 저장"""
-
-        # 1. DB에서 카테고리 + 쿼리 조회
-        try:
-            cats = self.db_mgr.get_query_categories()
-        except Exception as e:
-            QMessageBox.critical(self, "오류", f"데이터 조회 중 오류:\n{str(e)}")
-            return
-
-        if not cats:
-            QMessageBox.information(self, "알림", "내보낼 쿼리 분류가 없습니다.")
-            return
-
-        # 2. 체크박스 트리 다이얼로그 구성
-        dlg = HierarchySelectionDialog("내보낼 폴더/쿼리 선택", mode="query_export", parent=self)
-
-        from collections import defaultdict
-        cat_map = defaultdict(list)
-        for c in cats:
-            cat_map[c['parent_id']].append(c)
-
-        cat_qt_items = {}  # cat id -> QTreeWidgetItem
-
-        def build_tree(parent_id, parent_node):
-            for c in sorted(cat_map.get(parent_id, []), key=lambda x: (x.get('sort_order') or 0, x['category_name'])):
-                node = dlg.add_category_node(parent_node, c['category_name'],
-                                             data={"type": "category", "id": c['id'], "name": c['category_name']})
-                node.setExpanded(True)
-                cat_qt_items[c['id']] = node
-                # 쿼리 리프 노드
-                try:
-                    queries = self.db_mgr.get_queries_by_category(c['id'])
-                    for q in (queries or []):
-                        dlg.add_leaf_node(node, q['query_title'], data={
-                            "type": "query",
-                            "id": q['id'],
-                            "query_title": q['query_title'],
-                            "query_content": q.get('query_content') or "",
-                            "cat_id": c['id'],
-                            "cat_name": c['category_name'],
-                        })
-                except Exception:
-                    pass
-                build_tree(c['id'], node)
-
-        build_tree(None, None)
-
-        if dlg.exec() != QDialog.DialogCode.Accepted:
-            return
-
-        checked = dlg.get_checked_items()
-        checked_queries = [item for item in checked if item.get("type") == "query"]
-
-        if not checked_queries:
-            QMessageBox.warning(self, "알림", "선택된 쿼리가 없습니다.")
-            return
-
-        # 3. 저장 폴더 선택
-        export_dir = QFileDialog.getExistingDirectory(self, "쿼리 내보내기 저장 폴더 선택", "")
-        if not export_dir:
-            return
-
-        # 4. 카테고리 경로 맵 생성 (id -> full path parts)
-        cat_id_to_obj = {c['id']: c for c in cats}
-
-        def get_cat_path(cat_id):
-            parts = []
-            cur = cat_id
-            while cur is not None:
-                obj = cat_id_to_obj.get(cur)
-                if not obj:
-                    break
-                parts.insert(0, obj['category_name'])
-                cur = obj.get('parent_id')
-            return parts
-
-        def sanitize(name):
-            for ch in r'\/:*?"<>|':
-                name = name.replace(ch, '_')
-            return name.strip()
-
-        # 5. 파일 저장
-        try:
-            success_count = 0
-            for q in checked_queries:
-                path_parts = get_cat_path(q['cat_id'])
-                dir_path = export_dir
-                for part in path_parts:
-                    dir_path = os.path.join(dir_path, sanitize(part))
-                os.makedirs(dir_path, exist_ok=True)
-
-                safe_title = sanitize(q['query_title']) or f"query_{q['id']}"
-                file_path = os.path.join(dir_path, f"{safe_title}.sql")
-                base, ext = os.path.splitext(file_path)
-                counter = 1
-                while os.path.exists(file_path):
-                    file_path = f"{base}_{counter}{ext}"
-                    counter += 1
-
-                with open(file_path, "w", encoding="utf-8") as f:
-                    f.write(q['query_content'])
-                success_count += 1
-
-            QMessageBox.information(
-                self, "완료",
-                f"쿼리 내보내기가 완료되었습니다.\n"
-                f"위치: {export_dir}\n"
-                f"내보낸 쿼리 수: {success_count}개"
-            )
-        except Exception as e:
-            QMessageBox.critical(self, "에러", f"쿼리를 내보내는 도중 에러가 발생했습니다:\n{str(e)}")
-
-
-
-
-    def on_recent_clear_clicked(self):
-        res = QMessageBox.question(self, "이력 전체 비우기", "최근 조회/복사 이력을 모두 삭제하시겠습니까?",
-                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if res == QMessageBox.StandardButton.Yes:
-            self.db_mgr.clear_recent_queries()
-            self.refresh_recent_tree()
-            main_win = self.main_win
-            for (t_type, r_id), tab_widget in list(main_win.open_query_tabs.items()):
-                if t_type == "recent":
-                    idx = main_win.tab_widget.indexOf(tab_widget)
-                    if idx != -1:
-                        main_win.tab_widget.removeTab(idx)
-                    del main_win.open_query_tabs[(t_type, r_id)]
-            show_copy_message("🧹 최근조회 이력이 모두 삭제되었습니다.", self)
-
-
-class QueryDetailTabWidget(QWidget):
-    """우측 작업 영역에 열리는 보관 쿼리 상세/편집 탭"""
-    def __init__(self, db_mgr, query_data, main_win, parent=None):
-        super().__init__(parent)
-        self.db_mgr = db_mgr
-        self.query_id = query_data['id']
-        self.query_title = query_data['query_title']
-        self.main_win = main_win
-        self.is_dirty = False
-        self.init_ui(query_data)
-
-        # Store original values directly from UI widgets to prevent false dirty states
-        self.original_title = self.txt_title.text()
-        self.original_desc = self.txt_desc.text()
-        self.original_cat_id = self.combo_cat.currentData()
-        self.original_sql = self.txt_sql.toPlainText()
-
-        # Connect signals for dirty tracking after initial UI setup
-        self.txt_title.textChanged.connect(self.set_dirty)
-        self.txt_desc.textChanged.connect(self.set_dirty)
-        self.combo_cat.currentIndexChanged.connect(self.set_dirty)
-        self.txt_sql.textChanged.connect(self.set_dirty)
-
-    def set_dirty(self):
-        title = self.txt_title.text()
-        desc = self.txt_desc.text()
-        cat_id = self.combo_cat.currentData()
-        sql = self.txt_sql.toPlainText()
-
-        has_changed = (
-            title != self.original_title or
-            desc != self.original_desc or
-            cat_id != self.original_cat_id or
-            sql != self.original_sql
-        )
-
-        self.is_dirty = has_changed
-        idx = self.main_win.tab_widget.indexOf(self)
-        if idx != -1:
-            title_str = title.strip() or "무제"
-            if self.is_dirty:
-                self.main_win.tab_widget.setTabText(idx, f"📄 {title_str} *")
-            else:
-                self.main_win.tab_widget.setTabText(idx, f"📄 {title_str}")
-
-    def init_ui(self, q_data):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(10)
-
-        # 폼 레이아웃 (제목, 설명, 카테고리 콤보박스)
-        form_frame = QFrame()
-        form_frame.setObjectName("QueryFormFrame")
-        form_frame.setStyleSheet("QFrame#QueryFormFrame { background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; }")
-        form_layout = QFormLayout(form_frame)
-        form_layout.setContentsMargins(10, 10, 10, 10)
-        form_layout.setSpacing(8)
-
-        # 제목 에디터
-        self.txt_title = QLineEdit()
-        self.txt_title.setText(q_data['query_title'])
-        self.txt_title.setStyleSheet("QLineEdit { padding: 4px; border: 1px solid #CBD5E1; border-radius: 4px; }")
-
-        # 설명 에디터
-        self.txt_desc = QLineEdit()
-        self.txt_desc.setText(q_data['description'] or "")
-        self.txt_desc.setStyleSheet("QLineEdit { padding: 4px; border: 1px solid #CBD5E1; border-radius: 4px; }")
-
-        # 카테고리 콤보박스
-        self.combo_cat = QComboBox()
-        cats = self.db_mgr.get_query_categories()
-        for idx, c in enumerate(cats):
-            self.combo_cat.addItem(c['category_name'], c['id'])
-            if c['id'] == q_data['category_id']:
-                self.combo_cat.setCurrentIndex(idx)
-        self.combo_cat.setStyleSheet("QComboBox { padding: 4px; border: 1px solid #CBD5E1; border-radius: 4px; }")
-
-        form_layout.addRow("쿼리 제목:", self.txt_title)
-        form_layout.addRow("쿼리 설명:", self.txt_desc)
-        form_layout.addRow("분류 카테고리:", self.combo_cat)
-        layout.addWidget(form_frame)
-
-        # SQL 본문 편집창
-        layout.addWidget(QLabel("💬 SQL 구문 (편집 가능):"))
-        self.txt_sql = QTextEdit()
-        self.txt_sql.setFont(QFont("Consolas", 10))
-        self.txt_sql.setAcceptRichText(False)
-        self.txt_sql.setPlainText(q_data['query_content'])
-        self.txt_sql.setStyleSheet("QTextEdit { background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 4px; padding: 8px; }")
-        self.sql_highlighter = SqlHighlighter(self.txt_sql.document())
-        layout.addWidget(self.txt_sql)
-
-        # 하단 컨트롤 버튼
-        btn_layout = QHBoxLayout()
-        btn_copy = QPushButton("📋 클립보드 복사")
-        btn_save = QPushButton("💾 변경사항 저장")
-        btn_revert = QPushButton("🔄 되돌리기")
-        btn_format = QPushButton("✨ SQL 정렬")
-        btn_del = QPushButton("❌ 쿼리 삭제")
-        btn_fav = QPushButton("⭐ 즐겨찾기 토글")
-
-        for btn in [btn_copy, btn_save, btn_revert, btn_format, btn_del, btn_fav]:
-            btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            btn.setStyleSheet("font-weight: bold; padding: 6px 16px; border-radius: 4px;")
-            
-        btn_copy.setStyleSheet("background-color: #059669; color: white; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
-        btn_save.setStyleSheet("background-color: #2563EB; color: white; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
-        btn_revert.setStyleSheet("background-color: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
-        btn_format.setStyleSheet("background-color: #E0F2FE; color: #0369A1; border: 1px solid #BAE6FD; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
-        btn_del.setStyleSheet("background-color: #FFFFFF; color: #DC2626; border: 1px solid #FCA5A5; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
-        
-        # 즐겨찾기 상태에 따라 다르게 표시
-        is_fav = q_data.get('is_favorite') == 1
-        self.update_fav_btn_style(btn_fav, is_fav)
-
-        btn_copy.clicked.connect(self.on_copy_clicked)
-        btn_save.clicked.connect(self.on_save_clicked)
-        btn_revert.clicked.connect(self.on_revert_clicked)
-        btn_format.clicked.connect(self.on_format_clicked)
-        btn_del.clicked.connect(self.on_delete_clicked)
-        btn_fav.clicked.connect(lambda: self.on_fav_clicked(btn_fav))
-
-        btn_layout.addWidget(btn_copy)
-        btn_layout.addWidget(btn_save)
-        btn_layout.addWidget(btn_revert)
-        btn_layout.addWidget(btn_format)
-        btn_layout.addWidget(btn_fav)
-        btn_layout.addStretch()
-        btn_layout.addWidget(btn_del)
-        layout.addLayout(btn_layout)
-
-    def update_fav_btn_style(self, btn, is_fav):
-        if is_fav:
-            btn.setText("⭐ 즐겨찾기 해제")
-            btn.setStyleSheet("background-color: #FEF3C7; color: #D97706; border: 1px solid #FDE68A; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
-        else:
-            btn.setText("☆ 즐겨찾기 등록")
-            btn.setStyleSheet("background-color: #FFFFFF; color: #475569; border: 1px solid #CBD5E1; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
-
-    def on_format_clicked(self):
-        sql = self.txt_sql.toPlainText()
-        if not sql.strip():
-            return
-        formatted = format_sql(sql)
-        self.txt_sql.setPlainText(formatted)
-        show_copy_message("✨ SQL 정렬(포맷팅)이 완료되었습니다.", self)
-
-    def on_copy_clicked(self):
-        sql = self.txt_sql.toPlainText().strip()
-        title = self.txt_title.text().strip()
-        if not sql: return
-        QApplication.clipboard().setText(sql)
-        show_copy_message("📋 클립보드에 복사되었습니다!", self)
-        self.main_win.add_recent_query_log(f"[보관함] {title} 복사", sql)
-
-    def load_query_data(self):
-        q_data = self.db_mgr.get_query_by_id(self.query_id)
-        if q_data:
-            self.txt_title.blockSignals(True)
-            self.txt_desc.blockSignals(True)
-            self.combo_cat.blockSignals(True)
-            self.txt_sql.blockSignals(True)
-            
-            self.txt_title.setText(q_data['query_title'])
-            self.txt_desc.setText(q_data['description'] or "")
-            self.txt_sql.setPlainText(q_data['query_content'])
-            
-            # Refresh combo_cat index
-            cats = self.db_mgr.get_query_categories()
-            self.combo_cat.clear()
-            for idx, c in enumerate(cats):
-                self.combo_cat.addItem(c['category_name'], c['id'])
-                if c['id'] == q_data['category_id']:
-                    self.combo_cat.setCurrentIndex(idx)
-                    
-            self.txt_title.blockSignals(False)
-            self.txt_desc.blockSignals(False)
-            self.combo_cat.blockSignals(False)
-            self.txt_sql.blockSignals(False)
-
-            self.original_title = self.txt_title.text()
-            self.original_desc = self.txt_desc.text()
-            self.original_cat_id = self.combo_cat.currentData()
-            self.original_sql = self.txt_sql.toPlainText()
-
-    def on_revert_clicked(self):
-        if not self.is_dirty:
-            return
-        reply = QMessageBox.question(
-            self, "변경사항 취소", "수정한 내용을 모두 취소하고 처음 상태로 되돌리시겠습니까?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        if reply == QMessageBox.StandardButton.Yes:
-            self.load_query_data()
-            self.is_dirty = False
-            
-            # Reset tab title (remove *)
-            idx = self.main_win.tab_widget.indexOf(self)
-            if idx != -1:
-                title = self.txt_title.text().strip()
-                self.main_win.tab_widget.setTabText(idx, f"📄 {title}")
-
-    def on_save_clicked(self):
-        title = self.txt_title.text().strip()
-        desc = self.txt_desc.text().strip()
-        sql = self.txt_sql.toPlainText().strip()
-        cat_id = self.combo_cat.currentData()
-        
-        if not title or not sql or cat_id is None:
-            QMessageBox.warning(self, "경고", "제목, SQL 구문 및 카테고리는 필수 항목입니다.")
-            return
-            
-        try:
-            self.db_mgr.update_query(self.query_id, title, sql, desc, cat_id)
-            show_copy_message("💾 변경사항이 저장되었습니다.", self)
-            
-            self.is_dirty = False
-            self.original_title = title
-            self.original_desc = desc
-            self.original_cat_id = cat_id
-            self.original_sql = sql
-            
-            # 메인 탭 명칭 갱신
-            idx = self.main_win.tab_widget.indexOf(self)
-            if idx != -1:
-                self.main_win.tab_widget.setTabText(idx, f"📄 {title}")
-            self.query_title = title
-            
-            # 좌측 트리 동기화
-            self.main_win.query_sidebar.refresh_cat_tree()
-            self.main_win.query_sidebar.refresh_fav_tree()
-        except Exception as e:
-            QMessageBox.critical(self, "오류", f"저장 실패:\n{str(e)}")
-
-    def on_delete_clicked(self):
-        res = QMessageBox.question(self, "쿼리 삭제", f"[{self.query_title}] 쿼리를 보관함에서 삭제하시겠습니까?",
-                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if res == QMessageBox.StandardButton.Yes:
-            try:
-                self.db_mgr.delete_query(self.query_id)
-                # 탭 닫기 (close_tab 헬퍼가 관리 딕셔너리 정리)
-                idx = self.main_win.tab_widget.indexOf(self)
-                if idx != -1:
-                    self.main_win.tab_widget.removeTab(idx)
-                    key = ("query", self.query_id)
-                    if key in self.main_win.open_query_tabs:
-                        del self.main_win.open_query_tabs[key]
-                
-                # 좌측 트리 갱신
-                self.main_win.query_sidebar.refresh_cat_tree()
-                self.main_win.query_sidebar.refresh_fav_tree()
-                show_copy_message("❌ 쿼리가 삭제되었습니다.", self)
-            except Exception as e:
-                QMessageBox.critical(self, "오류", f"삭제 실패:\n{str(e)}")
-
-    def on_fav_clicked(self, btn):
-        try:
-            new_fav = self.db_mgr.toggle_query_favorite(self.query_id)
-            self.update_fav_btn_style(btn, new_fav == 1)
-            # 좌측 트리 갱신
-            self.main_win.query_sidebar.refresh_cat_tree()
-            self.main_win.query_sidebar.refresh_fav_tree()
-            show_copy_message("⭐ 즐겨찾기 상태가 변경되었습니다.", self)
-        except Exception as e:
-            QMessageBox.warning(self, "에러", str(e))
-
-
-GRAMMAR_DATA = {
-    "표준 SQL 문법 (Standard SQL)": [
-        {
-            "title": "SELECT (기본 조회)",
-            "desc": "데이터베이스 테이블에서 데이터를 선택하여 조회하는 구문입니다.",
-            "syntax": "SELECT column1, column2, ...\nFROM table_name\n[WHERE condition];",
-            "example": "-- 조회할 컬럼을 나열 (사번, 이름, 급여, 부서번호)\nSELECT empno, ename, sal, deptno\nFROM emp              -- 조회 대상 테이블\nWHERE sal >= 2000;    -- 급여가 2000 이상인 직원만 필터링",
-            "tip": "데이터베이스 테이블에서 원하는 컬럼과 행을 추출하는 가장 기본적인 표준 SQL 구문입니다."
-        },
-        {
-            "title": "WHERE (조건 필터링)",
-            "desc": "특정 조건에 부합하는 레코드만 필터링하여 조회할 때 사용합니다.",
-            "syntax": "SELECT columns FROM table_name\nWHERE condition1 AND/OR condition2;",
-            "example": "SELECT * FROM emp         -- emp 테이블의 모든 컬럼 조회\nWHERE deptno = 10         -- 부서번호가 10번인 조건 (AND로 연결)\n  AND (job = 'MANAGER'    -- 직무가 MANAGER 이거나\n    OR sal >= 3000);      -- 급여가 3000 이상인 경우 (소괄호로 OR 그룹 묶기)",
-            "tip": "문자열 검색 시 LIKE 와 와일드카드 문자(%, _)를 혼용해 조회 가능합니다."
-        },
-        {
-            "title": "JOIN (테이블 결합)",
-            "desc": "서로 다른 테이블의 공통 필드를 매핑하여 데이터를 결합해 조회하는 구문입니다.",
-            "syntax": "SELECT columns\nFROM table_A A\n[INNER / LEFT / RIGHT / FULL OUTER] JOIN table_B B ON A.key = B.key;",
-            "example": "-- E는 emp 테이블 별칭, D는 dept 테이블 별칭\nSELECT E.empno,          -- 사번 (emp 테이블에서)\n       E.ename,          -- 직원명 (emp 테이블에서)\n       D.dname           -- 부서명 (dept 테이블에서)\nFROM emp E               -- emp를 E로 별칭 지정\nINNER JOIN dept D        -- dept를 D로 별칭 지정, 두 테이블 내부 조인\n    ON E.deptno = D.deptno; -- emp의 부서번호와 dept의 부서번호가 일치하는 행만 결합",
-            "tip": "표준 조인 방식(ANSI JOIN)인 JOIN ... ON 구문을 사용하는 것이 가독성과 유지보수에 좋습니다."
-        },
-        {
-            "title": "GROUP BY & Aggregation (그룹 및 집계)",
-            "desc": "동일한 값을 가진 행들을 그룹화하고 집계 함수(COUNT, SUM, AVG, MAX, MIN)를 적용합니다.",
-            "syntax": "SELECT column, aggregate_function(column)\nFROM table_name\nWHERE condition\nGROUP BY column\nHAVING aggregate_function(column) > value;",
-            "example": "SELECT deptno,             -- 그룹 기준 컬럼 (부서번호)\n       COUNT(*) AS emp_count,  -- 각 부서의 직원 수 집계\n       SUM(sal) AS total_sal   -- 각 부서의 총 급여 합계\nFROM emp\nGROUP BY deptno            -- 부서번호별로 행을 묶어 집계\nHAVING SUM(sal) >= 10000;  -- 집계 후 필터: 부서 총급여가 10000 이상인 부서만 출력",
-            "tip": "HAVING 절은 GROUP BY 후에 집계 함수 결과에 대해 필터링할 때 사용하며, 일반 WHERE 절과는 다릅니다."
-        },
-        {
-            "title": "Subquery (서브쿼리)",
-            "desc": "다른 SQL 쿼리 내부에 중첩된 쿼리입니다. SELECT, FROM, WHERE, HAVING 절 내부 어디서든 사용 가능합니다.",
-            "syntax": "SELECT columns FROM table_name\nWHERE column = (SELECT column FROM table_name WHERE condition);",
-            "example": "SELECT ename, sal, deptno\nFROM emp\nWHERE sal > (           -- 서브쿼리 결과(회사 전체 평균 급여)보다 많이 받는 직원 필터링\n    SELECT AVG(sal)     -- 서브쿼리: emp 전체의 평균 급여 계산\n    FROM emp\n); -- 평균 이상의 급여를 받는 직원 이름/급여/부서 조회",
-            "tip": "서브쿼리 결과가 단일 행이면 단일행 연산자(=, >, <)를 사용하고, 다중 행이면 다중행 연산자(IN, ANY, ALL)를 사용해야 합니다."
-        },
-        {
-            "title": "Window Functions (윈도우 함수)",
-            "desc": "행과 행 간의 관계를 정의하여 분석용 집계를 수행하되, 결과 행의 수를 줄이지 않고 그대로 보존하는 함수입니다.",
-            "syntax": "SELECT column, function() OVER ([PARTITION BY col] [ORDER BY col])\nFROM table_name;",
-            "example": "SELECT ename,\n       deptno,\n       sal,\n       -- 부서별(PARTITION BY deptno) 급여 내림차순 기준 순위 부여 (1위부터 시작)\n       ROW_NUMBER() OVER (PARTITION BY deptno ORDER BY sal DESC) AS sal_rank,\n       -- 부서별 총 급여 합계 (각 행에 소속 부서 합계값이 붙음)\n       SUM(sal) OVER (PARTITION BY deptno) AS dept_total_sal\nFROM emp; -- GROUP BY 없이도 부서별 집계값을 각 행에서 볼 수 있음",
-            "tip": "ROW_NUMBER()는 고유 순위, RANK()는 중복 순위 건너뜀, DENSE_RANK()는 중복 순위를 건너뛰지 않는 차이점이 있습니다."
-        },
-        {
-            "title": "PARTITION BY (분석용 파티션)",
-            "desc": "집계 또는 순위 계산 시 테이블 전체를 집계하는 대신, 지정한 컬럼값을 기준으로 그룹(파티션)을 분할하여 각각 독립된 집계를 수행합니다.",
-            "syntax": "SELECT columns,\n       RANK() OVER (PARTITION BY partition_column ORDER BY sort_column) as rank_val,\n       SUM(aggregate_column) OVER (PARTITION BY partition_column) as sum_val\nFROM table_name;",
-            "example": "SELECT empno, ename, job, sal,\n       -- 직무(job)별로 급여 내림차순 기준 순번 부여\n       -- 같은 job 내에서만 1, 2, 3... 번호가 매겨짐\n       ROW_NUMBER() OVER (PARTITION BY job ORDER BY sal DESC) AS job_sal_seq,\n       -- 직무별 평균 급여 (각 행마다 자신이 속한 job의 평균이 표시됨)\n       AVG(sal) OVER (PARTITION BY job) AS job_avg_sal\nFROM emp;",
-            "tip": "GROUP BY와 달리 결과 행의 개수를 유지한 채 각 행에 그룹 통계치를 매핑해 주는 매우 유용한 고급 분석 함수 구문입니다."
-        },
-        {
-            "title": "Table Partitioning (오라클 테이블 파티셔닝)",
-            "desc": "대용량 테이블의 물리적 공간을 특정 컬럼(예: 날짜, 범위)을 기준으로 분할하여 저장하는 물리 설계 기법입니다.",
-            "syntax": "/* 오라클 Range Partitioning */\nCREATE TABLE sales_data (\n    sales_id NUMBER,\n    sales_date DATE,\n    amount NUMBER\n)\nPARTITION BY RANGE (sales_date) (\n    PARTITION sales_p1 VALUES LESS THAN (TO_DATE('2026-01-01', 'YYYY-MM-DD')),\n    PARTITION sales_p2 VALUES LESS THAN (TO_DATE('2027-01-01', 'YYYY-MM-DD')),\n    PARTITION sales_p3 VALUES LESS THAN (MAXVALUE)\n);",
-            "example": "-- 날짜 범위 조건을 사용하면 오라클이 자동으로 해당 파티션(sales_p2)만 스캔함\n-- 이를 '파티션 프루닝(Partition Pruning)'이라 하며 대용량 테이블 성능에 핵심적\nSELECT * FROM sales_data\nWHERE sales_date >= TO_DATE('2026-01-01', 'YYYY-MM-DD')  -- 2026년 이후\n  AND sales_date <  TO_DATE('2027-01-01', 'YYYY-MM-DD'); -- 2027년 이전 (2026년만)",
-            "tip": "조회 시 조건에 맞는 파티션 세그먼트만 스캔(Partition Pruning)하므로 인덱스 이상의 대용량 쿼리 성능 향상을 꾀할 수 있습니다."
-        },
-        {
-            "title": "UNION & UNION ALL (결과 집합 병합)",
-            "desc": "두 개 이상의 SELECT 쿼리 결과를 하나의 결과 집합으로 병합하여 출력합니다.",
-            "syntax": "SELECT column1, column2, ... FROM table_A\nUNION [ALL]\nSELECT column1, column2, ... FROM table_B;",
-            "example": "-- [UNION ALL] 두 조회 결과를 그대로 합침. 중복 제거 없이 전체 행 반환 (빠름)\nSELECT empno, ename, deptno FROM emp WHERE deptno = 10  -- 10번 부서 직원\nUNION ALL                                               -- 두 결과를 위아래로 합침\nSELECT empno, ename, deptno FROM emp WHERE deptno = 20; -- 20번 부서 직원\n\n-- [UNION] 두 결과를 합친 뒤 중복 행을 제거하고 자동 정렬 수행 (느림)\nSELECT job FROM emp WHERE deptno = 10   -- 10번 부서의 직무 목록\nUNION                                    -- 중복 제거하여 합침\nSELECT job FROM emp WHERE deptno = 20;  -- 20번 부서의 직무 목록 (같은 job은 1개만 출력)",
-            "tip": "UNION ALL은 결과 집합 간의 중복 데이터를 확인하거나 정렬하는 추가 연산을 거치지 않으므로, 중복 행 제거가 필요 없는 조회 쿼리에서는 UNION보다 훨씬 뛰어난 성능을 보장합니다."
-        },
-        {
-            "title": "ROWNUM (오라클 행 번호 제한)",
-            "desc": "오라클 데이터베이스에서 쿼리 결과로 출력되는 레코드들에 순차적인 가상의 행 번호(1부터 시작)를 매깁니다. 주로 출력 결과의 개수를 제한(Top-N)할 때 사용됩니다.",
-            "syntax": "SELECT columns FROM table_name\nWHERE ROWNUM <= limit_number;",
-            "example": "-- ※ ROWNUM은 ORDER BY 이전에 처리됨 → 정렬 후 상위 N건을 위해 인라인 뷰 필수!\nSELECT * FROM (\n    -- 안쪽 서브쿼리: 먼저 급여 내림차순으로 전체 정렬 수행\n    SELECT ename, sal\n    FROM emp\n    ORDER BY sal DESC   -- 급여 높은 순 정렬 (이 정렬이 완료된 후 ROWNUM 부여)\n)\nWHERE ROWNUM <= 5;  -- 정렬된 결과에서 상위 5행만 추출",
-            "tip": "ROWNUM은 SELECT 절을 통해 데이터가 출력될 때 비로소 부여되므로, ORDER BY보다 먼저 처리됩니다. 따라서 정확한 순위 정렬 결과의 Top-N 필터링을 하려면 반드시 ORDER BY가 완료된 인라인 뷰(서브쿼리)를 감싸고 바깥쪽 WHERE 절에서 ROWNUM 조건을 주어야 합니다."
-        },
-        {
-            "title": "INDEX (인덱스 생성과 활용 조건)",
-            "desc": "조회 성능을 높이기 위해 특정 컬럼에 생성하는 정렬된 탐색 구조입니다. 인덱스가 있어도 WHERE 절 작성 방식에 따라 인덱스를 타지 못하는 경우가 있어 작성 규칙이 중요합니다.",
-            "syntax": "/* 인덱스 생성 */\nCREATE [UNIQUE] INDEX index_name\nON table_name (column1 [, column2, ...]);\n\n/* 인덱스 삭제 */\nDROP INDEX index_name;",
-            "example": "-- 사원번호 + 부서코드 복합 인덱스 생성\nCREATE INDEX IX_EMP_DEPT_SAL\nON emp (deptno, sal);\n\n-- [O] 인덱스를 정상적으로 타는 조회 (컬럼을 가공하지 않음)\nSELECT * FROM emp\nWHERE deptno = 10 AND sal >= 3000;\n\n-- [X] 인덱스를 못 타는 조회 유형들\nSELECT * FROM emp\nWHERE SUBSTR(ename, 1, 1) = 'S';        -- 컬럼을 함수로 가공\n\nSELECT * FROM emp\nWHERE ename LIKE '%SON';                -- 앞쪽 와일드카드\n\nSELECT * FROM emp\nWHERE sal = 3000;                       -- 복합 인덱스의 선두 컬럼(deptno) 누락",
-            "tip": "인덱스 컬럼을 WHERE 절에서 함수로 가공하거나(SUBSTR, TO_CHAR 등), LIKE 패턴이 %로 시작하거나, 복합 인덱스의 선두 컬럼 없이 조회하면 인덱스를 활용하지 못하고 전체 스캔(Full Scan)이 발생합니다."
-        }
-    ],
-    "표준 SQL 함수 문법 (SQL Functions)": [
-        {
-            "title": "SUBSTR (문자열 자르기)",
-            "desc": "문자열의 특정 시작 위치부터 지정한 길이만큼 데이터를 잘라내어 반환합니다.",
-            "syntax": "SUBSTR(string, start_position [, length])",
-            "example": "/* 사원명 첫 3글자 추출 */\nSELECT SUBSTR(ename, 1, 3) AS short_name FROM emp;\n\n/* 뒤에서 3글자 추출 (음수 인덱스 지원) */\nSELECT SUBSTR(ename, -3) AS end_name FROM emp;",
-            "tip": "오라클 RDBMS의 문자열 시작 인덱스는 1부터 시작하며, 음수를 넣으면 뒤에서부터 위치를 계산합니다."
-        },
-        {
-            "title": "NVL / NVL2 / COALESCE (NULL 처리)",
-            "desc": "조회 결과가 NULL인 경우 대체 기본값으로 치환하여 반환합니다.",
-            "syntax": "/* 1. NVL (NULL이면 대체값 반환) */\nNVL(expression, default_val)\n\n/* 2. NVL2 (NULL 여부에 따라 분기) */\nNVL2(expression, not_null_val, null_val)\n\n/* 3. COALESCE (첫 번째 NOT NULL 반환) */\nCOALESCE(val1, val2, ..., default_val)",
-            "example": "-- 수당(comm)이 NULL이면 0으로 치환\nSELECT ename, sal, NVL(comm, 0) AS commission FROM emp;\n\n-- 수당 유무에 따른 메시지 분기\nSELECT ename, NVL2(comm, '수당 대상', '수당 없음') AS comm_yn FROM emp;\n\n-- 여러 컬럼 중 첫 번째 존재하는 값 선택\nSELECT empno, COALESCE(comm, bonus, 0) AS final_bonus FROM emp;",
-            "tip": "단일 값 대체에는 NVL이 간결하며, 여러 대체 컬럼 후보가 있을 때는 표준 COALESCE를 사용하는 것이 좋습니다."
-        },
-        {
-            "title": "TO_CHAR / TO_NUMBER / TO_DATE (형변환)",
-            "desc": "문자열, 숫자, 날짜 간의 데이터 타입을 상호 명시적으로 변환합니다.",
-            "syntax": "/* 1. 날짜/숫자 → 문자열 */\nTO_CHAR(expression, 'format_pattern')\n\n/* 2. 문자열 → 날짜 */\nTO_DATE(string_expression, 'format_pattern')\n\n/* 3. 문자열 → 숫자 */\nTO_NUMBER(string_expression [, 'format_pattern'])",
-            "example": "-- 현재 날짜를 YYYY-MM-DD 포맷 문자열로 변환\nSELECT TO_CHAR(sysdate, 'YYYY-MM-DD HH24:MI:SS') AS curr_dt FROM dual;\n\n-- 문자열을 날짜형으로 변환 (인덱스 탐색 시 필수)\nSELECT * FROM emp WHERE hiredate >= TO_DATE('2026-01-01', 'YYYY-MM-DD');\n\n-- 통화 포맷 문자열을 숫자로 변환\nSELECT TO_NUMBER('1,250,000', '9,999,999') AS num_val FROM dual;",
-            "tip": "날짜 비교 시 WHERE hiredate >= TO_DATE('2026-01-01','YYYY-MM-DD')와 같이 비교 대상을 날짜형으로 맞춰야 인덱스를 정상적으로 탈 수 있습니다."
-        },
-        {
-            "title": "ADD_MONTHS & MONTHS_BETWEEN (날짜 연산)",
-            "desc": "오라클에서 월 단위 날짜 가감 연산 및 두 날짜 간의 개월 수 차이를 계산합니다.",
-            "syntax": "/* 1. N개월 더하기/빼기 */\nADD_MONTHS(date, integer)\n\n/* 2. 두 날짜 간 개월 수 */\nMONTHS_BETWEEN(date1, date2)\n\n/* 3. 날짜 + 일수 연산 */\ndate + number  -- number일 후\ndate - number  -- number일 전\ndate1 - date2  -- 두 날짜 간 일수 차이 (실수)",
-            "example": "-- 입사 후 3개월 뒤 날짜 (수습 종료일)\nSELECT ename, hiredate, ADD_MONTHS(hiredate, 3) AS probation_end FROM emp;\n\n-- 근속 개월 수 계산 (소수점 포함)\nSELECT ename, ROUND(MONTHS_BETWEEN(sysdate, hiredate), 1) AS work_months FROM emp;\n\n-- 오늘로부터 7일 뒤\nSELECT sysdate + 7 AS next_week FROM dual;",
-            "tip": "월말 일자(예: 2월 28일)에 ADD_MONTHS를 수행하면 자동으로 대상 월의 말일로 정확히 보정 처리됩니다."
-        },
-        {
-            "title": "SYSDATE & SYSTIMESTAMP (현재 일시 조회)",
-            "desc": "오라클 데이터베이스 서버의 현재 날짜 및 정밀 시간 정보를 반환합니다.",
-            "syntax": "/* 1. 초 단위까지의 현재 일시 */\nSYSDATE\n\n/* 2. 밀리초/나노초 및 타임존 포함 정밀 일시 */\nSYSTIMESTAMP",
-            "example": "-- 초 단위 현재 일시 조회 (DUAL 테이블 활용)\nSELECT SYSDATE FROM dual;\n\n-- 나노초 및 타임존 포함 정밀 일시 조회\nSELECT SYSTIMESTAMP FROM dual;\n\n-- 오늘 00시 00분 00초 (TRUNC 활용)\nSELECT TRUNC(SYSDATE) AS today_midnight FROM dual;",
-            "tip": "오라클에서는 FROM 절이 필수이므로 DUAL 가상 테이블과 함께 실행합니다. 날짜의 시간 부분을 제거하고 날짜만 비교할 땐 TRUNC(SYSDATE)를 활용합니다."
-        },
-        {
-            "title": "DECODE & CASE (조건문 처리 함수)",
-            "desc": "SQL 문 내에서 IF-ELSE 조건 판단을 구현하는 조건부 치환 함수입니다.",
-            "syntax": "/* 1. 오라클 전용 DECODE (동등 비교) */\nDECODE(column, target1, val1, target2, val2, ..., default_val)\n\n/* 2. ANSI 표준 CASE WHEN (범위 및 복합 조건 가능) */\nCASE WHEN condition1 THEN val1\n     WHEN condition2 THEN val2\n     ELSE default_val\nEND",
-            "example": "-- [오라클 DECODE] 부서번호에 따라 부서명 텍스트로 치환\nSELECT ename,\n       DECODE(deptno,\n              10, '인사팀',\n              20, '개발팀',\n              '기타팀'\n       ) AS team_name\nFROM emp;\n\n-- [표준 CASE WHEN] 급여 구간별 등급 부여\nSELECT ename, sal,\n       CASE WHEN sal >= 3000 THEN 'A등급'\n            WHEN sal >= 2000 THEN 'B등급'\n            ELSE 'C등급'\n       END AS sal_grade\nFROM emp;",
-            "tip": "DECODE는 단순 동등 비교에 매우 간결하며, CASE WHEN은 대소 비교 및 AND/OR 결합 등 복잡한 조건식 처리에 유리합니다."
-        },
-        {
-            "title": "DUAL 테이블 (오라클 가상 테이블)",
-            "desc": "오라클 데이터베이스에서 함수 실행, 상수 조회, 날짜 연산 등 테이블 대상이 지정되지 않은 임시 조회를 수행할 때 사용하는 시스템 가상 Dummy 테이블입니다.",
-            "syntax": "SELECT expression_or_function FROM DUAL;",
-            "example": "-- [1] 오라클 서버의 현재 날짜/시간 조회\nSELECT SYSDATE FROM DUAL;\n\n-- [2] 실행 환경에서 빠른 산술 연산 테스트\nSELECT 100 * 25.4 + 12 AS calc_result FROM DUAL;\n\n-- [3] 문자열 함수 결과 즉시 확인\nSELECT UPPER('oracle_dual') AS upper_text,\n       TO_CHAR(sysdate, 'YYYYMMDD') AS today\nFROM DUAL;",
-            "tip": "오라클은 SELECT 구문 내에 FROM 절을 필수로 지정해야 하는 문법적 강제 규칙이 있으므로 가상 테이블인 DUAL을 활용합니다."
-        }
-    ],
-    "오라클 PL/SQL 문법 (Oracle PL/SQL)": [
-        {
-            "title": "PL/SQL 기본 블록 구조 (Anonymous Block)",
-            "desc": "오라클 PL/SQL의 가장 기본이 되는 블록 구조로, 선언부(DECLARE), 실행부(BEGIN..END), 예외처리부(EXCEPTION)로 구성됩니다.",
-            "syntax": "DECLARE\n    /* 변수, 상수, 커서 선언 */\nBEGIN\n    /* 실행할 SQL 및 제어문 */\nEXCEPTION\n    /* 예외 처리 루틴 */\nEND;\n/",
-            "example": "SET SERVEROUTPUT ON;\n\nDECLARE\n    v_emp_name VARCHAR2(50);\n    v_sal      NUMBER;\nBEGIN\n    SELECT ename, sal\n    INTO v_emp_name, v_sal\n    FROM emp\n    WHERE empno = 7788;\n\n    DBMS_OUTPUT.PUT_LINE('사원명: ' || v_emp_name || ', 급여: ' || v_sal);\nEXCEPTION\n    WHEN NO_DATA_FOUND THEN\n        DBMS_OUTPUT.PUT_LINE('해당 사원을 찾을 수 없습니다.');\n    WHEN OTHERS THEN\n        DBMS_OUTPUT.PUT_LINE('오류 발생: ' || SQLERRM);\nEND;\n/",
-            "tip": "SQL*Plus나 DBeaver, Toad 등에서 DBMS_OUTPUT 출력을 확인하려면 먼저 `SET SERVEROUTPUT ON;`을 실행해야 합니다."
-        },
-        {
-            "title": "변수 선언 및 %TYPE / %ROWTYPE",
-            "desc": "테이블의 특정 컬럼 타입이나 전체 행 구조를 참조하여 동적으로 일치하는 타입을 선언합니다. 테이블 스키마가 변경되어도 PL/SQL 수정이 불필요합니다.",
-            "syntax": "/* 1. 기본 변수 및 기본값 */\nv_name VARCHAR2(50) := '홍길동';\nv_count NUMBER DEFAULT 0;\n\n/* 2. %TYPE (컬럼 타입 참조) */\nv_empno emp.empno%TYPE;\nv_sal   emp.sal%TYPE;\n\n/* 3. %ROWTYPE (테이블 행 전체 참조) */\nv_emp_row emp%ROWTYPE;",
-            "example": "DECLARE\n    v_emp emp%ROWTYPE; -- emp 테이블의 모든 컬럼을 담는 레코드\nBEGIN\n    SELECT * INTO v_emp\n    FROM emp\n    WHERE empno = 7788;\n\n    DBMS_OUTPUT.PUT_LINE('사번: ' || v_emp.empno);\n    DBMS_OUTPUT.PUT_LINE('이름: ' || v_emp.ename);\n    DBMS_OUTPUT.PUT_LINE('급여: ' || v_emp.sal);\nEND;\n/",
-            "tip": "%TYPE 및 %ROWTYPE을 사용하면 테이블의 컬럼 타입이나 길이가 변경되더라도 PL/SQL 코드를 다시 수정할 필요가 없어 유지보수성이 극대화됩니다."
-        },
-        {
-            "title": "조건 제어문 (IF ... ELSIF ... ELSE)",
-            "desc": "조건식의 결과에 따라 실행 흐름을 분기합니다. 오라클 PL/SQL에서는 ELSE IF가 아닌 ELSIF로 작성합니다.",
-            "syntax": "IF condition1 THEN\n    /* 조건1 참일 때 실행 */\nELSIF condition2 THEN\n    /* 조건2 참일 때 실행 */\nELSE\n    /* 모두 거짓일 때 실행 */\nEND IF;",
-            "example": "DECLARE\n    v_sal NUMBER := 3500;\nBEGIN\n    IF v_sal >= 4000 THEN\n        DBMS_OUTPUT.PUT_LINE('임원급 급여');\n    ELSIF v_sal >= 2500 THEN\n        DBMS_OUTPUT.PUT_LINE('중간 관리자급 급여');\n    ELSE\n        DBMS_OUTPUT.PUT_LINE('일반 사원급 급여');\n    END IF;\nEND;\n/",
-            "tip": "ELSIF 스펠링(ELSEIF 아님)에 주의해야 하며, 조건 블록의 끝에는 반드시 `END IF;`를 명시해야 합니다."
-        },
-        {
-            "title": "반복문 (LOOP, FOR LOOP, WHILE LOOP)",
-            "desc": "특정 코드 블록을 조건이나 횟수에 따라 반복 실행합니다.",
-            "syntax": "/* 1. 기본 LOOP */\nLOOP\n    EXIT WHEN condition;\nEND LOOP;\n\n/* 2. FOR LOOP (카운터 자동 선언) */\nFOR i IN [REVERSE] low_val..high_val LOOP\n    /* 실행 코드 */\nEND LOOP;\n\n/* 3. WHILE LOOP */\nWHILE condition LOOP\n    /* 실행 코드 */\nEND LOOP;",
-            "example": "DECLARE\n    v_cnt NUMBER := 1;\nBEGIN\n    -- [FOR LOOP] 1부터 5까지 반복\n    FOR i IN 1..5 LOOP\n        DBMS_OUTPUT.PUT_LINE('FOR 루프: ' || i);\n    END LOOP;\n\n    -- [기본 LOOP] EXIT WHEN 활용\n    LOOP\n        DBMS_OUTPUT.PUT_LINE('기본 루프: ' || v_cnt);\n        v_cnt := v_cnt + 1;\n        EXIT WHEN v_cnt > 3;\n    END LOOP;\nEND;\n/",
-            "tip": "FOR LOOP의 루프 인덱스 변수(i)는 DECLARE 절에서 선언할 필요 없이 자동으로 정수형 변수로 생성되고 루프 종료 시 소멸합니다."
-        },
-        {
-            "title": "명시적 커서 (CURSOR & FETCH)",
-            "desc": "다중 행을 반환하는 SELECT 쿼리의 결과를 한 행씩 순차적으로 가져와 처리하는 포인터입니다.",
-            "syntax": "DECLARE\n    CURSOR cur_name IS\n        SELECT cols FROM table_name WHERE condition;\n    v_record cur_name%ROWTYPE;\nBEGIN\n    OPEN cur_name;\n    LOOP\n        FETCH cur_name INTO v_record;\n        EXIT WHEN cur_name%NOTFOUND;\n        /* 행별 처리 */\n    END LOOP;\n    CLOSE cur_name;\nEND;",
-            "example": "DECLARE\n    CURSOR emp_cur IS\n        SELECT empno, ename, sal\n        FROM emp\n        WHERE deptno = 10\n        ORDER BY sal DESC;\n    \n    v_empno emp.empno%TYPE;\n    v_ename emp.ename%TYPE;\n    v_sal   emp.sal%TYPE;\nBEGIN\n    OPEN emp_cur;\n    LOOP\n        FETCH emp_cur INTO v_empno, v_ename, v_sal;\n        EXIT WHEN emp_cur%NOTFOUND;\n        DBMS_OUTPUT.PUT_LINE(v_ename || ' - ' || v_sal);\n    END LOOP;\n    CLOSE emp_cur;\nEND;\n/",
-            "tip": "커서 속성: `%FOUND`(데이터 있음), `%NOTFOUND`(더 이상 데이터 없음), `%ROWCOUNT`(현재까지 읽은 행 수), `%ISOPEN`(커서 열림 여부)"
-        },
-        {
-            "title": "커서 FOR 루프 (CURSOR FOR LOOP)",
-            "desc": "커서의 OPEN, FETCH, CLOSE 및 레코드 변수 선언을 자동으로 처리해 주는 가장 권장되는 커서 순회 기법입니다.",
-            "syntax": "FOR record_name IN cursor_name [(parameters)] LOOP\n    /* record_name.column_name 접근 */\nEND LOOP;\n\n/* 또는 인라인 서브쿼리 직접 사용 */\nFOR r IN (SELECT cols FROM table_name) LOOP\n    /* r.column_name 접근 */\nEND LOOP;",
-            "example": "BEGIN\n    -- 인라인 커서 FOR 루프: 별도 변수/커서 선언 없이 가장 간결하게 다중 행 순회\n    FOR r IN (SELECT empno, ename, sal FROM emp WHERE deptno = 20) LOOP\n        DBMS_OUTPUT.PUT_LINE('사원: ' || r.ename || ' (급여: ' || r.sal || ')');\n    END LOOP;\nEND;\n/",
-            "tip": "커서 열기/닫기와 루프 탈출 조건 체크를 오라클이 내부적으로 안전하게 자동 관리하므로 리소스 누수(Cursor Leak)가 원천 방지됩니다."
-        },
-        {
-            "title": "예외 처리 (EXCEPTION & RAISE)",
-            "desc": "런타임 에러 발생 시 프로그램이 비정상 종료되지 않도록 예외를 포착하고 처리하며, 사용자 정의 예외를 발생시킵니다.",
-            "syntax": "EXCEPTION\n    WHEN NO_DATA_FOUND THEN\n        /* 조회 결과 없음 */\n    WHEN TOO_MANY_ROWS THEN\n        /* 단일행 조회에 여러 행 반환됨 */\n    WHEN DUP_VAL_ON_INDEX THEN\n        /* PK/UK 중복 키 에러 */\n    WHEN OTHERS THEN\n        /* 기타 모든 예외 */\n        RAISE_APPLICATION_ERROR(-20001, '사용자 정의 에러 메시지: ' || SQLERRM);",
-            "example": "DECLARE\n    v_name emp.ename%TYPE;\nBEGIN\n    SELECT ename INTO v_name FROM emp WHERE empno = 9999; -- 없는 사원번호\nEXCEPTION\n    WHEN NO_DATA_FOUND THEN\n        DBMS_OUTPUT.PUT_LINE('해당 사원 정보가 존재하지 않습니다.');\n    WHEN OTHERS THEN\n        -- 사용자 정의 에러 코드(-20000 ~ -20999) 발생\n        RAISE_APPLICATION_ERROR(-20001, 'DB 에러: ' || SQLERRM);\nEND;\n/",
-            "tip": "`RAISE_APPLICATION_ERROR(에러코드, 에러메시지)`는 -20000부터 -20999 범위의 사용자 에러 번호를 사용하여 호출자(애플리케이션)에게 명확한 실패 사유를 전달합니다."
-        },
-        {
-            "title": "저장 프로시저 (Stored Procedure)",
-            "desc": "오라클 데이터베이스 서버에 컴파일되어 저장되는 PL/SQL 프로그램 블록으로, 복잡한 비즈니스 로직 및 트랜잭션을 캡슐화합니다.",
-            "syntax": "CREATE OR REPLACE PROCEDURE procedure_name (\n    p_param1 IN  VARCHAR2,\n    p_param2 OUT NUMBER\n)\nIS\n    /* 로컬 변수 선언 (DECLARE 키워드 불필요) */\nBEGIN\n    /* 비즈니스 로직 */\n    COMMIT;\nEXCEPTION\n    WHEN OTHERS THEN\n        ROLLBACK;\n        RAISE;\nEND procedure_name;\n/",
-            "example": "CREATE OR REPLACE PROCEDURE SP_UPDATE_EMP_SAL (\n    p_empno IN NUMBER,\n    p_bonus IN NUMBER,\n    p_new_sal OUT NUMBER\n)\nIS\nBEGIN\n    UPDATE emp\n    SET sal = sal + p_bonus\n    WHERE empno = p_empno;\n\n    SELECT sal INTO p_new_sal\n    FROM emp\n    WHERE empno = p_empno;\n\n    COMMIT;\nEXCEPTION\n    WHEN OTHERS THEN\n        ROLLBACK;\n        RAISE_APPLICATION_ERROR(-20002, '급여 업데이트 실패: ' || SQLERRM);\nEND SP_UPDATE_EMP_SAL;\n/",
-            "tip": "파라미터 모드: `IN`(입력 전용, 기본값), `OUT`(출력 전용), `IN OUT`(입출력 겸용). 프로시저 내부에서는 DECLARE 키워드 대신 `IS` 또는 `AS` 아래에 변수를 선언합니다."
-        },
-        {
-            "title": "저장 함수 (Stored Function)",
-            "desc": "SQL 문 내에서 직접 호출하거나 PL/SQL 내에서 계산된 단일 값을 RETURN 구문으로 반환하는 사용자 정의 함수입니다.",
-            "syntax": "CREATE OR REPLACE FUNCTION function_name (\n    p_param IN VARCHAR2\n)\nRETURN return_datatype\nIS\n    v_result return_datatype;\nBEGIN\n    /* 계산 로직 */\n    RETURN v_result;\nEND function_name;\n/",
-            "example": "CREATE OR REPLACE FUNCTION FN_GET_DEPT_NAME (\n    p_deptno IN NUMBER\n)\nRETURN VARCHAR2\nIS\n    v_dname dept.dname%TYPE;\nBEGIN\n    SELECT dname INTO v_dname\n    FROM dept\n    WHERE deptno = p_deptno;\n\n    RETURN v_dname;\nEXCEPTION\n    WHEN NO_DATA_FOUND THEN\n        RETURN '미지정 부서';\nEND FN_GET_DEPT_NAME;\n/\n\n-- [사용 예시] SELECT 구문 내에서 직접 호출\nSELECT empno, ename, FN_GET_DEPT_NAME(deptno) AS dept_name FROM emp;",
-            "tip": "SQL 구문 내에서 호출되는 함수는 DML(INSERT/UPDATE/DELETE)을 수행할 수 없으며, 반드시 명시적인 `RETURN` 문장이 실행되어야 합니다."
-        },
-        {
-            "title": "패키지 (Package: 선언부 & 본문)",
-            "desc": "관련 있는 변수, 상수, 커서, 프로시저, 함수들을 하나의 네임스페이스로 그룹화하여 캡슐화 및 모듈화하는 오라클 전용 객체입니다.",
-            "syntax": "/* 1. 패키지 선언부 (Specification) - 외부 공개 인터페이스 */\nCREATE OR REPLACE PACKAGE pkg_name IS\n    FUNCTION fn_test(p_id NUMBER) RETURN VARCHAR2;\n    PROCEDURE sp_test(p_id NUMBER);\nEND pkg_name;\n/\n\n/* 2. 패키지 본문 (Body) - 실제 구현부 */\nCREATE OR REPLACE PACKAGE BODY pkg_name IS\n    FUNCTION fn_test(p_id NUMBER) RETURN VARCHAR2 IS\n    BEGIN\n        RETURN 'Result';\n    END fn_test;\n\n    PROCEDURE sp_test(p_id NUMBER) IS\n    BEGIN\n        NULL;\n    END sp_test;\nEND pkg_name;\n/",
-            "example": "CREATE OR REPLACE PACKAGE PKG_EMP_MGR IS\n    PROCEDURE HIRE_EMP(p_name VARCHAR2, p_sal NUMBER);\n    FUNCTION GET_TOTAL_SAL RETURN NUMBER;\nEND PKG_EMP_MGR;\n/\n\nCREATE OR REPLACE PACKAGE BODY PKG_EMP_MGR IS\n    PROCEDURE HIRE_EMP(p_name VARCHAR2, p_sal NUMBER) IS\n    BEGIN\n        INSERT INTO emp (empno, ename, sal, hiredate)\n        VALUES (emp_seq.NEXTVAL, p_name, p_sal, SYSDATE);\n    END HIRE_EMP;\n\n    FUNCTION GET_TOTAL_SAL RETURN NUMBER IS\n        v_sum NUMBER;\n    BEGIN\n        SELECT SUM(sal) INTO v_sum FROM emp;\n        RETURN v_sum;\n    END GET_TOTAL_SAL;\nEND PKG_EMP_MGR;\n/",
-            "tip": "패키지는 최초 호출 시 전체가 한 번에 메모리에 로드되어 후속 실행 성능이 매우 뛰어나며, 선언부만 공개하고 본문은 감출 수 있어 정보 은닉에 유리합니다."
-        },
-        {
-            "title": "트리거 (Database Trigger)",
-            "desc": "테이블에 INSERT, UPDATE, DELETE 등의 DML 이벤트가 발생할 때 사전에 정의된 PL/SQL 블록이 자동으로 실행되는 객체입니다.",
-            "syntax": "CREATE OR REPLACE TRIGGER trigger_name\n[BEFORE | AFTER] [INSERT | UPDATE | DELETE] ON table_name\nFOR EACH ROW -- 행 트리거 (:NEW, :OLD 사용 가능)\nBEGIN\n    /* 트리거 로직 */\nEND;\n/",
-            "example": "-- 직원의 급여가 변경될 때마다 이력 테이블에 자동 로깅하는 트리거\nCREATE OR REPLACE TRIGGER TRG_EMP_SAL_AUDIT\nAFTER UPDATE OF sal ON emp\nFOR EACH ROW\nBEGIN\n    INSERT INTO emp_sal_history (\n        empno, old_sal, new_sal, change_dt, changed_by\n    ) VALUES (\n        :OLD.empno, :OLD.sal, :NEW.sal, SYSDATE, USER\n    );\nEND TRG_EMP_SAL_AUDIT;\n/",
-            "tip": "행 트리거(`FOR EACH ROW`)에서는 변경 전 값인 `:OLD.컬럼명`과 변경 후 값인 `:NEW.컬럼명` 키워드를 참조할 수 있습니다."
-        },
-        {
-            "title": "동적 SQL (EXECUTE IMMEDIATE)",
-            "desc": "런타임에 동적으로 생성된 SQL 문장 문자열을 실행하며, 파라미터 바인딩(USING)과 결과 수신(INTO)을 지원합니다.",
-            "syntax": "EXECUTE IMMEDIATE dynamic_sql_string\n[INTO output_variables]\n[USING bind_arguments];",
-            "example": "DECLARE\n    v_table_name VARCHAR2(30) := 'EMP';\n    v_cnt        NUMBER;\n    v_sql        VARCHAR2(200);\nBEGIN\n    -- 테이블명을 동적으로 조립하여 건수 조회\n    v_sql := 'SELECT COUNT(*) FROM ' || DBMS_ASSERT.ENQUOTE_NAME(v_table_name) || ' WHERE deptno = :d';\n    \n    EXECUTE IMMEDIATE v_sql\n    INTO v_cnt\n    USING 10; -- :d 바인드 변수에 10 전달\n\n    DBMS_OUTPUT.PUT_LINE(v_table_name || ' 10번 부서 인원: ' || v_cnt);\nEND;\n/",
-            "tip": "테이블명/컬럼명은 바인드 변수(:val)로 처리할 수 없어 문자열로 결합해야 하므로, SQL 인젝션을 막기 위해 `DBMS_ASSERT`를 활용하는 것이 안전합니다."
-        },
-        {
-            "title": "대량 처리 (BULK COLLECT & FORALL)",
-            "desc": "PL/SQL 엔진과 SQL 엔진 간의 컨텍스트 스위칭(Context Switching) 오버헤드를 줄여 수만~수십만 건의 데이터를 초고속으로 일괄 처리합니다.",
-            "syntax": "/* 1. 대량 조회: BULK COLLECT INTO 컬렉션 */\nSELECT cols BULK COLLECT INTO collection_var FROM table;\n\n/* 2. 대량 DML: FORALL */\nFORALL i IN collection_var.FIRST..collection_var.LAST\n    INSERT / UPDATE / DELETE ...;",
-            "example": "DECLARE\n    TYPE t_emp_tab IS TABLE OF emp%ROWTYPE;\n    v_emps t_emp_tab;\nBEGIN\n    -- [BULK COLLECT] 10번 부서 전원을 컬렉션에 한 번에 메모리 로드\n    SELECT * BULK COLLECT INTO v_emps\n    FROM emp\n    WHERE deptno = 10;\n\n    -- [FORALL] 수집된 레코드들을 백업 테이블에 단 한 번의 엔진 호출로 일괄 삽입\n    FORALL i IN v_emps.FIRST..v_emps.LAST\n        INSERT INTO emp_backup VALUES v_emps(i);\n\n    COMMIT;\n    DBMS_OUTPUT.PUT_LINE(v_emps.COUNT || '건 초고속 일괄 복사 완료');\nEND;\n/",
-            "tip": "단순 LOOP 안에서 반복적으로 INSERT/UPDATE를 수행하는 것보다 FORALL을 사용하면 처리 속도가 10배~50배 이상 비약적으로 향상됩니다."
-        }
-    ],
-    "오라클 자주 쓰는 문법 (Oracle Essentials)": [
-        {
-            "title": "IN / NOT IN (목록 조건)",
-            "desc": "컬럼 값이 지정한 목록(리스트) 내에 포함되는지(IN) 또는 포함되지 않는지(NOT IN) 여부를 필터링 조건으로 사용합니다.",
-            "syntax": "/* 값 목록 직접 지정 */\nSELECT columns FROM table_name\nWHERE column IN (value1, value2, ...);\n\n/* 서브쿼리 결과 목록 사용 */\nSELECT columns FROM table_name\nWHERE column IN (SELECT key_column FROM other_table WHERE condition);",
-            "example": "/* 10, 20번 부서 직원만 조회 */\nSELECT empno, ename, deptno FROM emp\nWHERE deptno IN (10, 20);\n\n/* 특정 직무가 아닌 직원 조회 */\nSELECT empno, ename, job FROM emp\nWHERE job NOT IN ('CLERK', 'SALESMAN');\n\n/* 서브쿼리 사용: 특정 위치 부서의 직원 조회 */\nSELECT ename, deptno FROM emp\nWHERE deptno IN (SELECT deptno FROM dept WHERE loc = 'DALLAS');",
-            "tip": "IN 절 내 서브쿼리가 NULL 값을 반환하는 경우, NOT IN 조건은 예상과 다른 결과를 반환할 수 있습니다. 서브쿼리에 WHERE 절로 IS NOT NULL을 추가하는 것이 안전합니다."
-        },
-        {
-            "title": "LIKE (패턴 매칭 검색)",
-            "desc": "문자열 컬럼에서 와일드카드(%, _)를 활용한 부분 일치 패턴을 검색합니다. 정확한 값을 모를 때 유용합니다.",
-            "syntax": "SELECT columns FROM table_name\nWHERE column LIKE 'pattern';\n\n/* 와일드카드 의미 */\n-- %  : 0개 이상의 임의 문자(길이 무관)\n-- _  : 정확히 1개의 임의 문자",
-            "example": "/* 이름이 'S'로 시작하는 직원 */\nSELECT ename FROM emp WHERE ename LIKE 'S%';\n\n/* 이름이 'N'으로 끝나는 직원 */\nSELECT ename FROM emp WHERE ename LIKE '%N';\n\n/* 이름 중간에 'AL'이 포함된 직원 */\nSELECT ename FROM emp WHERE ename LIKE '%AL%';\n\n/* 이름이 정확히 4글자이고 두번째 글자가 'C'인 직원 */\nSELECT ename FROM emp WHERE ename LIKE '_C__';",
-            "tip": "LIKE는 대소문자를 구분합니다. 오라클에서는 UPPER() 또는 LOWER() 함수와 조합하여 대소문자 무관 검색을 할 수 있습니다. (예: WHERE UPPER(ename) LIKE 'S%')"
-        },
-        {
-            "title": "EXISTS / NOT EXISTS (존재 여부 확인)",
-            "desc": "서브쿼리가 하나 이상의 행을 반환하는지 여부만을 참/거짓으로 판별합니다. IN보다 빠르고 효율적인 경우가 많습니다.",
-            "syntax": "SELECT columns FROM table_A A\nWHERE EXISTS (\n    SELECT 1 FROM table_B B\n    WHERE B.key = A.key\n    AND condition\n);",
-            "example": "/* 부하 직원이 있는 관리자 목록 조회 */\nSELECT ename, job FROM emp A\nWHERE EXISTS (\n    SELECT 1 FROM emp B\n    WHERE B.mgr = A.empno\n);\n\n/* 주문 이력이 없는 고객 조회 (NOT EXISTS) */\nSELECT cust_id, cust_name FROM customers C\nWHERE NOT EXISTS (\n    SELECT 1 FROM orders O\n    WHERE O.cust_id = C.cust_id\n);",
-            "tip": "EXISTS는 서브쿼리가 행을 하나라도 찾는 순간 바로 TRUE를 반환하고 종료(Short-circuit)하므로, 대용량 테이블 Join 대체 패턴으로 IN보다 훨씬 빠른 성능을 발휘합니다."
-        },
-        {
-            "title": "CONNECT BY (계층형 쿼리)",
-            "desc": "오라클 전용 문법으로, 하나의 테이블 내에서 부모-자식 관계(계층 구조)로 연결된 데이터를 트리 형태로 탐색하여 조회합니다.",
-            "syntax": "SELECT LEVEL, columns,\n       SYS_CONNECT_BY_PATH(column, '/') AS full_path\nFROM table_name\nSTART WITH parent_key IS NULL\nCONNECT BY PRIOR child_key = parent_key;",
-            "example": "/* 직원 조직도를 상하위 계층 순서로 조회 */\nSELECT\n    LEVEL,\n    LPAD(' ', (LEVEL-1)*4) || ename AS org_chart,\n    empno,\n    mgr\nFROM emp\nSTART WITH mgr IS NULL\nCONNECT BY PRIOR empno = mgr\nORDER SIBLINGS BY ename;",
-            "tip": "LEVEL 가상 컬럼은 루트 노드가 1부터 시작하여 하위로 내려갈수록 증가합니다. LPAD와 조합하면 시각적인 트리 구조를 표현할 수 있습니다. ORDER SIBLINGS BY는 계층 구조를 유지하면서 같은 레벨의 형제 노드들만 정렬합니다."
-        },
-        {
-            "title": "INSTR (문자열 위치 검색)",
-            "desc": "문자열에서 특정 부분 문자열이 등장하는 위치(인덱스)를 반환합니다. 찾지 못한 경우 0을 반환합니다.",
-            "syntax": "INSTR(string, search_string [, start_position [, occurrence]])",
-            "example": "/* 'JONES'에서 'O'의 위치 반환 → 2 */\nSELECT INSTR('JONES', 'O') FROM DUAL;\n\n/* 직원 이메일에서 '@' 앞의 ID 부분만 추출 */\nSELECT\n    email,\n    SUBSTR(email, 1, INSTR(email, '@') - 1) AS email_id\nFROM emp_info\nWHERE email IS NOT NULL;",
-            "tip": "INSTR의 세 번째 인자(start_position)는 탐색 시작 위치이고, 네 번째 인자(occurrence)는 n번째 일치 결과를 반환합니다. SUBSTR과 조합하면 고급 문자열 파싱 작업을 순수 SQL로 처리할 수 있습니다."
-        },
-        {
-            "title": "TRIM / LTRIM / RTRIM (공백 제거)",
-            "desc": "문자열의 앞(왼쪽), 뒤(오른쪽), 또는 양쪽의 불필요한 공백이나 특정 문자를 제거합니다.",
-            "syntax": "/* 양쪽 공백 제거 (표준 ANSI) */\nTRIM([leading|trailing|both] [trim_char FROM] string)\n\n/* 왼쪽 제거 */\nLTRIM(string [, trim_chars])\n\n/* 오른쪽 제거 */\nRTRIM(string [, trim_chars])",
-            "example": "/* 기본 양쪽 공백 제거 */\nSELECT TRIM('  ORACLE  ') FROM DUAL;  -- 결과: 'ORACLE'\n\n/* 특정 문자 제거: 앞뒤 '0' 제거 */\nSELECT TRIM('0' FROM '000123000') FROM DUAL;  -- 결과: '123'\n\n/* 왼쪽 공백만 제거 */\nSELECT LTRIM('   HELLO') FROM DUAL;  -- 결과: 'HELLO'\n\n/* 실전: 사용자 입력값의 앞뒤 공백 정리 후 비교 */\nSELECT * FROM members\nWHERE TRIM(user_id) = TRIM(:input_user_id);",
-            "tip": "오라클의 LTRIM/RTRIM은 두 번째 인자로 제거할 문자 집합(set)을 지정할 수 있습니다. 예: LTRIM('***hello', '*')는 왼쪽의 '*'를 모두 제거합니다."
-        },
-        {
-            "title": "INSERT (데이터 삽입)",
-            "desc": "테이블에 새로운 행(레코드)을 추가합니다. 컬럼 목록을 생략하면 테이블 정의 순서대로 모든 컬럼에 값을 입력해야 합니다.",
-            "syntax": "/* 단일 행 삽입 */\nINSERT INTO table_name (col1, col2, ...)\nVALUES (val1, val2, ...);\n\n/* 서브쿼리 결과를 일괄 삽입 */\nINSERT INTO target_table (col1, col2, ...)\nSELECT col1, col2, ... FROM source_table\nWHERE condition;",
-            "example": "/* 단일 행 삽입 */\nINSERT INTO emp (empno, ename, job, sal, deptno)\nVALUES (9001, '홍길동', 'ANALYST', 3500, 20);\n\n/* 다른 테이블에서 데이터 복사 삽입 */\nINSERT INTO emp_backup (empno, ename, sal, deptno)\nSELECT empno, ename, sal, deptno\nFROM emp\nWHERE deptno = 10;",
-            "tip": "INSERT 이후 데이터를 실제로 확정하려면 COMMIT;을 실행해야 합니다. 오토커밋이 활성화되지 않은 환경에서는 명시적으로 COMMIT 또는 ROLLBACK을 관리하는 습관이 중요합니다."
-        },
-        {
-            "title": "UPDATE (데이터 수정)",
-            "desc": "테이블 내 특정 조건에 맞는 행(레코드)의 컬럼 값을 수정합니다. WHERE 절 없이 실행 시 테이블 전체 행이 수정되므로 주의가 필요합니다.",
-            "syntax": "UPDATE table_name\nSET col1 = val1,\n    col2 = val2, ...\nWHERE condition;",
-            "example": "/* 단순 값 수정 */\nUPDATE emp\nSET sal = sal * 1.1,\n    job = 'SENIOR ANALYST'\nWHERE empno = 7788;\n\n/* 서브쿼리로 다른 테이블 값을 기준으로 수정 */\nUPDATE emp E\nSET E.sal = (\n    SELECT AVG(sal) * 1.05\n    FROM emp\n    WHERE deptno = E.deptno\n)\nWHERE E.job = 'CLERK';",
-            "tip": "UPDATE 전에 반드시 SELECT로 수정 대상 데이터를 먼저 확인하세요. WHERE 절을 빠뜨리면 전체 행이 수정됩니다."
-        },
-        {
-            "title": "DELETE (데이터 삭제)",
-            "desc": "테이블에서 특정 조건에 해당하는 행(레코드)을 삭제합니다. WHERE 절 없이 실행하면 테이블의 모든 데이터가 삭제됩니다.",
-            "syntax": "DELETE FROM table_name\nWHERE condition;",
-            "example": "/* 특정 직원 삭제 */\nDELETE FROM emp\nWHERE empno = 7900;\n\n/* 다른 테이블을 참조하여 조건부 삭제 */\nDELETE FROM emp\nWHERE deptno IN (\n    SELECT deptno FROM dept\n    WHERE loc = 'BOSTON'\n);\n\n/* 오라클: 오래된 이력 데이터 일괄 삭제 (날짜 조건) */\nDELETE FROM order_history\nWHERE order_date < TO_DATE('2024-01-01', 'YYYY-MM-DD');",
-            "tip": "전체 데이터를 삭제할 때 DELETE FROM table은 각 행에 대해 로그를 기록하여 느립니다. 반면 TRUNCATE TABLE table은 로그 없이 전체를 즉시 삭제하므로 빠르지만, 롤백이 불가능하고 WHERE 조건을 사용할 수 없습니다."
-        }
-    ]
-}
-
-
-class GrammarSidebarWidget(QWidget):
-    """좌측 문법 정보 트리 위젯"""
-    def __init__(self, main_win, parent=None):
-        super().__init__(parent)
-        self.main_win = main_win
-        self.init_ui()
-
-    def init_ui(self):
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(6)
-
-        # 문법 검색 영역 (콤보박스 + 검색창)
-        search_grammar_bar_layout = QHBoxLayout()
-        search_grammar_bar_layout.setSpacing(4)
-
-        self.combo_grammar_search_type = QComboBox()
-        self.combo_grammar_search_type.addItems(["문법제목", "설명", "예시/구문"])
-        self.combo_grammar_search_type.setFixedHeight(30)
-        self.combo_grammar_search_type.setStyleSheet("""
-            QComboBox {
-                background-color: #F8FAFC;
-                color: #1E293B;
-                border: 1px solid #CBD5E1;
-                border-radius: 4px;
-                padding: 4px 6px;
-                font-size: 11px;
-                min-width: 80px;
-                max-width: 85px;
-            }
-            QComboBox:focus {
-                border: 1px solid #3B82F6;
-            }
-        """)
-        
-        def on_grammar_search_type_changed(text):
-            if text == "설명":
-                self.txt_search.setPlaceholderText("설명 검색 후 Enter...")
-            elif text == "예시/구문":
-                self.txt_search.setPlaceholderText("예제/구문 검색 후 Enter...")
-            else:
-                self.txt_search.setPlaceholderText("문법 제목 검색 후 Enter...")
-            self.on_search_changed(self.txt_search.text())
-
-        self.combo_grammar_search_type.currentTextChanged.connect(on_grammar_search_type_changed)
-        search_grammar_bar_layout.addWidget(self.combo_grammar_search_type)
-
-        self.txt_search = QLineEdit()
-        self.txt_search.setPlaceholderText("문법 제목 검색 후 Enter...")
-        self.txt_search.setFixedHeight(30)
-        self.txt_search.setStyleSheet(self.main_win.get_sidebar_search_style())
-        self.txt_search.returnPressed.connect(lambda: self.on_search_changed(self.txt_search.text()))
-        search_grammar_bar_layout.addWidget(self.txt_search)
-
-        self.btn_reset_grammar_search = QPushButton("↺")
-        self.btn_reset_grammar_search.setFixedWidth(28)
-        self.btn_reset_grammar_search.setFixedHeight(30)
-        self.btn_reset_grammar_search.setToolTip("검색 초기화")
-        self.btn_reset_grammar_search.setStyleSheet(self.main_win.get_sidebar_reset_button_style())
-        self.btn_reset_grammar_search.clicked.connect(self.clear_grammar_search)
-        search_grammar_bar_layout.addWidget(self.btn_reset_grammar_search)
-        
-        main_layout.addLayout(search_grammar_bar_layout)
-
-        # 트리 위젯
-        self.tree = QTreeWidget()
-        self.tree.setHeaderHidden(True)
-        self.tree.setStyleSheet("""
-            QTreeWidget {
-                background-color: #FFFFFF;
-                border: 1px solid #CBD5E1;
-                border-radius: 3px;
-                padding: 2px;
-            }
-            QTreeWidget::item {
-                height: 20px;
-                font-size: 11px;
-                color: #334155;
-            }
-            QTreeWidget::item:hover {
-                background-color: #F1F5F9;
-                border-radius: 2px;
-            }
-            QTreeWidget::item:selected {
-                background-color: #EFF6FF;
-                color: #2563EB;
-                font-weight: bold;
-                border-radius: 2px;
-            }
-        """)
-        self.tree.itemDoubleClicked.connect(self.on_item_double_clicked)
-        self.tree.itemClicked.connect(self.on_item_clicked)
-        main_layout.addWidget(self.tree)
-
-        # 트리 데이터 구성
-        self.populate_tree()
-
-    def populate_tree(self):
-        self.tree.clear()
-        for cat_name, items in GRAMMAR_DATA.items():
-            cat_item = QTreeWidgetItem(self.tree)
-            cat_item.setText(0, f"📁 {cat_name}")
-            cat_item.setData(0, Qt.ItemDataRole.UserRole, cat_name)
-            cat_item.setData(0, Qt.ItemDataRole.UserRole + 1, "category")
-            
-            for item_data in items:
-                child_item = QTreeWidgetItem(cat_item)
-                child_item.setText(0, f"💡 {item_data['title']}")
-                child_item.setData(0, Qt.ItemDataRole.UserRole, item_data)
-                child_item.setData(0, Qt.ItemDataRole.UserRole + 1, "item")
-                
-        self.tree.expandAll()
-
-    def clear_grammar_search(self):
-        self.txt_search.clear()
-        self.on_search_changed("")
-
-    def on_search_changed(self, text):
-        val = text.lower().strip()
-        search_type = self.combo_grammar_search_type.currentText() if hasattr(self, 'combo_grammar_search_type') else "문법제목"
-        
-        def apply_filter(item, filter_val, ancestor_matched=False):
-            if not filter_val:
-                item.setHidden(False)
-                for i in range(item.childCount()):
-                    apply_filter(item.child(i), filter_val, False)
-                return True
-
-            node_type = item.data(0, Qt.ItemDataRole.UserRole + 1)
-            matches = ancestor_matched
-            if not matches:
-                if node_type == "item":
-                    data = item.data(0, Qt.ItemDataRole.UserRole)
-                    title = data['title'].lower()
-                    desc = data['desc'].lower()
-                    syntax = data['syntax'].lower()
-                    example = data['example'].lower()
-                    
-                    if search_type == "설명":
-                        matches = (filter_val in desc)
-                    elif search_type == "예시/구문":
-                        matches = (filter_val in syntax) or (filter_val in example)
-                    else:  # "문법제목"
-                        matches = (filter_val in title)
-                else:
-                    name = item.text(0).lower()
-                    matches = (filter_val in name)
-
-            child_visible = False
-            for i in range(item.childCount()):
-                if apply_filter(item.child(i), filter_val, matches):
-                    child_visible = True
-
-            visible = matches or child_visible
-            item.setHidden(not visible)
-            if visible and filter_val:
-                item.setExpanded(True)
-            return visible
-
-        self.tree.blockSignals(True)
-        for i in range(self.tree.topLevelItemCount()):
-            apply_filter(self.tree.topLevelItem(i), val, False)
-        self.tree.blockSignals(False)
-
-    def on_item_clicked(self, item, column):
-        node_type = item.data(0, Qt.ItemDataRole.UserRole + 1)
-        if node_type == "item":
-            item_data = item.data(0, Qt.ItemDataRole.UserRole)
-            self.main_win.open_grammar_detail_tab(item_data)
-
-    def on_item_double_clicked(self, item, column):
-        self.on_item_clicked(item, column)
-
-
-class GrammarDetailTabWidget(QWidget):
-    """우측 상세 작업 영역에 띄워지는 SQL 문법 지식 상세 뷰"""
-    def __init__(self, grammar_data, main_win, parent=None):
-        super().__init__(parent)
-        self.main_win = main_win
-        self.grammar_data = grammar_data
-        self.init_ui()
-
-    def init_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(10)
-
-        # 1. 상세 제목 및 설명 카드 영역
-        info_frame = QFrame()
-        info_frame.setStyleSheet("QFrame { background-color: #F8FAFC; border: none; border-radius: 6px; } QLabel { border: none; }")
-        info_layout = QVBoxLayout(info_frame)
-        info_layout.setContentsMargins(12, 12, 12, 12)
-        info_layout.setSpacing(6)
-
-        lbl_title = QLabel(f"💡 {self.grammar_data['title']}")
-        lbl_title.setStyleSheet("font-size: 16px; font-weight: bold; color: #1E3A8A;")
-        info_layout.addWidget(lbl_title)
-
-        lbl_desc = QLabel(self.grammar_data['desc'])
-        lbl_desc.setStyleSheet("font-size: 12px; color: #475569; line-height: 16px;")
-        lbl_desc.setWordWrap(True)
-        info_layout.addWidget(lbl_desc)
-        layout.addWidget(info_frame)
-
-        # 2. Syntax 영역
-        layout.addWidget(QLabel("📝 기본 구문 (Syntax):"))
-        self.txt_syntax = QTextEdit()
-        self.txt_syntax.setFont(QFont("Consolas", 10))
-        self.txt_syntax.setReadOnly(True)
-        self.txt_syntax.setPlainText(self.grammar_data['syntax'])
-        self.txt_syntax.setStyleSheet("QTextEdit { background-color: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 4px; padding: 8px; }")
-        # 구문 길이에 맞춰 높이 자동 조절 (잘림 방지, 최소 60 ~ 최대 240px)
-        syntax_lines = self.grammar_data['syntax'].count('\n') + 1
-        line_h = self.txt_syntax.fontMetrics().height() * 1.3
-        self.txt_syntax.setFixedHeight(int(max(60, min(240, syntax_lines * line_h + 24))))
-        self.syntax_highlighter = SqlHighlighter(self.txt_syntax.document())
-        apply_sql_line_spacing(self.txt_syntax)
-        layout.addWidget(self.txt_syntax)
-
-        # 3. Example SQL 영역
-        layout.addWidget(QLabel("💬 예제 SQL 코드:"))
-        self.txt_example = QTextEdit()
-        self.txt_example.setFont(QFont("Consolas", 10))
-        self.txt_example.setReadOnly(True)
-        self.txt_example.setPlainText(self.grammar_data['example'])
-        self.txt_example.setStyleSheet("QTextEdit { background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 4px; padding: 8px; }")
-        self.example_highlighter = SqlHighlighter(self.txt_example.document())
-        apply_sql_line_spacing(self.txt_example)
-        layout.addWidget(self.txt_example)
-
-        # 4. 차이점 및 팁 영역
-        if self.grammar_data.get('tip'):
-            tip_frame = QFrame()
-            tip_frame.setStyleSheet("QFrame { background-color: #FEF3C7; border: none; border-radius: 6px; } QLabel { border: none; }")
-            tip_layout = QHBoxLayout(tip_frame)
-            tip_layout.setContentsMargins(10, 8, 10, 8)
-            
-            lbl_tip_icon = QLabel("💡 팁 / 차이점:")
-            lbl_tip_icon.setStyleSheet("font-weight: bold; color: #D97706; font-size: 11px;")
-            tip_layout.addWidget(lbl_tip_icon)
-            
-            lbl_tip_text = QLabel(self.grammar_data['tip'])
-            lbl_tip_text.setStyleSheet("color: #92400E; font-size: 11px;")
-            lbl_tip_text.setWordWrap(True)
-            tip_layout.addWidget(lbl_tip_text)
-            tip_layout.setStretch(1, 1)
-            layout.addWidget(tip_frame)
-
-        # 하단 컨트롤 버튼
-        btn_layout = QHBoxLayout()
-        btn_copy = QPushButton("📋 예제 코드 복사")
-        btn_copy.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_copy.setStyleSheet("background-color: #2563EB; color: white; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
-        btn_copy.clicked.connect(self.on_copy_clicked)
-        btn_layout.addWidget(btn_copy)
-        btn_layout.addStretch()
-        layout.addLayout(btn_layout)
-
-    def on_copy_clicked(self):
-        example_code = self.txt_example.toPlainText().strip()
-        if not example_code:
-            return
-        QApplication.clipboard().setText(example_code)
-        show_copy_message("📋 예제 코드가 클립보드에 복사되었습니다!", self)
-
-
-class RecentQueryDetailTabWidget(QWidget):
-    """우측 작업 영역에 열리는 최근 조회/복사 이력 상세 탭"""
-    def __init__(self, db_mgr, recent_data, main_win, parent=None):
-        super().__init__(parent)
-        self.db_mgr = db_mgr
-        self.recent_id = recent_data['id']
-        self.recent_title = recent_data['query_title']
-        self.main_win = main_win
-        self.init_ui(recent_data)
-
-    def init_ui(self, r_data):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(10)
-
-        # 정보 영역
-        info_frame = QFrame()
-        info_frame.setStyleSheet("QFrame { background-color: #F8FAFC; border: none; border-radius: 6px; } QLabel { border: none; }")
-        info_layout = QFormLayout(info_frame)
-        info_layout.setContentsMargins(10, 10, 10, 10)
-        info_layout.setSpacing(6)
-
-        lbl_title = QLabel(r_data['query_title'])
-        lbl_title.setStyleSheet("font-weight: bold; color: #1E3A8A;")
-        lbl_date = QLabel(r_data['copied_at'])
-        lbl_date.setStyleSheet("color: #64748B;")
-
-        info_layout.addRow("이력 내용:", lbl_title)
-        info_layout.addRow("복사 일시:", lbl_date)
-        layout.addWidget(info_frame)
-
-        # SQL 편집 및 뷰어
-        layout.addWidget(QLabel("💬 SQL 구문 (수정 및 복사 가능):"))
-        self.txt_sql = QTextEdit()
-        self.txt_sql.setFont(QFont("Consolas", 10))
-        self.txt_sql.setAcceptRichText(False)
-        self.txt_sql.setPlainText(r_data['query_content'])
-        self.txt_sql.setStyleSheet("QTextEdit { background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 4px; padding: 8px; }")
-        self.sql_highlighter = SqlHighlighter(self.txt_sql.document())
-        layout.addWidget(self.txt_sql)
-
-        # 하단 버튼
-        btn_layout = QHBoxLayout()
-        btn_copy = QPushButton("📋 클립보드에 재복사")
-        btn_format = QPushButton("✨ SQL 정렬")
-        btn_del = QPushButton("❌ 이력 삭제")
-
-        for btn in [btn_copy, btn_format, btn_del]:
-            btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            btn.setStyleSheet("font-weight: bold; padding: 6px 16px; border-radius: 4px;")
-
-        btn_copy.setStyleSheet("background-color: #2563EB; color: white; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
-        btn_format.setStyleSheet("background-color: #E0F2FE; color: #0369A1; border: 1px solid #BAE6FD; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
-        btn_del.setStyleSheet("background-color: #FFFFFF; color: #DC2626; border: 1px solid #FCA5A5; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
-
-        btn_copy.clicked.connect(self.on_copy_clicked)
-        btn_format.clicked.connect(self.on_format_clicked)
-        btn_del.clicked.connect(self.on_delete_clicked)
-
-        btn_layout.addWidget(btn_copy)
-        btn_layout.addWidget(btn_format)
-        btn_layout.addStretch()
-        btn_layout.addWidget(btn_del)
-        layout.addLayout(btn_layout)
-
-    def on_format_clicked(self):
-        sql = self.txt_sql.toPlainText()
-        if not sql.strip():
-            return
-        formatted = format_sql(sql)
-        self.txt_sql.setPlainText(formatted)
-        show_copy_message("✨ SQL 정렬(포맷팅)이 완료되었습니다.", self)
-
-    def on_copy_clicked(self):
-        sql = self.txt_sql.toPlainText().strip()
-        if not sql: return
-        QApplication.clipboard().setText(sql)
-        show_copy_message("📋 클립보드에 복사되었습니다!", self)
-        # 이력 재로그
-        self.main_win.add_recent_query_log(f"[이력] {self.recent_title} 재복사", sql)
-
-    def on_delete_clicked(self):
-        res = QMessageBox.question(self, "이력 삭제", "이 최근 복사 이력을 삭제하시겠습니까?",
-                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if res == QMessageBox.StandardButton.Yes:
-            try:
-                self.db_mgr.delete_recent_query(self.recent_id)
-                # 탭 닫기
-                idx = self.main_win.tab_widget.indexOf(self)
-                if idx != -1:
-                    self.main_win.tab_widget.removeTab(idx)
-                    key = ("recent", self.recent_id)
-                    if key in self.main_win.open_query_tabs:
-                        del self.main_win.open_query_tabs[key]
-                
-                # 최근이력 트리 갱신
-                self.main_win.query_sidebar.refresh_recent_tree()
-                show_copy_message("❌ 이력이 삭제되었습니다.", self)
-            except Exception as e:
-                QMessageBox.critical(self, "오류", f"삭제 실패:\n{str(e)}")
-
-
 def main():
     # Windows 작업표시줄 아이콘 분리 표시를 위한 AppUserModelID 설정
     if sys.platform == 'win32':
@@ -19991,7 +12516,7 @@ def main():
         }
     """)
     
-    window = OracleGuideApp()
+    window = BizGuideApp()
     window.show()
     sys.exit(app.exec())
 
