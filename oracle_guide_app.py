@@ -8115,7 +8115,7 @@ class DatabaseManager:
                    COALESCE(r.code_slot, 1) AS code_slot,
                    CASE 
                        WHEN r.custom_query IS NOT NULL AND r.custom_query != '' THEN '공통코드'
-                       WHEN r.ref_table_name IS NOT NULL AND EXISTS (
+                       WHEN r.ref_table_name IS NOT NULL AND r.ref_table_name != '' AND EXISTS (
                            SELECT 1 FROM common_codes cc
                            WHERE cc.code_group_id = r.ref_table_name
                        ) THEN '공통코드'
@@ -8123,7 +8123,7 @@ class DatabaseManager:
                            EXISTS (SELECT 1 FROM common_codes cc WHERE cc.column_name = c.column_name)
                            OR (r.ref_table_name IS NOT NULL AND r.ref_table_name != '')
                        ) THEN '공통코드'
-                       WHEN r.ref_table_name IS NOT NULL THEN '마스터테이블'
+                       WHEN r.ref_table_name IS NOT NULL AND r.ref_table_name != '' THEN '마스터테이블'
                        ELSE NULL 
                    END AS mapping_type
             FROM columns c
@@ -12602,15 +12602,15 @@ class TableDetailWidget(QWidget):
         all_submenu.setStyleSheet(menu.styleSheet())
 
         act_all_1 = QAction(f"모든 컬럼 ➔ {lbl_s1} 로 변경", self)
-        act_all_1.triggered.connect(lambda: self.apply_common_code_slot_to_table(1))
+        act_all_1.triggered.connect(lambda checked=False: self.apply_common_code_slot_to_table(1))
         all_submenu.addAction(act_all_1)
 
         act_all_2 = QAction(f"모든 컬럼 ➔ {lbl_s2} 로 변경", self)
-        act_all_2.triggered.connect(lambda: self.apply_common_code_slot_to_table(2))
+        act_all_2.triggered.connect(lambda checked=False: self.apply_common_code_slot_to_table(2))
         all_submenu.addAction(act_all_2)
 
         act_all_3 = QAction(f"모든 컬럼 ➔ {lbl_s3} 로 변경", self)
-        act_all_3.triggered.connect(lambda: self.apply_common_code_slot_to_table(3))
+        act_all_3.triggered.connect(lambda checked=False: self.apply_common_code_slot_to_table(3))
         all_submenu.addAction(act_all_3)
 
         menu.exec(self.table_widget.viewport().mapToGlobal(pos))
@@ -12629,29 +12629,31 @@ class TableDetailWidget(QWidget):
                 cursor.execute("SELECT id, ref_table_name, custom_query FROM relations WHERE src_table_name = ? AND src_column_name = ?", (self.table_name, col_name))
                 r = cursor.fetchone()
                 
-                is_cc = False
-                ref_name = ""
-                cq = None
-                if r:
-                    ref_name = r['ref_table_name'] or ""
-                    cq = r['custom_query']
-                    if cq or (ref_name and self.db_mgr.is_code_group(ref_name)):
-                        is_cc = True
+                ref_name = r['ref_table_name'] if r else ""
+                cq = r['custom_query'] if r else None
                 
-                if not is_cc:
-                    cursor.execute("SELECT code_group_id FROM common_codes WHERE column_name = ? LIMIT 1", (col_name,))
-                    cr = cursor.fetchone()
-                    if cr and cr['code_group_id']:
-                        is_cc = True
-                        ref_name = cr['code_group_id']
-                
-                if is_cc:
-                    if r:
-                        cursor.execute("UPDATE relations SET code_slot = ? WHERE id = ?", (slot_num, r['id']))
-                    else:
-                        cursor.execute("INSERT INTO relations (src_table_name, src_column_name, ref_table_name, custom_query, code_slot) VALUES (?, ?, ?, ?, ?)",
-                                       (self.table_name, col_name, ref_name, cq, slot_num))
-                    count += 1
+                is_master = False
+                if ref_name and not self.db_mgr.is_code_group(ref_name):
+                    cursor.execute("SELECT 1 FROM tables WHERE table_name = ? LIMIT 1", (ref_name,))
+                    if cursor.fetchone():
+                        is_master = True
+
+                if not is_master:
+                    is_cc = bool(cq or (ref_name and self.db_mgr.is_code_group(ref_name)))
+                    if not is_cc:
+                        cursor.execute("SELECT code_group_id FROM common_codes WHERE column_name = ? LIMIT 1", (col_name,))
+                        cr = cursor.fetchone()
+                        if cr and cr['code_group_id']:
+                            is_cc = True
+                            ref_name = cr['code_group_id']
+
+                    if is_cc:
+                        if r:
+                            cursor.execute("UPDATE relations SET code_slot = ?, ref_table_name = COALESCE(NULLIF(ref_table_name, ''), ?) WHERE id = ?", (slot_num, ref_name, r['id']))
+                        else:
+                            cursor.execute("INSERT INTO relations (src_table_name, src_column_name, ref_table_name, custom_query, code_slot) VALUES (?, ?, ?, ?, ?)",
+                                           (self.table_name, col_name, ref_name, cq, slot_num))
+                        count += 1
             conn.commit()
 
         show_copy_message(f"✅ [{self.table_name}] 테이블의 모든 공통코드 참조가 [공통코드 {slot_num}: {slot_tbl}] 로 일괄 변경되었습니다. (총 {count}개 컬럼)", self)
