@@ -12557,7 +12557,14 @@ class TableDetailWidget(QWidget):
                 action_del.triggered.connect(lambda: self.confirm_and_delete_relation(col_name))
                 menu.addAction(action_del)
 
-        menu.addSeparator()
+        # 현재 컬럼의 code_slot 조회
+        current_slot = 1
+        with self.db_mgr.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT code_slot FROM relations WHERE src_table_name = ? AND src_column_name = ?", (self.table_name, col_name))
+            r = cursor.fetchone()
+            if r and r['code_slot']:
+                current_slot = r['code_slot']
 
         # 4. 맨 밑: 공통코드 선택 (설정에서 등록한 3개 공통코드 고르기)
         code_submenu = menu.addMenu("공통코드 선택")
@@ -12572,19 +12579,84 @@ class TableDetailWidget(QWidget):
         lbl_s2 = f"공통코드 2 ({slot2_tbl})" if slot2_tbl else "공통코드 2 (미설정)"
         lbl_s3 = f"공통코드 3 ({slot3_tbl})" if slot3_tbl else "공통코드 3 (미설정)"
 
-        act_s1 = QAction(lbl_s1, self)
+        act_s1 = QAction(f"✓ {lbl_s1} (선택중)" if current_slot == 1 else f"   {lbl_s1}", self)
+        act_s1.setCheckable(True)
+        act_s1.setChecked(current_slot == 1)
         act_s1.triggered.connect(lambda checked=False, col=col_name: self.apply_common_code_slot(col, 1))
         code_submenu.addAction(act_s1)
 
-        act_s2 = QAction(lbl_s2, self)
+        act_s2 = QAction(f"✓ {lbl_s2} (선택중)" if current_slot == 2 else f"   {lbl_s2}", self)
+        act_s2.setCheckable(True)
+        act_s2.setChecked(current_slot == 2)
         act_s2.triggered.connect(lambda checked=False, col=col_name: self.apply_common_code_slot(col, 2))
         code_submenu.addAction(act_s2)
 
-        act_s3 = QAction(lbl_s3, self)
+        act_s3 = QAction(f"✓ {lbl_s3} (선택중)" if current_slot == 3 else f"   {lbl_s3}", self)
+        act_s3.setCheckable(True)
+        act_s3.setChecked(current_slot == 3)
         act_s3.triggered.connect(lambda checked=False, col=col_name: self.apply_common_code_slot(col, 3))
         code_submenu.addAction(act_s3)
 
+        code_submenu.addSeparator()
+        all_submenu = code_submenu.addMenu("🌐 이 테이블 전체 공통코드 일괄 변경")
+        all_submenu.setStyleSheet(menu.styleSheet())
+
+        act_all_1 = QAction(f"모든 컬럼 ➔ {lbl_s1} 로 변경", self)
+        act_all_1.triggered.connect(lambda: self.apply_common_code_slot_to_table(1))
+        all_submenu.addAction(act_all_1)
+
+        act_all_2 = QAction(f"모든 컬럼 ➔ {lbl_s2} 로 변경", self)
+        act_all_2.triggered.connect(lambda: self.apply_common_code_slot_to_table(2))
+        all_submenu.addAction(act_all_2)
+
+        act_all_3 = QAction(f"모든 컬럼 ➔ {lbl_s3} 로 변경", self)
+        act_all_3.triggered.connect(lambda: self.apply_common_code_slot_to_table(3))
+        all_submenu.addAction(act_all_3)
+
         menu.exec(self.table_widget.viewport().mapToGlobal(pos))
+
+    def apply_common_code_slot_to_table(self, slot_num):
+        slot_tbl = self.db_mgr.get_setting(f'common_code_table_{slot_num}', self.db_mgr.get_setting('common_code_table', 'COMMON_CODE_SUB') if slot_num == 1 else '')
+        if not slot_tbl:
+            slot_tbl = f"공통코드 {slot_num}"
+
+        columns = self.db_mgr.get_table_columns(self.table_name)
+        count = 0
+        with self.db_mgr.get_connection() as conn:
+            cursor = conn.cursor()
+            for col in columns:
+                col_name = col['column_name']
+                cursor.execute("SELECT id, ref_table_name, custom_query FROM relations WHERE src_table_name = ? AND src_column_name = ?", (self.table_name, col_name))
+                r = cursor.fetchone()
+                
+                is_cc = False
+                ref_name = ""
+                cq = None
+                if r:
+                    ref_name = r['ref_table_name'] or ""
+                    cq = r['custom_query']
+                    if cq or (ref_name and self.db_mgr.is_code_group(ref_name)):
+                        is_cc = True
+                
+                if not is_cc:
+                    cursor.execute("SELECT code_group_id FROM common_codes WHERE column_name = ? LIMIT 1", (col_name,))
+                    cr = cursor.fetchone()
+                    if cr and cr['code_group_id']:
+                        is_cc = True
+                        ref_name = cr['code_group_id']
+                
+                if is_cc:
+                    if r:
+                        cursor.execute("UPDATE relations SET code_slot = ? WHERE id = ?", (slot_num, r['id']))
+                    else:
+                        cursor.execute("INSERT INTO relations (src_table_name, src_column_name, ref_table_name, custom_query, code_slot) VALUES (?, ?, ?, ?, ?)",
+                                       (self.table_name, col_name, ref_name, cq, slot_num))
+                    count += 1
+            conn.commit()
+
+        show_copy_message(f"✅ [{self.table_name}] 테이블의 모든 공통코드 참조가 [공통코드 {slot_num}: {slot_tbl}] 로 일괄 변경되었습니다. (총 {count}개 컬럼)", self)
+        self.load_columns_data()
+        self.relation_changed.emit()
 
     def apply_common_code_slot(self, col_name, slot_num):
         # 기존 relations 정보 확인
