@@ -19208,43 +19208,77 @@ class QueryDetailTabWidget(QWidget):
         self.sql_highlighter = SqlHighlighter(self.txt_sql.document())
         layout.addWidget(self.txt_sql)
 
-        # 하단 컨트롤 버튼
+        # 하단 컨트롤 버튼 (업무정보 탭과 동일하게 삭제/저장을 우측에 배치 및 단축키 지원)
         btn_layout = QHBoxLayout()
-        btn_copy = QPushButton("📋 클립보드 복사")
-        btn_save = QPushButton("💾 변경사항 저장")
-        btn_revert = QPushButton("🔄 되돌리기")
-        btn_format = QPushButton("✨ SQL 정렬")
-        btn_del = QPushButton("❌ 쿼리 삭제")
-        btn_fav = QPushButton("⭐ 즐겨찾기 토글")
+        btn_layout.setSpacing(6)
 
-        for btn in [btn_copy, btn_save, btn_revert, btn_format, btn_del, btn_fav]:
+        btn_copy = QPushButton("📋 클립보드 복사")
+        btn_format = QPushButton("✨ SQL 정렬")
+        btn_fav = QPushButton("⭐ 즐겨찾기 토글")
+        btn_revert = QPushButton("🔄 되돌리기")
+        
+        btn_del = QPushButton("🗑️ 삭제")
+        btn_save = QPushButton("💾 저장(S)")
+
+        # Ctrl+S 단축키 등록
+        self.save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
+        self.save_shortcut.activated.connect(self.on_save_clicked)
+
+        for btn in [btn_copy, btn_format, btn_fav, btn_revert, btn_del, btn_save]:
             btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            btn.setStyleSheet("font-weight: bold; padding: 6px 16px; border-radius: 4px;")
             
-        btn_copy.setStyleSheet("background-color: #059669; color: white; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
-        btn_save.setStyleSheet("background-color: #2563EB; color: white; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
-        btn_revert.setStyleSheet("background-color: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
-        btn_format.setStyleSheet("background-color: #E0F2FE; color: #0369A1; border: 1px solid #BAE6FD; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
-        btn_del.setStyleSheet("background-color: #FFFFFF; color: #DC2626; border: 1px solid #FCA5A5; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
+        btn_copy.setStyleSheet("background-color: #059669; color: white; font-weight: bold; padding: 8px 16px; border-radius: 4px; font-size: 12px;")
+        btn_format.setStyleSheet("background-color: #E0F2FE; color: #0369A1; border: 1px solid #BAE6FD; font-weight: bold; padding: 8px 16px; border-radius: 4px; font-size: 12px;")
+        btn_revert.setStyleSheet("background-color: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; font-weight: bold; padding: 8px 16px; border-radius: 4px; font-size: 12px;")
+        
+        btn_del.setStyleSheet("""
+            QPushButton {
+                background-color: #EF4444;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #DC2626;
+            }
+        """)
+        
+        btn_save.setStyleSheet("""
+            QPushButton {
+                background-color: #2563EB;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1D4ED8;
+            }
+        """)
         
         # 즐겨찾기 상태에 따라 다르게 표시
         is_fav = q_data.get('is_favorite') == 1
         self.update_fav_btn_style(btn_fav, is_fav)
 
         btn_copy.clicked.connect(self.on_copy_clicked)
-        btn_save.clicked.connect(self.on_save_clicked)
-        btn_revert.clicked.connect(self.on_revert_clicked)
         btn_format.clicked.connect(self.on_format_clicked)
-        btn_del.clicked.connect(self.on_delete_clicked)
         btn_fav.clicked.connect(lambda: self.on_fav_clicked(btn_fav))
+        btn_revert.clicked.connect(self.on_revert_clicked)
+        btn_del.clicked.connect(self.on_delete_clicked)
+        btn_save.clicked.connect(self.on_save_clicked)
 
         btn_layout.addWidget(btn_copy)
-        btn_layout.addWidget(btn_save)
-        btn_layout.addWidget(btn_revert)
         btn_layout.addWidget(btn_format)
         btn_layout.addWidget(btn_fav)
+        btn_layout.addWidget(btn_revert)
         btn_layout.addStretch()
         btn_layout.addWidget(btn_del)
+        btn_layout.addWidget(btn_save)
         layout.addLayout(btn_layout)
 
     def update_fav_btn_style(self, btn, is_fav):
