@@ -15436,48 +15436,75 @@ class OracleGuideApp(QMainWindow):
         scroll_content.setStyleSheet("#WelcomeScrollContent { background-color: #F8FAFC; }")
         
         scroll_layout = QVBoxLayout(scroll_content)
-        scroll_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        scroll_layout.setContentsMargins(20, 40, 20, 40)
+        scroll_layout.setContentsMargins(24, 20, 24, 20)
+        scroll_layout.setSpacing(16)
         
-        # 가로 최대 크기를 800px로 제한하는 중앙 컨테이너
+        # 화면 폭에 맞춰 유연하게 확장되는 중앙 컨테이너 (최대 1100px)
         center_container = QWidget()
-        center_container.setMaximumWidth(800)
+        center_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        center_container.setMaximumWidth(1100)
         center_container.setStyleSheet("background-color: transparent;")
         
         welcome_layout = QVBoxLayout(center_container)
         welcome_layout.setContentsMargins(0, 0, 0, 0)
-        welcome_layout.setSpacing(20)
+        welcome_layout.setSpacing(16)
         
-        # 헤더 카드
+        # 1. 헤더 배너 카드
         header_container = QWidget()
         header_container.setObjectName("WelcomeHeader")
         header_container.setStyleSheet("""
             #WelcomeHeader {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #1E3A8A, stop:1 #3B82F6);
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #1E3A8A, stop:0.5 #2563EB, stop:1 #3B82F6);
                 border-radius: 12px;
+                padding: 10px;
             }
         """)
         header_layout = QVBoxLayout(header_container)
-        header_layout.setContentsMargins(30, 24, 30, 24)
-        header_layout.setSpacing(8)
+        header_layout.setContentsMargins(28, 20, 28, 20)
+        header_layout.setSpacing(10)
         
-        lbl_welcome = QLabel("💡 테이블 명세서 및 쿼리 가이드 사용 안내")
-        lbl_welcome.setStyleSheet("font-size: 16px; color: #FFFFFF; font-weight: bold; font-family: 'Malgun Gothic'; background: transparent;")
-        lbl_sub_welcome = QLabel("수동 매핑 및 테이블 관계/조인 구성을 지원하는 통합 가이드 프로그램입니다.")
-        lbl_sub_welcome.setStyleSheet("font-size: 11px; color: #DBEAFE; font-family: 'Malgun Gothic'; background: transparent;")
+        lbl_welcome = QLabel("🔍 DB 돋보기 — 통합 데이터베이스 명세 & SQL 플랫폼")
+        lbl_welcome.setStyleSheet("font-size: 18px; color: #FFFFFF; font-weight: bold; font-family: 'Malgun Gothic'; background: transparent;")
+        lbl_sub_welcome = QLabel("오라클/SQLite 테이블 명세서, 공통코드 3개 슬롯 매핑, 다중 조인 및 업무정보/달력 통합 관리 시스템")
+        lbl_sub_welcome.setStyleSheet("font-size: 12px; color: #DBEAFE; font-family: 'Malgun Gothic'; background: transparent;")
         
-        header_layout.addWidget(lbl_welcome, 0, Qt.AlignmentFlag.AlignCenter)
-        header_layout.addWidget(lbl_sub_welcome, 0, Qt.AlignmentFlag.AlignCenter)
+        # 상단 뱃지 영역
+        badge_layout = QHBoxLayout()
+        badge_layout.setSpacing(8)
+        badge_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        badges = [
+            ("🏷️ 공통코드 3개 슬롯", "#1E40AF"),
+            ("⚡ 오라클 PL/SQL 파서", "#1E40AF"),
+            ("📁 업무정보 & 달력 연동", "#1E40AF"),
+            ("🚀 1클릭 SQL 생성", "#1E40AF"),
+            ("📊 엑셀 대량 쿼리 치환", "#1E40AF")
+        ]
+        for b_text, b_bg in badges:
+            b_lbl = QLabel(b_text)
+            b_lbl.setStyleSheet(f"""
+                background-color: rgba(255, 255, 255, 0.18);
+                color: #FFFFFF;
+                border: 1px solid rgba(255, 255, 255, 0.3);
+                border-radius: 12px;
+                padding: 3px 10px;
+                font-size: 11px;
+                font-weight: bold;
+            """)
+            badge_layout.addWidget(b_lbl)
+        
+        header_layout.addWidget(lbl_welcome)
+        header_layout.addWidget(lbl_sub_welcome)
+        header_layout.addLayout(badge_layout)
         welcome_layout.addWidget(header_container)
 
-        # 개별 도움말 카드 목록
-        cards_widget = QWidget()
-        cards_widget.setStyleSheet("background: transparent;")
-        cards_layout = QVBoxLayout(cards_widget)
-        cards_layout.setSpacing(12)
-        cards_layout.setContentsMargins(0, 0, 0, 0)
+        # 2. 6대 핵심 기능 가이드 카드 (2열 그리드 배치로 공간 활용 극대화)
+        grid_widget = QWidget()
+        grid_widget.setStyleSheet("background: transparent;")
+        grid_layout = QGridLayout(grid_widget)
+        grid_layout.setSpacing(12)
+        grid_layout.setContentsMargins(0, 0, 0, 0)
         
-        def create_guide_card(icon, title, desc):
+        def create_guide_card(icon, title, desc, tag=""):
             card = QWidget()
             card.setObjectName("GuideCard")
             card.setStyleSheet("""
@@ -15486,46 +15513,124 @@ class OracleGuideApp(QMainWindow):
                     border: 1px solid #E2E8F0;
                     border-radius: 8px;
                 }
+                #GuideCard:hover {
+                    border-color: #93C5FD;
+                    background-color: #F8FAFC;
+                }
             """)
             card_layout = QHBoxLayout(card)
-            card_layout.setContentsMargins(20, 16, 20, 16)
-            card_layout.setSpacing(16)
+            card_layout.setContentsMargins(16, 14, 16, 14)
+            card_layout.setSpacing(14)
             
             lbl_icon = QLabel(icon)
-            lbl_icon.setStyleSheet("font-size: 22px; background: transparent; border: none;")
+            lbl_icon.setStyleSheet("font-size: 24px; background: transparent; border: none;")
             lbl_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
             
             text_layout = QVBoxLayout()
             text_layout.setSpacing(4)
+            
+            title_layout = QHBoxLayout()
+            title_layout.setSpacing(6)
             lbl_title = QLabel(title)
-            lbl_title.setStyleSheet("font-size: 12px; color: #1E293B; font-weight: bold; font-family: 'Malgun Gothic'; background: transparent; border: none;")
+            lbl_title.setStyleSheet("font-size: 13px; color: #1E293B; font-weight: bold; font-family: 'Malgun Gothic'; background: transparent; border: none;")
+            title_layout.addWidget(lbl_title)
+            
+            if tag:
+                lbl_tag = QLabel(tag)
+                lbl_tag.setStyleSheet("background-color: #EFF6FF; color: #2563EB; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: bold;")
+                title_layout.addWidget(lbl_tag)
+            title_layout.addStretch()
+            
             lbl_desc = QLabel(desc)
-            lbl_desc.setStyleSheet("font-size: 11px; color: #64748B; font-family: 'Malgun Gothic'; background: transparent; border: none;")
+            lbl_desc.setStyleSheet("font-size: 11px; color: #64748B; font-family: 'Malgun Gothic'; background: transparent; border: none; line-height: 15px;")
             lbl_desc.setWordWrap(True)
             
-            text_layout.addWidget(lbl_title)
+            text_layout.addLayout(title_layout)
             text_layout.addWidget(lbl_desc)
             
             card_layout.addWidget(lbl_icon, 0, Qt.AlignmentFlag.AlignTop)
             card_layout.addLayout(text_layout, 1)
             return card
 
-        card1 = create_guide_card("🖱️", "테이블 더블클릭 (조회)", 
-                                  "왼쪽 목록('테이블', '업무별', '최근조회')에서 테이블을 <b>더블클릭</b>하면 오른쪽에 해당 테이블의 컬럼 구성, 관계도, SQL 자동 생성 화면이 열립니다.")
-        card2 = create_guide_card("🤝", "테이블 드래그 앤 드롭 (조인 관계 설정)", 
-                                  "열려있는 테이블 상세화면으로 다른 테이블을 <b>드래그 앤 드롭</b>하면 두 테이블 간의 JOIN 조건 설정 창이 열립니다. 복수의 ON 조건 및 다중 테이블 JOIN을 손쉽게 설정할 수 있습니다.")
-        card3 = create_guide_card("⭐", "업무 폴더 및 조인 뷰 등록 (즐겨찾기)", 
-                                  "테이블이 조인된 상태에서 명세서 상단의 <b>[⭐ 업무 폴더 등록]</b> 버튼을 누르면, 원하는 분류 폴더를 선택(또는 새 폴더 생성)하여 가상 조인 뷰로 등록할 수 있습니다. 등록된 뷰는 왼쪽 '업무별' 탭에 보존됩니다.")
-        card4 = create_guide_card("📂", "우클릭 분류 관리 및 드래그 이동", 
-                                  "업무별 탭의 등록된 아이템 및 폴더를 <b>마우스 우클릭</b>하여 이름 변경(Rename), 다른 분류로 이동(Move), 중복 복사(Duplicate), 또는 이 분류에서 제외(Remove) 할 수 있으며, 드래그를 통해 순서를 직접 바꿀 수 있습니다.")
+        card1 = create_guide_card(
+            "🔍", "테이블 명세 & 원클릭 SQL 생성", 
+            "테이블 컬럼 체크박스 선택 기반 <b>[SELECT 1]</b>(코드 서브쿼리 자동생성), <b>[SELECT 2]</b>(기본/주석), <b>[INSERT]</b>, <b>[UPDATE]</b>, <b>[DELETE]</b> 쿼리를 즉시 생성 및 복사합니다.",
+            "명세/쿼리"
+        )
+        card2 = create_guide_card(
+            "🏷️", "공통코드 3개 슬롯 & 테이블 일괄 변경", 
+            "설정(⚙️)에서 최대 3개의 공통코드 테이블을 등록하고, 컬럼 우클릭을 통해 슬롯 지정 및 <b>[🌐 테이블 전체 일괄 변경]</b>을 지원합니다.",
+            "공통코드"
+        )
+        card3 = create_guide_card(
+            "🤝", "드래그 앤 드롭 테이블 JOIN & 업무 뷰", 
+            "열려있는 테이블로 다른 테이블을 <b>드래그 앤 드롭</b>하여 다중 JOIN 및 복수 ON 조건을 구성하고, <b>[⭐ 업무 폴더 등록]</b>으로 나만의 조인 뷰를 저장합니다.",
+            "조인/뷰"
+        )
+        card4 = create_guide_card(
+            "📁", "업무정보 & 리치 에디터 & 첨부파일", 
+            "업무 분류별 문서 작성, 서식 텍스트/표/이미지 삽입 및 리사이징, 파일 첨부 드래그 앤 드롭, <b>[반복 주기 설정]</b>으로 정기 업무를 관리합니다.",
+            "업무문서"
+        )
+        card5 = create_guide_card(
+            "📅", "업무 달력 & 일정 시각화", 
+            "반복 업무와 일회성 업무 일정을 캘린더에서 한눈에 확인하고, 날짜 클릭으로 해당일의 업무 문서를 즉시 열람 및 관리합니다.",
+            "캘린더"
+        )
+        card6 = create_guide_card(
+            "💾", "보관 쿼리함 & 오라클 문법 & 대량 치환", 
+            "자주 쓰는 SQL 보관/포맷팅(<b>Ctrl+S</b> 즉시 저장), 오라클 PL/SQL 문법 검색 및 엑셀 데이터를 활용한 대량 쿼리 자동 생성기를 제공합니다.",
+            "쿼리함/도구"
+        )
 
-        cards_layout.addWidget(card1)
-        cards_layout.addWidget(card2)
-        cards_layout.addWidget(card3)
-        cards_layout.addWidget(card4)
-        welcome_layout.addWidget(cards_widget)
+        grid_layout.addWidget(card1, 0, 0)
+        grid_layout.addWidget(card2, 0, 1)
+        grid_layout.addWidget(card3, 1, 0)
+        grid_layout.addWidget(card4, 1, 1)
+        grid_layout.addWidget(card5, 2, 0)
+        grid_layout.addWidget(card6, 2, 1)
+        welcome_layout.addWidget(grid_widget)
+
+        # 3. 하단 단축키 & 팁 안내 카드
+        tips_container = QWidget()
+        tips_container.setObjectName("WelcomeTips")
+        tips_container.setStyleSheet("""
+            #WelcomeTips {
+                background-color: #FFFFFF;
+                border: 1px solid #E2E8F0;
+                border-radius: 8px;
+            }
+        """)
+        tips_layout = QHBoxLayout(tips_container)
+        tips_layout.setContentsMargins(18, 12, 18, 12)
+        tips_layout.setSpacing(16)
         
-        scroll_layout.addWidget(center_container)
+        lbl_tip_icon = QLabel("⚡")
+        lbl_tip_icon.setStyleSheet("font-size: 20px; background: transparent;")
+        
+        tips_text_layout = QVBoxLayout()
+        tips_text_layout.setSpacing(2)
+        lbl_tip_title = QLabel("💡 유용한 빠른 단축키 & 조작 팁")
+        lbl_tip_title.setStyleSheet("font-size: 12px; font-weight: bold; color: #1E293B; background: transparent;")
+        lbl_tip_desc = QLabel(
+            "• <b>Ctrl + S</b> : 업무정보 및 쿼리 편집 즉시 저장 | "
+            "• <b>더블클릭</b> : 좌측 사이드바(테이블/업무/공통코드/관계/쿼리) 상세 탭 열기\n"
+            "• <b>드래그 앤 드롭</b> : 테이블 간 조인 설정 및 업무정보 첨부파일 등록 | "
+            "• <b>우클릭</b> : 공통코드 슬롯 선택, 테이블 일괄 변경 및 탭 닫기 메뉴"
+        )
+        lbl_tip_desc.setStyleSheet("font-size: 11px; color: #64748B; background: transparent; line-height: 16px;")
+        
+        tips_text_layout.addWidget(lbl_tip_title)
+        tips_text_layout.addWidget(lbl_tip_desc)
+        
+        tips_layout.addWidget(lbl_tip_icon, 0, Qt.AlignmentFlag.AlignTop)
+        tips_layout.addLayout(tips_text_layout, 1)
+        welcome_layout.addWidget(tips_container)
+        
+        # 하단 여백 자동 흡수로 세로 100% 동적 확장
+        welcome_layout.addStretch(1)
+        
+        scroll_layout.addWidget(center_container, 0, Qt.AlignmentFlag.AlignHCenter)
         self.welcome_widget.setWidget(scroll_content)
         self.tab_widget.addTab(self.welcome_widget, "시작 페이지")
         self.tab_widget.tabBar().setTabButton(0, QTabBar.ButtonPosition.RightSide, None)
