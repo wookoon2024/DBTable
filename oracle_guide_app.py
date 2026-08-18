@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QFileDialog, QMessageBox, QDialog, QInputDialog, QFormLayout, QFrame, QToolTip, QScrollArea,
     QStatusBar, QAbstractItemView, QMenu, QRadioButton, QButtonGroup, QComboBox, QCheckBox,
     QTextEdit, QTreeWidget, QTreeWidgetItem, QStackedWidget, QTreeWidgetItemIterator,
-    QStyledItemDelegate, QStyle, QStyleOptionViewItem, QGridLayout, QSpinBox
+    QStyledItemDelegate, QStyle, QStyleOptionViewItem, QGridLayout, QSpinBox, QSizePolicy
 )
 
 # SQLite DB 파일명 (실행 파일 및 스크립트 위치 기준으로 절대 경로 지정)
