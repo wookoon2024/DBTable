@@ -10392,10 +10392,11 @@ class ExcelBulkQueryDialog(QDialog):
         type_label = "INSERT" if query_type == "insert" else "UPDATE"
         self.setWindowTitle(f"엑셀 대량 {type_label} 쿼리 생성 - {table_name}")
         
-        # 3. 전체 창 및 창 크기 조절(최대화/최소화 버튼) 활성화
+        # 3. 전체 창 및 창 크기 조절(최대화/최소화 버튼) 활성화 & 드래그 앤 드롭 지원
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMinMaxButtonsHint | Qt.WindowType.WindowMaximizeButtonHint)
         self.resize(1020, 780)
         self.setMinimumSize(850, 600)
+        self.setAcceptDrops(True)
         
         self.setStyleSheet("""
             QDialog { background-color: #FFFFFF; }
@@ -10422,22 +10423,29 @@ class ExcelBulkQueryDialog(QDialog):
         desc.setStyleSheet("font-size: 11px; color: #64748B;")
         layout.addWidget(desc)
 
-        # 2. 파일 선택 그룹
+        # 2. 파일 선택 및 클립보드 붙여넣기 그룹
         file_box = QFrame()
         file_box.setStyleSheet("QFrame { background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px; }")
         file_layout = QHBoxLayout(file_box)
         file_layout.setContentsMargins(8, 6, 8, 6)
+        file_layout.setSpacing(6)
 
-        lbl_file = QLabel("엑셀 파일:")
+        lbl_file = QLabel("엑셀 파일 / 데이터:")
         lbl_file.setStyleSheet("font-weight: bold; color: #334155;")
         self.txt_file_path = QLineEdit()
         self.txt_file_path.setReadOnly(True)
-        self.txt_file_path.setPlaceholderText("선택된 파일 없음 (*.xlsx, *.xls)")
+        self.txt_file_path.setPlaceholderText("파일 선택, 드래그&드롭 또는 클립보드(Ctrl+V) 붙여넣기 (*.xlsx, *.xls, *.csv)")
 
         btn_browse = QPushButton("찾아보기")
         btn_browse.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         btn_browse.setStyleSheet("background-color: #E2E8F0; color: #334155; border: none; border-radius: 4px; padding: 6px 12px; font-weight: bold; font-size: 11px;")
         btn_browse.clicked.connect(self.browse_file)
+
+        btn_paste = QPushButton("📋 클립보드 붙여넣기")
+        btn_paste.setToolTip("복사한 엑셀 파일(Ctrl+C) 또는 엑셀 셀 데이터 영역을 즉시 붙여넣습니다 (Ctrl+V)")
+        btn_paste.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_paste.setStyleSheet("background-color: #7C3AED; color: #FFFFFF; border: none; border-radius: 4px; padding: 6px 13px; font-weight: bold; font-size: 11px;")
+        btn_paste.clicked.connect(self.paste_from_clipboard)
 
         btn_load = QPushButton("불러오기")
         btn_load.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -10447,11 +10455,12 @@ class ExcelBulkQueryDialog(QDialog):
         file_layout.addWidget(lbl_file)
         file_layout.addWidget(self.txt_file_path, 1)
         file_layout.addWidget(btn_browse)
+        file_layout.addWidget(btn_paste)
         file_layout.addWidget(btn_load)
         layout.addWidget(file_box)
 
         # 상태 안내 라벨
-        self.lbl_status = QLabel("엑셀 파일을 불러오면 엑셀 컬럼 목록과 변수 템플릿이 연동됩니다.")
+        self.lbl_status = QLabel("엑셀 파일 선택 또는 클립보드(Ctrl+V) 붙여넣기 시 엑셀 컬럼 목록이 자동 연동됩니다.")
         self.lbl_status.setStyleSheet("font-size: 11px; font-weight: bold; color: #0284C7; padding-left: 4px;")
         layout.addWidget(self.lbl_status)
 
@@ -10563,8 +10572,88 @@ class ExcelBulkQueryDialog(QDialog):
         bottom_layout.addWidget(btn_close)
         layout.addLayout(bottom_layout)
 
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dropEvent(self, event):
+        if event.mimeData().hasUrls():
+            urls = event.mimeData().urls()
+            if urls:
+                local_path = urls[0].toLocalFile()
+                if local_path and local_path.lower().endswith(('.xlsx', '.xls', '.csv')):
+                    self.txt_file_path.setText(local_path)
+                    self.load_excel()
+                    event.acceptProposedAction()
+                    return
+        super().dropEvent(event)
+
+    def keyPressEvent(self, event):
+        # 텍스트박스 입력 중이 아닐 때 Ctrl+V 누르면 클립보드 붙여넣기 동작
+        if event.matches(QKeySequence.StandardKey.Paste):
+            focused = self.focusWidget()
+            if not isinstance(focused, (QLineEdit, QTextEdit)):
+                self.paste_from_clipboard()
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
+    def paste_from_clipboard(self):
+        """클립보드에 복사된 엑셀 파일(Ctrl+C) 또는 엑셀 셀 데이터 영역을 자동 감지하여 로드"""
+        clipboard = QApplication.clipboard()
+        mime_data = clipboard.mimeData()
+
+        # 1. 파일 복사 감지 (Windows 탐색기에서 엑셀 파일 Ctrl+C 한 경우)
+        if mime_data.hasUrls():
+            urls = mime_data.urls()
+            if urls:
+                local_path = urls[0].toLocalFile()
+                if local_path and local_path.lower().endswith(('.xlsx', '.xls', '.csv')):
+                    self.txt_file_path.setText(local_path)
+                    self.load_excel()
+                    show_copy_message(f"복사된 파일이 로드되었습니다:\n{os.path.basename(local_path)}", self)
+                    return
+
+        # 2. 텍스트 감지 (파일 경로 텍스트 or 엑셀 셀 복사 탭구분 데이터)
+        clip_text = clipboard.text().strip()
+        if not clip_text:
+            QMessageBox.information(self, "알림", "클립보드에 복사된 파일 또는 데이터가 없습니다.\n엑셀 파일(Ctrl+C) 또는 엑셀 셀 데이터를 복사한 후 시도해 주세요.")
+            return
+
+        # 2-A. 파일 경로 문자열인 경우
+        clean_path = clip_text.strip(' "\'')
+        if os.path.exists(clean_path) and clean_path.lower().endswith(('.xlsx', '.xls', '.csv')):
+            self.txt_file_path.setText(clean_path)
+            self.load_excel()
+            show_copy_message(f"파일이 로드되었습니다:\n{os.path.basename(clean_path)}", self)
+            return
+
+        # 2-B. 엑셀 프로그램에서 셀 영역을 복사한 데이터인 경우 (TSV / CSV)
+        try:
+            import io
+            sep = '\t' if '\t' in clip_text else (',' if ',' in clip_text else None)
+            if sep:
+                df_clip = pd.read_csv(io.StringIO(clip_text), sep=sep, dtype=str)
+            else:
+                df_clip = pd.read_csv(io.StringIO(clip_text), sep=r'\s+', dtype=str)
+
+            df_clip = df_clip.fillna("")
+            if len(df_clip) > 0 and len(df_clip.columns) > 0:
+                self.df = df_clip
+                self.txt_file_path.setText(f"[클립보드 데이터] {len(df_clip):,}행 × {len(df_clip.columns)}열")
+                self.lbl_status.setText(f"클립보드 데이터 로드 완료: 총 {len(df_clip):,}건의 데이터 행 (컬럼 수: {len(df_clip.columns)}개)")
+                self.populate_mapping_table()
+                show_copy_message(f"클립보드 셀 데이터({len(df_clip):,}건)가 로드되었습니다!", self)
+                return
+        except Exception as e:
+            pass
+
+        QMessageBox.warning(self, "알림", "클립보드의 내용을 엑셀 파일 또는 테이블 데이터로 인식할 수 없습니다.\n엑셀 파일(Ctrl+C) 또는 엑셀 시트에서 셀 영역을 복사한 후 다시 시도해 주세요.")
+
     def browse_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "엑셀 파일 선택", "", "Excel Files (*.xlsx *.xls)")
+        file_path, _ = QFileDialog.getOpenFileName(self, "엑셀 파일 선택", "", "Excel Files (*.xlsx *.xls *.csv)")
         if file_path:
             self.txt_file_path.setText(file_path)
             self.load_excel()
@@ -10576,7 +10665,10 @@ class ExcelBulkQueryDialog(QDialog):
             return
 
         try:
-            self.df = pd.read_excel(file_path, dtype=str)
+            if file_path.lower().endswith('.csv'):
+                self.df = pd.read_csv(file_path, dtype=str)
+            else:
+                self.df = pd.read_excel(file_path, dtype=str)
             self.df = self.df.fillna("")
             
             row_count = len(self.df)
