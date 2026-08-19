@@ -24,6 +24,7 @@ else:
     base_dir = os.path.dirname(os.path.abspath(__file__))
 
 DB_FILE = os.path.normpath(os.path.join(base_dir, "metadata.db"))
+APP_VERSION = "v1.1"
 
 class ToastNotification(QFrame):
     """프로그램 중앙에 플로팅으로 안내 메시지를 띄워주는 토스트 위젯"""
@@ -15104,7 +15105,7 @@ class OracleGuideApp(QMainWindow):
         self.loaded_table_count = 0
         self.open_query_tabs = {}  # 쿼리 상세 탭 관리
         self.open_task_tabs = {}   # 업무 정보 상세 탭 관리
-        self.setWindowTitle("DB 돋보기")
+        self.setWindowTitle(f"DB 돋보기 ({APP_VERSION})")
         self.resize(1250, 800)
         self.setWindowIcon(get_app_icon())
         
@@ -15187,7 +15188,7 @@ class OracleGuideApp(QMainWindow):
         top_layout = QHBoxLayout()
         top_layout.setContentsMargins(12, 0, 12, 0)
 
-        lbl_app_title = QLabel("🔍 DB 돋보기")
+        lbl_app_title = QLabel(f"🔍 DB 돋보기 ({APP_VERSION})")
         lbl_app_title.setStyleSheet("""
             font-size: 14px; 
             font-weight: 800; 

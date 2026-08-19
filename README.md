@@ -10,15 +10,16 @@
 
 ## 다운로드
 
-## ⬇️ [<ins>**DBTable_v1.0_win64.zip 내려받기 (76.3 MB)**</ins>](https://github.com/wookoon2024/DBTable/raw/main/release/DBTable_v1.0_win64.zip)
+## ⬇️ [<ins>**DBTable_v1.1_win64.zip 내려받기 (76.4 MB - 최신 버전)**</ins>](https://github.com/wookoon2024/DBTable/raw/main/release/DBTable_v1.1_win64.zip)
 
 파이썬 설치 없이 바로 실행할 수 있는 단독 실행 파일입니다.
 위 링크를 클릭하면 곧바로 다운로드가 시작됩니다.
 
 | | |
 |---|---|
-| 파일 | `DBTable_v1.0_win64.zip` |
-| 크기 | 76.3 MB |
+| 파일 | `DBTable_v1.1_win64.zip` |
+| 버전 | `v1.1` (최신) |
+| 크기 | 76.4 MB |
 | 요구 사항 | Windows 10 이상 64bit · 별도 설치 불필요 |
 
 **사용법**
@@ -33,6 +34,7 @@
 DB돋보기.exe      실행 파일
 metadata.db       샘플 데이터
 attachments/      샘플 첨부파일 · 이미지
+통합_테이블명세_샘플(3개시트포함).xlsx  실무 10개 테이블/공통코드/수동관계 템플릿
 대량쿼리_생성_샘플데이터.xlsx  엑셀 대량 쿼리 테스트용 샘플
 ```
 
@@ -45,14 +47,14 @@ attachments/      샘플 첨부파일 · 이미지
 <summary>파일 검증 (SHA-256)</summary>
 
 ```
-c866e4f154d20111f7c8264cf3779919e79bc878cc6e28eb33a8b50245c640b6  DBTable_v1.0_win64.zip
-0cfb3480dfa0caacc05ca415f3477a5acf2b3d64cad4be48312cb477cd4400f3  DB돋보기.exe
+bcf0fc43a8077975fcdb59a4ebffa200e75c4c3f3c002ce32f1b2c73377139ec  DBTable_v1.1_win64.zip
+a44dbdfd060dd938d8afa62e3b7e3b27950db72e7c2b63204c3d558e4b45043e  DB돋보기.exe
 ```
 
 PowerShell 에서 확인:
 
 ```powershell
-Get-FileHash .\release\DBTable_v1.0_win64.zip -Algorithm SHA256
+Get-FileHash .\release\DBTable_v1.1_win64.zip -Algorithm SHA256
 ```
 
 </details>
