@@ -10391,18 +10391,23 @@ class ExcelBulkQueryDialog(QDialog):
 
         type_label = "INSERT" if query_type == "insert" else "UPDATE"
         self.setWindowTitle(f"엑셀 대량 {type_label} 쿼리 생성 - {table_name}")
-        self.setMinimumSize(880, 700)
+        
+        # 3. 전체 창 및 창 크기 조절(최대화/최소화 버튼) 활성화
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMinMaxButtonsHint | Qt.WindowType.WindowMaximizeButtonHint)
+        self.resize(1020, 780)
+        self.setMinimumSize(850, 600)
+        
         self.setStyleSheet("""
             QDialog { background-color: #FFFFFF; }
             QLabel { font-size: 11px; color: #334155; }
-            QLineEdit { background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 4px; padding: 5px 8px; font-size: 11px; }
-            QComboBox { background-color: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 4px; padding: 4px 8px; font-size: 11px; }
+            QLineEdit { background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 4px; padding: 3px 6px; font-size: 11px; min-height: 26px; }
+            QComboBox { background-color: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 4px; padding: 3px 6px; font-size: 11px; min-height: 26px; }
         """)
         self.init_ui()
 
     def init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(10)
+        layout.setSpacing(8)
 
         # 1. 헤더 안내
         type_label = "INSERT" if self.query_type == "insert" else "UPDATE"
@@ -10450,19 +10455,29 @@ class ExcelBulkQueryDialog(QDialog):
         self.lbl_status.setStyleSheet("font-size: 11px; font-weight: bold; color: #0284C7; padding-left: 4px;")
         layout.addWidget(self.lbl_status)
 
-        # 3. 매핑 테이블
+        # 3. 분할 스플리터 (매핑 테이블 영역과 SQL 결과 영역을 자유롭게 크기 조절 가능)
+        splitter = QSplitter(Qt.Orientation.Vertical)
+
+        # 상단 매핑 테이블 영역
+        top_widget = QWidget()
+        top_layout = QVBoxLayout(top_widget)
+        top_layout.setContentsMargins(0, 0, 0, 0)
+        top_layout.setSpacing(6)
+
         lbl_map = QLabel("테이블 컬럼 ↔ 엑셀 매핑 / 직접 입력 설정")
-        lbl_map.setStyleSheet("font-size: 12px; font-weight: bold; color: #334155; margin-top: 4px;")
-        layout.addWidget(lbl_map)
+        lbl_map.setStyleSheet("font-size: 12px; font-weight: bold; color: #334155;")
+        top_layout.addWidget(lbl_map)
 
         self.tbl_map = QTableWidget()
         self.tbl_map.setColumnCount(4)
         self.tbl_map.setHorizontalHeaderLabels(["구분", "대상 테이블 컬럼", "매핑 엑셀 컬럼", "입력값 / 수식 표현식"])
         self.tbl_map.verticalHeader().setVisible(False)
+        self.tbl_map.verticalHeader().setDefaultSectionSize(38)
+        self.tbl_map.verticalHeader().setMinimumSectionSize(34)
         self.tbl_map.setEditTriggers(QAbstractItemView.EditTrigger.AllEditTriggers)
         self.tbl_map.setStyleSheet("""
             QTableWidget { background-color: #FFFFFF; border: 1px solid #E2E8F0; gridline-color: #F1F5F9; font-size: 11px; }
-            QTableWidget::item { padding: 4px; }
+            QTableWidget::item { padding: 3px 4px; }
             QHeaderView::section { background-color: #F1F5F9; color: #475569; padding: 6px 8px; font-weight: bold; font-size: 11px; border: none; border-bottom: 1px solid #E2E8F0; }
         """)
         h = self.tbl_map.horizontalHeader()
@@ -10471,15 +10486,12 @@ class ExcelBulkQueryDialog(QDialog):
         h.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
         h.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self.tbl_map.setColumnWidth(0, 110)
-        self.tbl_map.setColumnWidth(1, 230)
-        self.tbl_map.setColumnWidth(2, 210)
-        self.tbl_map.setFixedHeight(220)
-        layout.addWidget(self.tbl_map)
+        self.tbl_map.setColumnWidth(1, 240)
+        self.tbl_map.setColumnWidth(2, 230)
+        self.tbl_map.setMinimumHeight(180)
+        top_layout.addWidget(self.tbl_map, 1)
 
-        # 초기 테이블 컬럼 목록 렌더링
-        self.populate_mapping_table()
-
-        # 4. 실행 버튼
+        # 실행 버튼
         btn_action_layout = QHBoxLayout()
         btn_gen_bulk = QPushButton("대량 SQL 쿼리 생성")
         btn_gen_bulk.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -10487,12 +10499,17 @@ class ExcelBulkQueryDialog(QDialog):
         btn_gen_bulk.clicked.connect(self.generate_bulk_sql)
         btn_action_layout.addWidget(btn_gen_bulk)
         btn_action_layout.addStretch()
-        layout.addLayout(btn_action_layout)
+        top_layout.addLayout(btn_action_layout)
 
-        # 5. 결과 SQL 텍스트 에디터 (다크 테마)
+        # 하단 결과 SQL 영역
+        bottom_widget = QWidget()
+        bottom_layout_pane = QVBoxLayout(bottom_widget)
+        bottom_layout_pane.setContentsMargins(0, 0, 0, 0)
+        bottom_layout_pane.setSpacing(6)
+
         lbl_res = QLabel("생성된 대량 SQL 결과")
-        lbl_res.setStyleSheet("font-size: 12px; font-weight: bold; color: #334155; margin-top: 4px;")
-        layout.addWidget(lbl_res)
+        lbl_res.setStyleSheet("font-size: 12px; font-weight: bold; color: #334155;")
+        bottom_layout_pane.addWidget(lbl_res)
 
         self.txt_result = QTextEdit()
         self.txt_result.setReadOnly(True)
@@ -10507,9 +10524,19 @@ class ExcelBulkQueryDialog(QDialog):
             }
         """)
         self.sql_highlighter = SqlHighlighter(self.txt_result.document(), dark=True)
-        layout.addWidget(self.txt_result, 1)
+        bottom_layout_pane.addWidget(self.txt_result, 1)
 
-        # 6. 하단 버튼
+        splitter.addWidget(top_widget)
+        splitter.addWidget(bottom_widget)
+        splitter.setSizes([380, 260])
+        splitter.setCollapsible(0, False)
+        splitter.setCollapsible(1, False)
+        layout.addWidget(splitter, 1)
+
+        # 초기 테이블 컬럼 목록 렌더링
+        self.populate_mapping_table()
+
+        # 4. 하단 버튼
         bottom_layout = QHBoxLayout()
         self.lbl_result_count = QLabel("")
         self.lbl_result_count.setStyleSheet("font-size: 11px; font-weight: bold; color: #059669;")
@@ -10560,6 +10587,51 @@ class ExcelBulkQueryDialog(QDialog):
         except Exception as e:
             QMessageBox.critical(self, "오류", f"엑셀 파일을 읽는 중 오류가 발생했습니다:\n{str(e)}")
 
+    def _find_best_match_index(self, col_name, ko_name, excel_cols):
+        """2. 매핑 엑셀 컬럼과 대상 DB 컬럼명의 지능형 자동 매칭"""
+        if not excel_cols:
+            return 0
+            
+        norm_col = col_name.replace(" ", "").replace("_", "").upper()
+        norm_ko = ko_name.replace(" ", "").replace("_", "").upper() if ko_name else ""
+        
+        # 1. 완벽 일치 (영문 컬럼명 또는 한글 컬럼명)
+        for idx, ex_col in enumerate(excel_cols):
+            norm_ex = str(ex_col).strip().replace(" ", "").replace("_", "").upper()
+            if norm_ex == norm_col or (norm_ko and norm_ex == norm_ko):
+                return idx + 1 # +1 because index 0 is [직접 값 입력]
+                
+        # 2. 동의어 / 유사어 그룹 매칭
+        synonym_groups = [
+            {'MEMBERID', 'USERID', 'CUSTID', '회원ID', '사용자ID', '고객ID', '아이디', 'ID'},
+            {'MEMBERNM', 'USERNM', 'CUSTNM', 'NAME', '회원명', '사용자명', '고객명', '이름', '성명'},
+            {'GRADE', 'MEMBERGRADE', '회원등급', '등급', '회원구분'},
+            {'STAT', 'STATUS', 'MEMBERSTAT', '상태', '회원상태', '진행상태', '판매상태'},
+            {'TEL', 'PHONE', 'MOBILE', 'MOBILENO', 'TELNO', '연락처', '휴대폰', '휴대폰번호', '전화번호', '핸드폰'},
+            {'EMAIL', 'MEMBEREMAIL', '이메일', '메일', '메일주소'},
+            {'BIRTH', 'BIRTHDT', '생년월일', '생일', '생년'},
+            {'PRICE', 'SALEPRICE', '판매가', '가격', '단가', '정가'},
+            {'QTY', 'STOCKQTY', '수량', '재고수량', '재고', '주문수량'},
+            {'ADDR', 'ADDRESS', '주소', '기본주소', '배송지주소'},
+            {'REMARK', 'MEMO', '비고', '메모', '설명'}
+        ]
+        
+        for group in synonym_groups:
+            if (norm_col in group) or (norm_ko in group):
+                for idx, ex_col in enumerate(excel_cols):
+                    norm_ex = str(ex_col).strip().replace(" ", "").replace("_", "").upper()
+                    if norm_ex in group:
+                        return idx + 1
+
+        # 3. 부분 포함 일치 (한글명이 2자 이상인 경우)
+        if norm_ko and len(norm_ko) >= 2:
+            for idx, ex_col in enumerate(excel_cols):
+                norm_ex = str(ex_col).strip().replace(" ", "").replace("_", "").upper()
+                if norm_ko in norm_ex or norm_ex in norm_ko:
+                    return idx + 1
+
+        return 0 # 매칭 없음 -> [직접 값 입력]
+
     def populate_mapping_table(self):
         target_list = []
         if self.query_type == "update":
@@ -10578,11 +10650,14 @@ class ExcelBulkQueryDialog(QDialog):
         first_row = self.df.iloc[0] if (self.df is not None and len(self.df) > 0) else None
 
         for r_idx, (role, col) in enumerate(target_list):
+            # 1. 행 높이 38px로 넉넉하게 설정하여 텍스트 글자 하단 잘림 현상 방지
+            self.tbl_map.setRowHeight(r_idx, 38)
+
             col_name = col['name']
             ko_name = col.get('ko_name', '')
             dt = col.get('data_type', '')
             
-            # 1. 구분 컬럼 (아이콘 없이 깔끔한 텍스트로 표시)
+            # 구분 컬럼
             item_role = QTableWidgetItem()
             item_role.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             font_role = item_role.font()
@@ -10605,7 +10680,7 @@ class ExcelBulkQueryDialog(QDialog):
             
             self.tbl_map.setItem(r_idx, 0, item_role)
 
-            # 2. 대상 테이블 컬럼명
+            # 대상 테이블 컬럼명
             col_display = f"{col_name}"
             if ko_name:
                 col_display += f" ({ko_name})"
@@ -10617,26 +10692,20 @@ class ExcelBulkQueryDialog(QDialog):
             item_col.setFlags(item_col.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.tbl_map.setItem(r_idx, 1, item_col)
 
-            # 3. 매핑 엑셀 컬럼 콤보박스 (아이콘 없이 깔끔한 텍스트로 표시)
+            # 매핑 엑셀 컬럼 콤보박스
             combo = QComboBox()
             combo.addItem("[직접 값 입력]", "__DIRECT__")
             
-            norm_col_name = col_name.replace(" ", "").replace("_", "").upper()
-            norm_ko_name = ko_name.replace(" ", "").replace("_", "").upper() if ko_name else ""
-            
-            best_match_idx = 0
             for ex_idx, ex_col in enumerate(excel_cols):
                 ex_str = str(ex_col).strip()
                 sample_val = str(first_row[ex_col]) if first_row is not None else ""
                 sample_short = f" ({sample_val[:12]}..)" if len(sample_val) > 12 else (f" ({sample_val})" if sample_val else "")
                 combo.addItem(f"{ex_str}{sample_short}", ex_str)
-                
-                norm_ex = ex_str.replace(" ", "").replace("_", "").upper()
-                if best_match_idx == 0:
-                    if norm_ex == norm_col_name or (norm_ko_name and norm_ex == norm_ko_name):
-                        best_match_idx = ex_idx + 1 # +1 because index 0 is [직접 값 입력]
 
-            # 4. 직접 입력값 / 수식 표현식 에디터
+            # 2. 엑셀 컬럼과 자동 매칭 검사
+            best_match_idx = self._find_best_match_index(col_name, ko_name, excel_cols)
+
+            # 직접 입력값 / 수식 표현식 에디터
             val_edit = QLineEdit()
             
             def make_on_combo_change(c_box, v_edit, c_name):
@@ -10647,7 +10716,6 @@ class ExcelBulkQueryDialog(QDialog):
                             v_edit.setText("")
                         v_edit.setPlaceholderText("고정값 입력 (예: 'ADMIN', SYSDATE, 100)")
                     else:
-                        # 엑셀 컬럼 선택 시 {엑셀컬럼명} 변수 형태로 자동 입력하여 함수로 감쌀 수 있게 지원
                         v_edit.setText(f"{{{c_data}}}")
                         s_val = str(first_row[c_data]) if (first_row is not None and c_data in first_row) else ""
                         v_edit.setPlaceholderText(f"1행 샘플: {s_val}" if s_val else "(빈 값)")
@@ -10657,10 +10725,14 @@ class ExcelBulkQueryDialog(QDialog):
             
             if best_match_idx > 0:
                 combo.setCurrentIndex(best_match_idx)
+                matched_ex_col = excel_cols[best_match_idx - 1]
+                val_edit.setText(f"{{{matched_ex_col}}}")
+                s_val = str(first_row[matched_ex_col]) if (first_row is not None and matched_ex_col in first_row) else ""
+                val_edit.setPlaceholderText(f"1행 샘플: {s_val}" if s_val else "(빈 값)")
             else:
                 combo.setCurrentIndex(0)
-
-            make_on_combo_change(combo, val_edit, col_name)()
+                val_edit.setText("")
+                val_edit.setPlaceholderText("고정값 입력 (예: 'ADMIN', SYSDATE, 100)")
 
             self.tbl_map.setCellWidget(r_idx, 2, combo)
             self.tbl_map.setCellWidget(r_idx, 3, val_edit)
