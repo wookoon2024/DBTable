@@ -10605,28 +10605,34 @@ class ExcelBulkQueryDialog(QDialog):
         self.where_target_cols = []
 
         if self.query_type == "update":
-            where_col_names = [c['name'] for c in self.where_cols] if self.where_cols else list(self.pk_cols)
-            
-            for col in self.columns:
-                if col['name'] in where_col_names:
-                    self.where_target_cols.append(col)
-            
-            if not self.where_target_cols:
+            # 1. 사용자가 메인 테이블에서 [조건(WHERE)] 체크박스로 지정한 컬럼들을 최우선으로 WHERE 조건에 추가
+            if self.where_cols:
+                for col in self.where_cols:
+                    self.where_target_cols.append(dict(col))
+            elif self.pk_cols:
+                # [조건] 체크가 없으면 테이블 PK 컬럼들을 WHERE 조건으로 사용
                 for col in self.columns:
                     if col['name'] in self.pk_cols:
-                        self.where_target_cols.append(col)
-                if not self.where_target_cols and self.columns:
-                    self.where_target_cols.append(self.columns[0])
+                        self.where_target_cols.append(dict(col))
+                if not self.where_target_cols:
+                    for pk_name in self.pk_cols:
+                        self.where_target_cols.append({'name': pk_name, 'ko_name': '', 'data_type': ''})
             
+            # 여전히 WHERE 조건이 비어있다면 첫 번째 컬럼을 기본 조건으로 설정
+            if not self.where_target_cols and self.columns:
+                self.where_target_cols.append(dict(self.columns[0]))
+
+            # 2. SET 대상 컬럼: WHERE 조건으로 지정된 컬럼을 제외한 나머지 [선택] 컬럼들
             where_names_set = set(c['name'] for c in self.where_target_cols)
             for col in self.columns:
                 if col['name'] not in where_names_set:
-                    self.set_target_cols.append(col)
+                    self.set_target_cols.append(dict(col))
                     
+            # 만약 [선택] 컬럼이 전부 WHERE 조건과 겹쳐서 SET 컬럼이 비었다면, self.columns 전체를 SET 대상으로 설정
             if not self.set_target_cols:
-                self.set_target_cols = [c for c in self.columns]
+                self.set_target_cols = [dict(c) for c in self.columns]
         else:
-            self.set_target_cols = list(self.columns)
+            self.set_target_cols = [dict(c) for c in self.columns]
             self.where_target_cols = []
 
         type_label = "INSERT" if query_type == "insert" else "UPDATE"
