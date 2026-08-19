@@ -10358,11 +10358,40 @@ class ExcelBulkQueryDialog(QDialog):
         self.where_cols = where_cols
         self.query_type = query_type
         self.df = None
-        self.combo_mappings = []
+        self.row_entries = []
+
+        # SET 대상 컬럼과 WHERE 대상 컬럼 분류
+        self.set_target_cols = []
+        self.where_target_cols = []
+
+        if self.query_type == "update":
+            where_col_names = [c['name'] for c in self.where_cols] if self.where_cols else list(self.pk_cols)
+            
+            for col in self.columns:
+                if col['name'] in where_col_names:
+                    self.where_target_cols.append(col)
+            
+            if not self.where_target_cols:
+                for col in self.columns:
+                    if col['name'] in self.pk_cols:
+                        self.where_target_cols.append(col)
+                if not self.where_target_cols and self.columns:
+                    self.where_target_cols.append(self.columns[0])
+            
+            where_names_set = set(c['name'] for c in self.where_target_cols)
+            for col in self.columns:
+                if col['name'] not in where_names_set:
+                    self.set_target_cols.append(col)
+                    
+            if not self.set_target_cols:
+                self.set_target_cols = [c for c in self.columns]
+        else:
+            self.set_target_cols = list(self.columns)
+            self.where_target_cols = []
 
         type_label = "INSERT" if query_type == "insert" else "UPDATE"
         self.setWindowTitle(f"엑셀 대량 {type_label} 쿼리 생성 - {table_name}")
-        self.setMinimumSize(860, 680)
+        self.setMinimumSize(880, 700)
         self.setStyleSheet("""
             QDialog { background-color: #FFFFFF; }
             QLabel { font-size: 11px; color: #334155; }
@@ -10377,11 +10406,14 @@ class ExcelBulkQueryDialog(QDialog):
 
         # 1. 헤더 안내
         type_label = "INSERT" if self.query_type == "insert" else "UPDATE"
-        title = QLabel(f"엑셀 불러오기 기반 대량 {type_label} SQL 생성 ({self.table_name})")
+        title = QLabel(f"📊 엑셀 불러오기 기반 대량 {type_label} SQL 생성 ({self.table_name})")
         title.setStyleSheet("font-size: 14px; font-weight: bold; color: #1E293B; padding-bottom: 2px;")
         layout.addWidget(title)
 
-        desc = QLabel("엑셀 파일을 선택하고 '불러오기'를 누르면 컬럼이 자동 매핑됩니다. 매핑을 확인한 후 '대량 SQL 쿼리 생성'을 누르세요.")
+        if self.query_type == "update":
+            desc = QLabel("좌측의 수정값(SET) 및 조건(WHERE) 컬럼에 대해 엑셀 컬럼을 매핑하거나, 직접 고정값을 입력하여 대량 UPDATE 쿼리를 생성합니다.")
+        else:
+            desc = QLabel("좌측의 대상 테이블 컬럼에 대해 엑셀 컬럼을 매핑하거나, 직접 고정값을 입력하여 대량 INSERT 쿼리를 생성합니다.")
         desc.setStyleSheet("font-size: 11px; color: #64748B;")
         layout.addWidget(desc)
 
@@ -10414,35 +10446,38 @@ class ExcelBulkQueryDialog(QDialog):
         layout.addWidget(file_box)
 
         # 상태 안내 라벨
-        self.lbl_status = QLabel("파일을 불러와 주세요.")
+        self.lbl_status = QLabel("엑셀 파일을 불러오면 엑셀 컬럼 목록과 1행 샘플이 연동됩니다.")
         self.lbl_status.setStyleSheet("font-size: 11px; font-weight: bold; color: #0284C7; padding-left: 4px;")
         layout.addWidget(self.lbl_status)
 
         # 3. 매핑 테이블
-        lbl_map = QLabel("엑셀 컬럼 ↔ 테이블 컬럼 매핑")
+        lbl_map = QLabel("테이블 컬럼 ↔ 엑셀 매핑 / 직접 입력 설정")
         lbl_map.setStyleSheet("font-size: 12px; font-weight: bold; color: #334155; margin-top: 4px;")
         layout.addWidget(lbl_map)
 
         self.tbl_map = QTableWidget()
         self.tbl_map.setColumnCount(4)
-        self.tbl_map.setHorizontalHeaderLabels(["엑셀 컬럼명", "1행 샘플 데이터", "->", "매핑할 테이블 컬럼"])
+        self.tbl_map.setHorizontalHeaderLabels(["구분", "대상 테이블 컬럼", "매핑 엑셀 컬럼 (선택)", "엑셀 1행 샘플 / 직접 입력값"])
         self.tbl_map.verticalHeader().setVisible(False)
-        self.tbl_map.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_map.setEditTriggers(QAbstractItemView.EditTrigger.AllEditTriggers)
         self.tbl_map.setStyleSheet("""
             QTableWidget { background-color: #FFFFFF; border: 1px solid #E2E8F0; gridline-color: #F1F5F9; font-size: 11px; }
             QTableWidget::item { padding: 4px; }
-            QHeaderView::section { background-color: #F1F5F9; color: #475569; padding: 5px; font-weight: bold; font-size: 11px; border: none; border-bottom: 1px solid #E2E8F0; }
+            QHeaderView::section { background-color: #F1F5F9; color: #475569; padding: 6px 8px; font-weight: bold; font-size: 11px; border: none; border-bottom: 1px solid #E2E8F0; }
         """)
         h = self.tbl_map.horizontalHeader()
         h.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
         h.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
-        h.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        h.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
         h.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self.tbl_map.setColumnWidth(0, 180)
-        self.tbl_map.setColumnWidth(1, 200)
-        self.tbl_map.setColumnWidth(2, 40)
-        self.tbl_map.setFixedHeight(180)
+        self.tbl_map.setColumnWidth(0, 130)
+        self.tbl_map.setColumnWidth(1, 240)
+        self.tbl_map.setColumnWidth(2, 230)
+        self.tbl_map.setFixedHeight(220)
         layout.addWidget(self.tbl_map)
+
+        # 초기 테이블 컬럼 목록 렌더링
+        self.populate_mapping_table()
 
         # 4. 실행 버튼
         btn_action_layout = QHBoxLayout()
@@ -10526,58 +10561,125 @@ class ExcelBulkQueryDialog(QDialog):
             QMessageBox.critical(self, "오류", f"엑셀 파일을 읽는 중 오류가 발생했습니다:\n{str(e)}")
 
     def populate_mapping_table(self):
-        if self.df is None:
-            return
+        target_list = []
+        if self.query_type == "update":
+            for col in self.set_target_cols:
+                target_list.append(('SET', col))
+            for col in self.where_target_cols:
+                target_list.append(('WHERE', col))
+        else:
+            for col in self.set_target_cols:
+                target_list.append(('INSERT', col))
 
-        excel_cols = list(self.df.columns)
-        self.tbl_map.setRowCount(len(excel_cols))
-        self.combo_mappings = []
+        self.tbl_map.setRowCount(len(target_list))
+        self.row_entries = []
 
-        db_options = [("[매핑 안함 (제외)]", None)]
-        for col in self.columns:
-            ko = f" ({col.get('ko_name')})" if col.get('ko_name') else ""
-            db_options.append((f"{col['name']}{ko}", col))
+        excel_cols = list(self.df.columns) if self.df is not None else []
+        first_row = self.df.iloc[0] if (self.df is not None and len(self.df) > 0) else None
 
-        first_row = self.df.iloc[0] if len(self.df) > 0 else None
-
-        for r_idx, ex_col in enumerate(excel_cols):
-            ex_col_str = str(ex_col).strip()
+        for r_idx, (role, col) in enumerate(target_list):
+            col_name = col['name']
+            ko_name = col.get('ko_name', '')
+            dt = col.get('data_type', '')
             
-            # 1. 엑셀 컬럼명
-            item_ex = QTableWidgetItem(ex_col_str)
-            item_ex.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+            # 1. 구분 컬럼
+            item_role = QTableWidgetItem()
+            item_role.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            font_role = item_role.font()
+            font_role.setBold(True)
+            item_role.setFont(font_role)
+            item_role.setFlags(item_role.flags() & ~Qt.ItemFlag.ItemIsEditable)
             
-            # 2. 1행 샘플 데이터
-            sample_val = str(first_row[ex_col]) if first_row is not None else ""
-            item_sample = QTableWidgetItem(sample_val)
-            item_sample.setForeground(QColor("#64748B"))
+            if role == 'SET':
+                item_role.setText("✏️ 수정값 (SET)")
+                item_role.setForeground(QColor("#1D4ED8"))
+                item_role.setBackground(QColor("#EFF6FF"))
+            elif role == 'WHERE':
+                item_role.setText("🔑 조건 (WHERE)")
+                item_role.setForeground(QColor("#B45309"))
+                item_role.setBackground(QColor("#FEF3C7"))
+            else:
+                item_role.setText("📥 입력값 (INSERT)")
+                item_role.setForeground(QColor("#047857"))
+                item_role.setBackground(QColor("#ECFDF5"))
             
-            # 3. 화살표
-            item_arrow = QTableWidgetItem("➡️")
-            item_arrow.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.tbl_map.setItem(r_idx, 0, item_role)
 
-            # 4. DB 컬럼 선택 콤보박스
+            # 2. 대상 테이블 컬럼명
+            col_display = f"{col_name}"
+            if ko_name:
+                col_display += f" ({ko_name})"
+            if dt:
+                col_display += f" [{dt}]"
+            
+            item_col = QTableWidgetItem(col_display)
+            item_col.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+            item_col.setFlags(item_col.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.tbl_map.setItem(r_idx, 1, item_col)
+
+            # 3. 매핑 엑셀 컬럼 콤보박스
             combo = QComboBox()
-            for opt_text, opt_val in db_options:
-                combo.addItem(opt_text, opt_val)
-
-            norm_ex = ex_col_str.replace(" ", "").replace("_", "").upper()
+            combo.addItem("[매핑 안함 (제외)]", None)
+            combo.addItem("✏️ [직접 값 입력 ➔]", "__DIRECT__")
+            
+            norm_col_name = col_name.replace(" ", "").replace("_", "").upper()
+            norm_ko_name = ko_name.replace(" ", "").replace("_", "").upper() if ko_name else ""
+            
             best_match_idx = 0
-            for opt_idx, (_, col_dict) in enumerate(db_options):
-                if col_dict:
-                    col_name_norm = col_dict['name'].replace(" ", "").replace("_", "").upper()
-                    ko_name_norm = col_dict.get('ko_name', '').replace(" ", "").replace("_", "").upper()
-                    if norm_ex == col_name_norm or (ko_name_norm and norm_ex == ko_name_norm):
-                        best_match_idx = opt_idx
-                        break
+            for ex_idx, ex_col in enumerate(excel_cols):
+                ex_str = str(ex_col).strip()
+                sample_val = str(first_row[ex_col]) if first_row is not None else ""
+                sample_short = f" ({sample_val[:12]}..)" if len(sample_val) > 12 else (f" ({sample_val})" if sample_val else "")
+                combo.addItem(f"📊 엑셀: {ex_str}{sample_short}", ex_str)
+                
+                norm_ex = ex_str.replace(" ", "").replace("_", "").upper()
+                if best_match_idx == 0:
+                    if norm_ex == norm_col_name or (norm_ko_name and norm_ex == norm_ko_name):
+                        best_match_idx = ex_idx + 2
 
-            combo.setCurrentIndex(best_match_idx)
-            self.combo_mappings.append((ex_col, combo))
+            # 4. 직접 입력값 / 샘플값 에디터
+            val_edit = QLineEdit()
+            
+            def make_on_combo_change(c_box, v_edit, c_name):
+                def handler():
+                    c_data = c_box.currentData()
+                    if c_data is None:
+                        v_edit.setEnabled(False)
+                        v_edit.setText("")
+                        v_edit.setPlaceholderText("(제외됨)")
+                        v_edit.setStyleSheet("background-color: #F1F5F9; color: #94A3B8; border: 1px solid #E2E8F0;")
+                    elif c_data == "__DIRECT__":
+                        v_edit.setEnabled(True)
+                        if not v_edit.text() or v_edit.text().startswith("1행 샘플:"):
+                            v_edit.setText("")
+                        v_edit.setPlaceholderText("고정값 입력 (예: 'Y', SYSDATE, 100, NULL)")
+                        v_edit.setStyleSheet("background-color: #FFFFFF; color: #0F172A; font-weight: bold; border: 1px solid #3B82F6;")
+                    else:
+                        v_edit.setEnabled(True)
+                        s_val = str(first_row[c_data]) if (first_row is not None and c_data in first_row) else ""
+                        v_edit.setText("")
+                        v_edit.setPlaceholderText(f"1행 샘플: {s_val}" if s_val else "(빈 값)")
+                        v_edit.setStyleSheet("background-color: #F8FAFC; color: #475569; border: 1px solid #CBD5E1;")
+                return handler
 
-            self.tbl_map.setItem(r_idx, 0, item_ex)
-            self.tbl_map.setItem(r_idx, 1, item_sample)
-            self.tbl_map.setItem(r_idx, 2, item_arrow)
-            self.tbl_map.setCellWidget(r_idx, 3, combo)
+            combo.currentIndexChanged.connect(make_on_combo_change(combo, val_edit, col_name))
+            
+            if best_match_idx > 0:
+                combo.setCurrentIndex(best_match_idx)
+            else:
+                combo.setCurrentIndex(0)
+
+            make_on_combo_change(combo, val_edit, col_name)()
+
+            self.tbl_map.setCellWidget(r_idx, 2, combo)
+            self.tbl_map.setCellWidget(r_idx, 3, val_edit)
+
+            self.row_entries.append({
+                'role': role,
+                'col': col,
+                'combo': combo,
+                'edit': val_edit
+            })
 
     def _format_cell_value(self, val, data_type):
         import re
@@ -10624,52 +10726,79 @@ class ExcelBulkQueryDialog(QDialog):
             QMessageBox.warning(self, "알림", "불러온 엑셀 데이터가 없습니다. 먼저 엑셀 파일을 불러와 주세요.")
             return
 
-        active_mappings = []
-        for ex_col, combo in self.combo_mappings:
-            col_dict = combo.currentData()
-            if col_dict is not None:
-                active_mappings.append((ex_col, col_dict))
+        active_entries = []
+        for entry in self.row_entries:
+            c_data = entry['combo'].currentData()
+            e_text = entry['edit'].text().strip()
+            
+            if c_data == "__DIRECT__":
+                if e_text:
+                    active_entries.append((entry, 'DIRECT', e_text))
+                else:
+                    active_entries.append((entry, 'DIRECT', "''"))
+            elif c_data is not None:
+                if e_text:
+                    active_entries.append((entry, 'DIRECT', e_text))
+                else:
+                    active_entries.append((entry, 'EXCEL', c_data))
+            else:
+                if e_text:
+                    active_entries.append((entry, 'DIRECT', e_text))
 
-        if not active_mappings:
-            QMessageBox.warning(self, "알림", "매핑된 테이블 컬럼이 없습니다. 최소 하나 이상의 컬럼을 매핑해 주세요.")
+        if not active_entries:
+            QMessageBox.warning(self, "알림", "매핑되거나 직접 입력된 컬럼이 없습니다. 최소 하나 이상의 컬럼을 설정해 주세요.")
             return
 
         sql_lines = []
         if self.query_type == "insert":
-            col_names = [col['name'] for _, col in active_mappings]
+            col_names = [entry['col']['name'] for entry, _, _ in active_entries]
             cols_clause = ", ".join(col_names)
             
             for _, row in self.df.iterrows():
                 row_vals = []
-                for ex_col, col in active_mappings:
-                    raw_val = row[ex_col]
-                    formatted_val = self._format_cell_value(raw_val, col.get('data_type', ''))
-                    row_vals.append(formatted_val)
-                val_str = ", ".join(row_vals)
-                sql_lines.append(f"INSERT INTO {self.table_name} ({cols_clause}) VALUES ({val_str});")
+                for entry, src_type, src_val in active_entries:
+                    col = entry['col']
+                    if src_type == 'EXCEL':
+                        raw_val = row.get(src_val, "")
+                        val_str = self._format_cell_value(raw_val, col.get('data_type', ''))
+                    else:
+                        val_str = self._format_cell_value(src_val, col.get('data_type', ''))
+                    row_vals.append(val_str)
+                sql_lines.append(f"INSERT INTO {self.table_name} ({cols_clause}) VALUES ({', '.join(row_vals)});")
 
         elif self.query_type == "update":
-            set_mappings = [m for m in active_mappings if m[1]['name'] not in self.pk_cols]
-            where_mappings = [m for m in active_mappings if m[1]['name'] in self.pk_cols]
+            set_entries = [item for item in active_entries if item[0]['role'] == 'SET']
+            where_entries = [item for item in active_entries if item[0]['role'] == 'WHERE']
             
-            if not where_mappings:
-                where_mappings = active_mappings[:1]
-                set_mappings = active_mappings[1:] if len(active_mappings) > 1 else active_mappings
+            if not set_entries:
+                QMessageBox.warning(self, "알림", "수정값(SET)으로 매핑되거나 직접 입력된 컬럼이 최소 1개 이상 필요합니다.")
+                return
+            if not where_entries:
+                QMessageBox.warning(self, "알림", "조건(WHERE)으로 매핑되거나 직접 입력된 컬럼이 최소 1개 이상 필요합니다.")
+                return
 
             for _, row in self.df.iterrows():
                 set_parts = []
-                for ex_col, col in set_mappings:
-                    formatted_val = self._format_cell_value(row[ex_col], col.get('data_type', ''))
-                    set_parts.append(f"{col['name']} = {formatted_val}")
-                
-                where_parts = []
-                for ex_col, col in where_mappings:
-                    formatted_val = self._format_cell_value(row[ex_col], col.get('data_type', ''))
-                    where_parts.append(f"{col['name']} = {formatted_val}")
+                for entry, src_type, src_val in set_entries:
+                    col = entry['col']
+                    if src_type == 'EXCEL':
+                        raw_val = row.get(src_val, "")
+                        val_str = self._format_cell_value(raw_val, col.get('data_type', ''))
+                    else:
+                        val_str = self._format_cell_value(src_val, col.get('data_type', ''))
+                    set_parts.append(f"{col['name']} = {val_str}")
 
-                set_str = ", ".join(set_parts) if set_parts else f"{where_mappings[0][1]['name']} = {where_mappings[0][1]['name']}"
-                where_str = " AND ".join(where_parts)
-                sql_lines.append(f"UPDATE {self.table_name} SET {set_str} WHERE {where_str};")
+                where_parts = []
+                for entry, src_type, src_val in where_entries:
+                    col = entry['col']
+                    if src_type == 'EXCEL':
+                        raw_val = row.get(src_val, "")
+                        val_str = self._format_cell_value(raw_val, col.get('data_type', ''))
+                    else:
+                        val_str = self._format_cell_value(src_val, col.get('data_type', ''))
+                    where_parts.append(f"{col['name']} = {val_str}")
+
+                sql_lines.append(f"UPDATE {self.table_name} SET {', '.join(set_parts)} WHERE {' AND '.join(where_parts)};")
 
         full_sql = "\n".join(sql_lines)
         self.txt_result.setPlainText(full_sql)
