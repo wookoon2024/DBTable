@@ -10772,11 +10772,13 @@ class ExcelBulkQueryDialog(QDialog):
             }
         """)
         self.sql_highlighter = SqlHighlighter(self.txt_result.document(), dark=True)
+        self.txt_result.setMinimumHeight(80)
         bottom_layout_pane.addWidget(self.txt_result, 1)
 
         splitter.addWidget(top_widget)
         splitter.addWidget(bottom_widget)
-        splitter.setSizes([380, 260])
+        # 하단 대량 SQL 결과 영역 높이를 절반(130px)으로 축소하여 상단 매핑 테이블을 훨씬 넓게 표시
+        splitter.setSizes([510, 130])
         splitter.setCollapsible(0, False)
         splitter.setCollapsible(1, False)
         layout.addWidget(splitter, 1)
