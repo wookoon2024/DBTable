@@ -10734,6 +10734,29 @@ class ExcelBulkQueryDialog(QDialog):
                 val_edit.setText("")
                 val_edit.setPlaceholderText("고정값 입력 (예: 'ADMIN', SYSDATE, 100)")
 
+            # Tab / Shift+Tab 키 이동 핸들러 (입력값 텍스트박스에서 Tab 누르면 다음 행 입력박스로 바로 포커스 이동)
+            def make_key_press_handler(curr_idx, v_widget):
+                orig_key_press = v_widget.keyPressEvent
+                def custom_key_press(event):
+                    if event.key() == Qt.Key.Key_Tab and not (event.modifiers() & Qt.KeyboardModifier.ShiftModifier):
+                        next_idx = curr_idx + 1
+                        if next_idx < len(self.row_entries):
+                            self.row_entries[next_idx]['edit'].setFocus()
+                            self.row_entries[next_idx]['edit'].selectAll()
+                            event.accept()
+                            return
+                    elif event.key() == Qt.Key.Key_Backtab or (event.key() == Qt.Key.Key_Tab and (event.modifiers() & Qt.KeyboardModifier.ShiftModifier)):
+                        prev_idx = curr_idx - 1
+                        if prev_idx >= 0:
+                            self.row_entries[prev_idx]['edit'].setFocus()
+                            self.row_entries[prev_idx]['edit'].selectAll()
+                            event.accept()
+                            return
+                    orig_key_press(event)
+                return custom_key_press
+
+            val_edit.keyPressEvent = make_key_press_handler(r_idx, val_edit)
+
             self.tbl_map.setCellWidget(r_idx, 2, combo)
             self.tbl_map.setCellWidget(r_idx, 3, val_edit)
 
@@ -10743,6 +10766,9 @@ class ExcelBulkQueryDialog(QDialog):
                 'combo': combo,
                 'edit': val_edit
             })
+
+        for i in range(len(self.row_entries) - 1):
+            self.setTabOrder(self.row_entries[i]['edit'], self.row_entries[i+1]['edit'])
 
     def _format_cell_value(self, val, data_type):
         import re
