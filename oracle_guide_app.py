@@ -3,7 +3,7 @@ import sys
 import sqlite3
 from datetime import datetime
 import pandas as pd
-from PyQt6.QtCore import Qt, pyqtSignal, QSize, QEvent, QRegularExpression, QByteArray, QBuffer, QIODevice, QDate, QRect, QObject
+from PyQt6.QtCore import Qt, pyqtSignal, QSize, QEvent, QRegularExpression, QByteArray, QBuffer, QIODevice, QDate, QRect, QObject, QTimer
 from PyQt6.QtGui import QFont, QColor, QCursor, QIcon, QAction, QSyntaxHighlighter, QTextCharFormat, QImage, QTextCursor, QTextImageFormat, QTextTable, QShortcut, QKeySequence, QTextDocument, QPainter
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
@@ -12316,6 +12316,158 @@ class JoinSettingsDialog(QDialog):
         super().accept()
 
 
+class TableSpecGuideDialog(QDialog):
+    """테이블 명세서 및 쿼리 생성 사용법 팝업 안내 다이얼로그"""
+    def __init__(self, db_mgr, parent=None):
+        super().__init__(parent)
+        self.db_mgr = db_mgr
+        self.setWindowTitle("💡 테이블 명세서 & 쿼리 생성 사용 가이드")
+        self.setFixedWidth(640)
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #FFFFFF;
+            }
+            QLabel {
+                color: #334155;
+            }
+        """)
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 16)
+        layout.setSpacing(14)
+
+        # 1. 상단 타이틀 영역
+        header_layout = QHBoxLayout()
+        header_layout.setSpacing(10)
+        
+        icon_lbl = QLabel("💡")
+        icon_lbl.setStyleSheet("font-size: 26px;")
+        header_layout.addWidget(icon_lbl)
+
+        title_vlayout = QVBoxLayout()
+        title_vlayout.setSpacing(2)
+        title_lbl = QLabel("테이블 명세서 & 쿼리 생성 사용 가이드")
+        title_lbl.setStyleSheet("font-size: 15px; font-weight: bold; color: #1E3A8A;")
+        sub_lbl = QLabel("SELECT, INSERT, UPDATE, DELETE 쿼리 생성과 컬럼 [선택] 및 [조건] 체크박스 활용법 안내")
+        sub_lbl.setStyleSheet("font-size: 11px; color: #64748B;")
+        title_vlayout.addWidget(title_lbl)
+        title_vlayout.addWidget(sub_lbl)
+        header_layout.addLayout(title_vlayout)
+        header_layout.addStretch()
+
+        layout.addLayout(header_layout)
+
+        # 구분선
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setFrameShadow(QFrame.Shadow.Sunken)
+        sep.setStyleSheet("color: #E2E8F0;")
+        layout.addWidget(sep)
+
+        # 2. 카드 1: 상단 쿼리 생성 버튼 안내
+        card1 = QFrame()
+        card1.setStyleSheet("""
+            QFrame {
+                background-color: #F8FAFC;
+                border: 1px solid #E2E8F0;
+                border-radius: 8px;
+            }
+        """)
+        c1_layout = QVBoxLayout(card1)
+        c1_layout.setContentsMargins(14, 12, 14, 12)
+        c1_layout.setSpacing(8)
+
+        lbl_c1_title = QLabel("⚡ 상단 쿼리 생성 버튼")
+        lbl_c1_title.setStyleSheet("font-size: 12px; font-weight: bold; color: #1E293B;")
+        c1_layout.addWidget(lbl_c1_title)
+
+        desc1 = QLabel(
+            "• <b>Select생성 / Select(1줄)</b>: <b>[선택]</b> 체크된 컬럼들로 SELECT 조회 쿼리를 생성하여 클립보드에 복사합니다.<br>"
+            "• <b>Insert생성</b>: <b>[선택]</b> 체크된 컬럼 대상의 INSERT 쿼리를 생성합니다. (단일 및 엑셀 대량 생성 지원)<br>"
+            "• <b>Update생성</b>: <b>[선택]</b> 컬럼은 수정값(SET), <b>[조건]</b> 컬럼은 WHERE 조건절로 자동 구성하여 UPDATE 쿼리를 생성합니다. (엑셀 대량 지원)<br>"
+            "• <b>Delete생성</b>: <b>[조건]</b> 체크된 컬럼을 WHERE 조건절로 지정하여 안전하게 삭제 쿼리를 생성합니다. (엑셀 대량 지원)"
+        )
+        desc1.setStyleSheet("font-size: 11px; color: #475569; line-height: 150%;")
+        c1_layout.addWidget(desc1)
+        layout.addWidget(card1)
+
+        # 3. 카드 2: 테이블 컬럼 체크박스 안내 ([선택] vs [조건])
+        card2 = QFrame()
+        card2.setStyleSheet("""
+            QFrame {
+                background-color: #F8FAFC;
+                border: 1px solid #E2E8F0;
+                border-radius: 8px;
+            }
+        """)
+        c2_layout = QVBoxLayout(card2)
+        c2_layout.setContentsMargins(14, 12, 14, 12)
+        c2_layout.setSpacing(8)
+
+        lbl_c2_title = QLabel("📌 테이블 컬럼 체크박스 ([선택] vs [조건])")
+        lbl_c2_title.setStyleSheet("font-size: 12px; font-weight: bold; color: #1E293B;")
+        c2_layout.addWidget(lbl_c2_title)
+
+        desc2 = QLabel(
+            "• <b>[선택] 체크박스 (맨 왼쪽 1열)</b>:<br>"
+            "   SQL 문에 포함할 대상 컬럼을 선택합니다. (상단 <b>'☑ 전체선택'</b> 버튼으로 한 번에 토글 가능)<br>"
+            "• <b>[조건] 체크박스 (맨 오른쪽 10열)</b>:<br>"
+            "   UPDATE 및 DELETE 쿼리 생성 시 <b>WHERE 조건절</b>에 사용할 기준 컬럼을 지정합니다.<br>"
+            "   (기본적으로 해당 테이블의 <b>PK(기본키)</b> 컬럼이 자동 체크되어 안전한 쿼리 생성을 돕습니다)"
+        )
+        desc2.setStyleSheet("font-size: 11px; color: #475569; line-height: 150%;")
+        c2_layout.addWidget(desc2)
+        layout.addWidget(card2)
+
+        # 4. 하단 팁 문구
+        lbl_tip = QLabel("💡 언제든 상단의 <b>[💡 사용 가이드]</b> 버튼을 누르면 이 안내 창을 다시 열 수 있습니다.")
+        lbl_tip.setStyleSheet("font-size: 11px; color: #64748B; padding-left: 2px;")
+        layout.addWidget(lbl_tip)
+
+        # 5. 하단 버튼 영역 ([ ] 다시 보지 않기 + 확인)
+        btn_layout = QHBoxLayout()
+        btn_layout.setContentsMargins(0, 4, 0, 0)
+
+        self.chk_dont_show = QCheckBox("다시 보지 않기")
+        self.chk_dont_show.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.chk_dont_show.setStyleSheet("font-size: 11px; font-weight: 500; color: #475569;")
+        btn_layout.addWidget(self.chk_dont_show)
+        btn_layout.addStretch()
+
+        btn_confirm = QPushButton("확인")
+        btn_confirm.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_confirm.setStyleSheet("""
+            QPushButton {
+                background-color: #2563EB;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 4px;
+                padding: 7px 24px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1D4ED8;
+            }
+        """)
+        btn_confirm.clicked.connect(self.on_confirm)
+        btn_layout.addWidget(btn_confirm)
+
+        layout.addLayout(btn_layout)
+
+    def on_confirm(self):
+        if self.chk_dont_show.isChecked():
+            self.db_mgr.set_setting('table_spec_guide_dismissed', '1')
+        self.accept()
+
+    def reject(self):
+        if self.chk_dont_show.isChecked():
+            self.db_mgr.set_setting('table_spec_guide_dismissed', '1')
+        super().reject()
+
+
 class TableDetailWidget(QWidget):
     """우측 탭 내부에 표시될 테이블 상세 정보 위젯 (좌: 컬럼 표, 우: 공통코드 상세 패널 - 라이트 테마)"""
     link_clicked = pyqtSignal(str)
@@ -12530,6 +12682,27 @@ class TableDetailWidget(QWidget):
         self.btn_register_favorite.clicked.connect(self.register_to_task_folder)
         self.btn_register_favorite.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         header_btn_layout.addWidget(self.btn_register_favorite)
+
+        # 💡 사용 가이드 버튼 추가
+        self.btn_help_guide = QPushButton("💡 사용 가이드")
+        self.btn_help_guide.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.btn_help_guide.setStyleSheet("""
+            QPushButton {
+                background-color: #EFF6FF;
+                color: #2563EB;
+                border: 1px solid #BFDBFE;
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: 600;
+                padding: 3px 8px;
+            }
+            QPushButton:hover {
+                background-color: #DBEAFE;
+                border-color: #3B82F6;
+            }
+        """)
+        self.btn_help_guide.clicked.connect(self.open_help_guide_dialog)
+        header_btn_layout.addWidget(self.btn_help_guide)
 
         self.update_join_ui()
 
@@ -12747,6 +12920,7 @@ class TableDetailWidget(QWidget):
         self.load_columns_data()
         self.table_widget.cellClicked.connect(self.on_cell_clicked)
         self.table_widget.itemChanged.connect(self.on_item_changed)
+        QTimer.singleShot(250, self._check_and_show_guide)
 
     def load_columns_data(self):
         # DB 상태를 업데이트할 때 신호(itemChanged)가 발생하므로, 로딩 중에는 신호를 차단합니다.
@@ -13201,6 +13375,20 @@ class TableDetailWidget(QWidget):
                     main_win.load_tasks_tree()
             except Exception as e:
                 QMessageBox.critical(self, "오류", f"업무 폴더 등록 중 오류가 발생했습니다:\n{str(e)}")
+
+    def open_help_guide_dialog(self):
+        dlg = TableSpecGuideDialog(self.db_mgr, self)
+        dlg.exec()
+
+    def _check_and_show_guide(self):
+        if getattr(self, '_guide_already_checked', False):
+            return
+        self._guide_already_checked = True
+
+        is_dismissed = self.db_mgr.get_setting('table_spec_guide_dismissed', '0') == '1'
+        if not is_dismissed:
+            dlg = TableSpecGuideDialog(self.db_mgr, self)
+            dlg.exec()
 
     def copy_table_name_to_clipboard(self):
         QApplication.clipboard().setText(self.table_name)
