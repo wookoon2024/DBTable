@@ -25,7 +25,7 @@ else:
     base_dir = os.path.dirname(os.path.abspath(__file__))
 
 DB_FILE = os.path.normpath(os.path.join(base_dir, "metadata.db"))
-APP_VERSION = "v1.4"
+APP_VERSION = "v1.5"
 
 class ToastNotification(QFrame):
     """프로그램 중앙에 플로팅으로 안내 메시지를 띄워주는 토스트 위젯"""
@@ -3382,7 +3382,7 @@ class TaskCalendarWidget(QWidget):
         list_layout.addWidget(self.list_tasks, 1)
         
         btn_layout = QHBoxLayout()
-        self.btn_view_task = QPushButton("🔍 업무 상세보기")
+        self.btn_view_task = QPushButton("업무 상세보기")
         self.btn_view_task.setStyleSheet("""
             QPushButton {
                 background-color: #2563EB;
@@ -4178,17 +4178,17 @@ class TaskDetailTabWidget(QWidget):
         self.list_attach_images.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.list_attach_images.customContextMenuRequested.connect(lambda pos: self.show_attachment_context_menu(pos, self.list_attach_images))
 
-        self.attach_tabs.addTab(self.list_attach_files, '📎 일반 파일')
-        self.attach_tabs.addTab(self.list_attach_images, '🖼️ 본문 이미지')
+        self.attach_tabs.addTab(self.list_attach_files, '일반 파일')
+        self.attach_tabs.addTab(self.list_attach_images, '본문 이미지')
         attach_layout.addWidget(self.attach_tabs)
 
         # 첨부파일 관리 버튼
         btn_attach_layout = QHBoxLayout()
         btn_attach_layout.setSpacing(4)
         
-        self.btn_add_attach = QPushButton('➕ 파일추가')
+        self.btn_add_attach = QPushButton('파일추가')
         self.btn_add_attach.clicked.connect(self.add_attachment_action)
-        self.btn_del_attach = QPushButton('❌ 파일삭제')
+        self.btn_del_attach = QPushButton('파일삭제')
         self.btn_del_attach.clicked.connect(self.delete_attachment_action)
 
         attach_btn_style = """
@@ -4256,7 +4256,7 @@ class TaskDetailTabWidget(QWidget):
         bottom_layout = QHBoxLayout()
         bottom_layout.setSpacing(6)
 
-        self.btn_save = QPushButton('💾 저장(S)')
+        self.btn_save = QPushButton('저장(S)')
         self.btn_save.clicked.connect(self.save_task)
         self.btn_save.setStyleSheet("""
             QPushButton {
@@ -4278,7 +4278,7 @@ class TaskDetailTabWidget(QWidget):
         self.save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
         self.save_shortcut.activated.connect(self.save_task)
 
-        self.btn_delete = QPushButton('🗑️ 삭제')
+        self.btn_delete = QPushButton('삭제')
         self.btn_delete.clicked.connect(self.delete_task)
         self.btn_delete.setStyleSheet("""
             QPushButton {
@@ -4296,7 +4296,8 @@ class TaskDetailTabWidget(QWidget):
         """)
         self.btn_delete.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
-        self.btn_revert = QPushButton('🔄 되돌리기')
+        self.btn_revert = QPushButton('되돌리기')
+        self.btn_revert.setEnabled(False)
         self.btn_revert.clicked.connect(self.revert_task)
         self.btn_revert.setStyleSheet("""
             QPushButton {
@@ -4310,6 +4311,11 @@ class TaskDetailTabWidget(QWidget):
             }
             QPushButton:hover {
                 background-color: #E2E8F0;
+            }
+            QPushButton:disabled {
+                background-color: #F8FAFC;
+                color: #94A3B8;
+                border: 1px solid #E2E8F0;
             }
         """)
         self.btn_revert.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -4352,6 +4358,8 @@ class TaskDetailTabWidget(QWidget):
 
     def set_dirty(self):
         self.is_dirty = True
+        if hasattr(self, 'btn_revert'):
+            self.btn_revert.setEnabled(True)
         idx = self.main_win.tab_widget.indexOf(self)
         if idx != -1:
             title = self.txt_title.text().strip() or '제목 없음'
@@ -4389,6 +4397,8 @@ class TaskDetailTabWidget(QWidget):
             self.discard_changes()
             self.load_task_data()
             self.is_dirty = False
+            if hasattr(self, 'btn_revert'):
+                self.btn_revert.setEnabled(False)
             
             self.txt_title.blockSignals(False)
             self.combo_cat.blockSignals(False)
@@ -5026,6 +5036,8 @@ class TaskDetailTabWidget(QWidget):
             self.session_added_attachments.clear()
             
         self.is_dirty = False
+        if hasattr(self, 'btn_revert'):
+            self.btn_revert.setEnabled(False)
         
         idx = self.main_win.tab_widget.indexOf(self)
         if idx != -1:
@@ -5316,8 +5328,8 @@ class TaskInfoSidebarWidget(QWidget):
         expand_layout = QHBoxLayout()
         expand_layout.setSpacing(4)
         
-        btn_expand = QPushButton("📂 모두 열기")
-        btn_collapse = QPushButton("📁 모두 닫기")
+        btn_expand = QPushButton("모두 열기")
+        btn_collapse = QPushButton("모두 닫기")
         
         exp_btn_style = """
             QPushButton {
@@ -5345,10 +5357,10 @@ class TaskInfoSidebarWidget(QWidget):
         action_layout = QHBoxLayout()
         action_layout.setSpacing(4)
 
-        self.btn_add_cat = QPushButton("➕ 분류추가")
-        self.btn_edit = QPushButton("✏️ 수정")
-        self.btn_del = QPushButton("❌ 삭제")
-        self.btn_add_task = QPushButton("📝 업무작성")
+        self.btn_add_cat = QPushButton("분류추가")
+        self.btn_edit = QPushButton("수정")
+        self.btn_del = QPushButton("삭제")
+        self.btn_add_task = QPushButton("업무작성")
 
         for btn in [self.btn_add_cat, self.btn_edit, self.btn_del, self.btn_add_task]:
             btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -5362,57 +5374,24 @@ class TaskInfoSidebarWidget(QWidget):
 
         main_layout.addLayout(action_layout)
 
-        # 5. 가져오기 / 내보내기 / 사용 가이드 버튼 행
+        # 5. 가져오기 / 내보내기 버튼 행
         share_layout = QHBoxLayout()
         share_layout.setSpacing(4)
 
-        self.btn_import = QPushButton("📥 가져오기")
-        self.btn_export = QPushButton("📤 내보내기")
-        self.btn_task_guide = QPushButton("사용 가이드")
+        self.btn_import = QPushButton("가져오기")
+        self.btn_export = QPushButton("내보내기")
 
         for btn in [self.btn_import, self.btn_export]:
             btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             btn.setStyleSheet(exp_btn_style)
             share_layout.addWidget(btn)
 
-        self.btn_task_guide.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.btn_task_guide.setStyleSheet("""
-            QPushButton {
-                background-color: #EFF6FF;
-                border: 1px solid #93C5FD;
-                border-radius: 4px;
-                padding: 4px 6px;
-                font-size: 11px;
-                font-weight: 600;
-                color: #1D4ED8;
-            }
-            QPushButton:hover {
-                background-color: #DBEAFE;
-                border-color: #3B82F6;
-            }
-        """)
-        share_layout.addWidget(self.btn_task_guide)
-
         self.btn_import.clicked.connect(self.import_tasks_flow)
         self.btn_export.clicked.connect(self.export_tasks_flow)
-        self.btn_task_guide.clicked.connect(self.open_task_guide_dialog)
 
         main_layout.addLayout(share_layout)
         
         self.refresh_tree()
-        QTimer.singleShot(300, self._check_and_show_guide)
-
-    def _check_and_show_guide(self):
-        try:
-            dismissed = self.db_mgr.get_setting('task_info_guide_dismissed', '0')
-            if dismissed != '1':
-                self.open_task_guide_dialog()
-        except Exception as e:
-            print(f"[TaskInfoGuide AutoShow Error] {e}")
-
-    def open_task_guide_dialog(self):
-        dlg = TaskInfoGuideDialog(self.db_mgr, self)
-        dlg.exec()
 
 
     def refresh_tree(self):
@@ -7327,8 +7306,8 @@ class DatabaseManager:
             cursor.execute("SELECT COUNT(*) FROM COMMON_CODE_MASTER")
             if not already_seeded and cursor.fetchone()[0] == 0:
                 master_data = [
-                    ('USER_STATUS_GRP', 'USER_STATUS', '사용자상태그룹', 'Y', 'SCOTT'),
-                    ('BOARD_TYPE_GRP', 'BOARD_TYPE', '게시판유형그룹', 'Y', 'SCOTT')
+                    ('001', 'USER_STATUS', '사용자상태그룹', 'Y', 'SCOTT'),
+                    ('002', 'BOARD_TYPE', '게시판유형그룹', 'Y', 'SCOTT')
                 ]
                 cursor.executemany("INSERT INTO COMMON_CODE_MASTER VALUES (?, ?, ?, ?, ?)", master_data)
                 
@@ -7336,14 +7315,14 @@ class DatabaseManager:
             cursor.execute("SELECT COUNT(*) FROM COMMON_CODE_SUB")
             if not already_seeded and cursor.fetchone()[0] == 0:
                 sub_data = [
-                    ('USER_STATUS_GRP', '10', '정상', '정상 사용중', 'Y', 1),
-                    ('USER_STATUS_GRP', '20', '정지', '일시 정지', 'Y', 2),
-                    ('USER_STATUS_GRP', '30', '휴면', '휴면 사용자', 'Y', 3),
-                    ('USER_STATUS_GRP', '90', '탈퇴', '탈퇴 완료', 'Y', 4),
-                    ('BOARD_TYPE_GRP', 'NOTICE', '공지사항', '공지사항용', 'Y', 1),
-                    ('BOARD_TYPE_GRP', 'FREE', '자유게시판', '자유 소통', 'Y', 2),
-                    ('BOARD_TYPE_GRP', 'QNA', '질문답변', '질문과 답변', 'Y', 3),
-                    ('BOARD_TYPE_GRP', 'GALLERY', '갤러리', '이미지 게시판', 'Y', 4)
+                    ('001', '10', '정상', '정상 사용중', 'Y', 1),
+                    ('001', '20', '정지', '일시 정지', 'Y', 2),
+                    ('001', '30', '휴면', '휴면 사용자', 'Y', 3),
+                    ('001', '90', '탈퇴', '탈퇴 완료', 'Y', 4),
+                    ('002', 'NOTICE', '공지사항', '공지사항용', 'Y', 1),
+                    ('002', 'FREE', '자유게시판', '자유 소통', 'Y', 2),
+                    ('002', 'QNA', '질문답변', '질문과 답변', 'Y', 3),
+                    ('002', 'GALLERY', '갤러리', '이미지 게시판', 'Y', 4)
                 ]
                 cursor.executemany("INSERT INTO COMMON_CODE_SUB VALUES (?, ?, ?, ?, ?, ?)", sub_data)
 
@@ -7472,16 +7451,16 @@ class DatabaseManager:
                 VALUES (?, ?, ?)
                 """, sample_relations)
 
-                # 4. common_codes
+                # 4. common_codes (숫자 3자리 코드그룹 표준 샘플)
                 sample_common_codes = [
-                    ("STATUS", "USER_STATUS_GRP", "사용자상태그룹", "10", "정상", "정상 사용중인 사용자 상태"),
-                    ("STATUS", "USER_STATUS_GRP", "사용자상태그룹", "20", "정지", "일시 정지된 사용자 상태"),
-                    ("STATUS", "USER_STATUS_GRP", "사용자상태그룹", "30", "휴면", "장기 미접속 휴면 사용자 상태"),
-                    ("STATUS", "USER_STATUS_GRP", "사용자상태그룹", "90", "탈퇴", "탈퇴한 사용자 상태"),
-                    ("BOARD_TYPE", "BOARD_TYPE_GRP", "게시판유형그룹", "NOTICE", "공지사항", "공지사항용 게시판"),
-                    ("BOARD_TYPE", "BOARD_TYPE_GRP", "게시판유형그룹", "FREE", "자유게시판", "일반 소통 및 피드백 자유게시판"),
-                    ("BOARD_TYPE", "BOARD_TYPE_GRP", "게시판유형그룹", "QNA", "질문답변", "Q&A 및 기술 문의 게시판"),
-                    ("BOARD_TYPE", "BOARD_TYPE_GRP", "게시판유형그룹", "GALLERY", "갤러리", "이미지 중심 갤러리 게시판")
+                    ("STATUS", "001", "사용자상태그룹", "10", "정상", "정상 사용중인 사용자 상태"),
+                    ("STATUS", "001", "사용자상태그룹", "20", "정지", "일시 정지된 사용자 상태"),
+                    ("STATUS", "001", "사용자상태그룹", "30", "휴면", "장기 미접속 휴면 사용자 상태"),
+                    ("STATUS", "001", "사용자상태그룹", "90", "탈퇴", "탈퇴한 사용자 상태"),
+                    ("BOARD_TYPE", "002", "게시판유형그룹", "NOTICE", "공지사항", "공지사항용 게시판"),
+                    ("BOARD_TYPE", "002", "게시판유형그룹", "FREE", "자유게시판", "일반 소통 및 피드백 자유게시판"),
+                    ("BOARD_TYPE", "002", "게시판유형그룹", "QNA", "질문답변", "Q&A 및 기술 문의 게시판"),
+                    ("BOARD_TYPE", "002", "게시판유형그룹", "GALLERY", "갤러리", "이미지 중심 갤러리 게시판")
                 ]
                 cursor.executemany("""
                 INSERT INTO common_codes (column_name, code_group_id, code_group_name, code_value, code_ko_name, description)
@@ -7655,9 +7634,9 @@ class DatabaseManager:
         # 2순위 (Fallback): pywin32가 없거나 COM으로 읽지 못했을 경우 표준 Pandas 라이브러리로 시도
         if ext in ['.xlsx', '.xls']:
             try:
-                df = pd.read_excel(file_path, sheet_name=0)
+                df = pd.read_excel(file_path, sheet_name=0, dtype=str)
                 df.columns = df.columns.astype(str).str.strip()
-                df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
+                df = df.map(lambda x: str(x).strip() if pd.notna(x) else "")
                 return df
             except Exception as e:
                 raise ValueError(f"Excel 파일을 읽는 동안 에러가 발생했습니다: {str(e)}")
@@ -7666,9 +7645,9 @@ class DatabaseManager:
             encodings = ['utf-8', 'cp949', 'euc-kr', 'utf-8-sig']
             for enc in encodings:
                 try:
-                    df = pd.read_csv(file_path, encoding=enc, sep=',')
+                    df = pd.read_csv(file_path, encoding=enc, sep=',', dtype=str)
                     df.columns = df.columns.astype(str).str.strip()
-                    df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
+                    df = df.map(lambda x: str(x).strip() if pd.notna(x) else "")
                     return df
                 except Exception:
                     continue
@@ -7834,15 +7813,19 @@ class DatabaseManager:
                     
                     for _, row in df_codes.iterrows():
                         c_name = str(row[resolved_cols['column_name']]) if resolved_cols['column_name'] in df_codes.columns and pd.notna(row[resolved_cols['column_name']]) else ""
-                        cg_id = str(row[resolved_cols['code_group_id']]) if resolved_cols['code_group_id'] in df_codes.columns and pd.notna(row[resolved_cols['code_group_id']]) else ""
-                        cg_name = str(row[resolved_cols['code_group_name']]) if resolved_cols['code_group_name'] in df_codes.columns and pd.notna(row[resolved_cols['code_group_name']]) else ""
-                        c_val = str(row[resolved_cols['code_value']]) if resolved_cols['code_value'] in df_codes.columns and pd.notna(row[resolved_cols['code_value']]) else ""
-                        c_ko = str(row[resolved_cols['code_ko_name']]) if resolved_cols['code_ko_name'] in df_codes.columns and pd.notna(row[resolved_cols['code_ko_name']]) else ""
+                        cg_id = str(row[resolved_cols['code_group_id']]).strip() if resolved_cols['code_group_id'] in df_codes.columns and pd.notna(row[resolved_cols['code_group_id']]) else ""
+                        if cg_id.endswith('.0'):
+                            cg_id = cg_id[:-2]
+                        if cg_id.isdigit() and len(cg_id) <= 3:
+                            cg_id = cg_id.zfill(3)
+                        cg_name = str(row[resolved_cols['code_group_name']]).strip() if resolved_cols['code_group_name'] in df_codes.columns and pd.notna(row[resolved_cols['code_group_name']]) else ""
+                        c_val = str(row[resolved_cols['code_value']]).strip() if resolved_cols['code_value'] in df_codes.columns and pd.notna(row[resolved_cols['code_value']]) else ""
+                        c_ko = str(row[resolved_cols['code_ko_name']]).strip() if resolved_cols['code_ko_name'] in df_codes.columns and pd.notna(row[resolved_cols['code_ko_name']]) else ""
                         
                         cursor.execute("""
                         INSERT OR REPLACE INTO common_codes (column_name, code_group_id, code_group_name, code_value, code_ko_name, description)
                         VALUES (?, ?, ?, ?, ?, '')
-                        """, (c_name.strip(), cg_id.strip(), cg_name.strip(), c_val.strip(), c_ko.strip()))
+                        """, (c_name.strip(), cg_id, cg_name, c_val, c_ko))
                 else:
                     raise ValueError("공통 코드 파일을 읽을 수 없습니다.")
 
@@ -8953,7 +8936,7 @@ class QueryEditDialog(QDialog):
         # 하단 버튼 배치
         btn_layout = QHBoxLayout()
         
-        btn_save = QPushButton("💾 설정 저장")
+        btn_save = QPushButton("설정 저장")
         btn_save.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         btn_save.setStyleSheet("""
             QPushButton {
@@ -8971,7 +8954,7 @@ class QueryEditDialog(QDialog):
         """)
         btn_save.clicked.connect(self.save_query)
         
-        btn_copy = QPushButton("📋 클립보드 복사")
+        btn_copy = QPushButton("클립보드 복사")
         btn_copy.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         btn_copy.setStyleSheet("""
             QPushButton {
@@ -9006,7 +8989,7 @@ class QueryEditDialog(QDialog):
         """)
         btn_close.clicked.connect(self.accept)
 
-        btn_format = QPushButton("✨ SQL 정렬")
+        btn_format = QPushButton("SQL 정렬")
         btn_format.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         btn_format.setStyleSheet("""
             QPushButton {
@@ -9352,116 +9335,116 @@ class CSVImportDialog(QDialog):
                 {'테이블명': 'TB_REVIEW', '테이블한글명': '상품후기게시판', '컬럼명': 'REG_DT', '컬럼한글명': '등록일시', '데이터타입': 'DATE', '길이': 7, '정널여부': 'N', 'pk여부': 'N'}
             ]
 
-            # 2. 공통코드 정의 (20개 컬럼 그룹 × 상세 코드)
+            # 2. 공통코드 정의 (20개 컬럼 그룹 × 상세 코드 - 공통코드 숫자 3자리 표준 샘플)
             codes_rows = [
                 # 1. MEMBER_GRADE (회원등급)
-                {'컬럼명': 'MEMBER_GRADE', '코드그룹id': 'MEMBER_GRADE_GRP', '코드그룹 한글명칭': '회원등급그룹', '코드값': 'VIP', '코드한글명': 'VIP등급'},
-                {'컬럼명': 'MEMBER_GRADE', '코드그룹id': 'MEMBER_GRADE_GRP', '코드그룹 한글명칭': '회원등급그룹', '코드값': 'GOLD', '코드한글명': '골드등급'},
-                {'컬럼명': 'MEMBER_GRADE', '코드그룹id': 'MEMBER_GRADE_GRP', '코드그룹 한글명칭': '회원등급그룹', '코드값': 'SILVER', '코드한글명': '실버등급'},
-                {'컬럼명': 'MEMBER_GRADE', '코드그룹id': 'MEMBER_GRADE_GRP', '코드그룹 한글명칭': '회원등급그룹', '코드값': 'BRONZE', '코드한글명': '일반회원'},
+                {'컬럼명': 'MEMBER_GRADE', '코드그룹id': '001', '코드그룹 한글명칭': '회원등급그룹', '코드값': 'VIP', '코드한글명': 'VIP등급'},
+                {'컬럼명': 'MEMBER_GRADE', '코드그룹id': '001', '코드그룹 한글명칭': '회원등급그룹', '코드값': 'GOLD', '코드한글명': '골드등급'},
+                {'컬럼명': 'MEMBER_GRADE', '코드그룹id': '001', '코드그룹 한글명칭': '회원등급그룹', '코드값': 'SILVER', '코드한글명': '실버등급'},
+                {'컬럼명': 'MEMBER_GRADE', '코드그룹id': '001', '코드그룹 한글명칭': '회원등급그룹', '코드값': 'BRONZE', '코드한글명': '일반회원'},
 
                 # 2. MEMBER_STAT (회원상태)
-                {'컬럼명': 'MEMBER_STAT', '코드그룹id': 'MEMBER_STAT_GRP', '코드그룹 한글명칭': '회원상태그룹', '코드값': '10', '코드한글명': '정상활동'},
-                {'컬럼명': 'MEMBER_STAT', '코드그룹id': 'MEMBER_STAT_GRP', '코드그룹 한글명칭': '회원상태그룹', '코드값': '20', '코드한글명': '휴면계정'},
-                {'컬럼명': 'MEMBER_STAT', '코드그룹id': 'MEMBER_STAT_GRP', '코드그룹 한글명칭': '회원상태그룹', '코드값': '90', '코드한글명': '탈퇴완료'},
+                {'컬럼명': 'MEMBER_STAT', '코드그룹id': '002', '코드그룹 한글명칭': '회원상태그룹', '코드값': '10', '코드한글명': '정상활동'},
+                {'컬럼명': 'MEMBER_STAT', '코드그룹id': '002', '코드그룹 한글명칭': '회원상태그룹', '코드값': '20', '코드한글명': '휴면계정'},
+                {'컬럼명': 'MEMBER_STAT', '코드그룹id': '002', '코드그룹 한글명칭': '회원상태그룹', '코드값': '90', '코드한글명': '탈퇴완료'},
 
                 # 3. PROD_TYPE (상품유형)
-                {'컬럼명': 'PROD_TYPE', '코드그룹id': 'PROD_TYPE_GRP', '코드그룹 한글명칭': '상품유형그룹', '코드값': '01', '코드한글명': '단독일반상품'},
-                {'컬럼명': 'PROD_TYPE', '코드그룹id': 'PROD_TYPE_GRP', '코드그룹 한글명칭': '상품유형그룹', '코드값': '02', '코드한글명': '세트묶음상품'},
-                {'컬럼명': 'PROD_TYPE', '코드그룹id': 'PROD_TYPE_GRP', '코드그룹 한글명칭': '상품유형그룹', '코드값': '03', '코드한글명': '디지털콘텐츠'},
+                {'컬럼명': 'PROD_TYPE', '코드그룹id': '003', '코드그룹 한글명칭': '상품유형그룹', '코드값': '01', '코드한글명': '단독일반상품'},
+                {'컬럼명': 'PROD_TYPE', '코드그룹id': '003', '코드그룹 한글명칭': '상품유형그룹', '코드값': '02', '코드한글명': '세트묶음상품'},
+                {'컬럼명': 'PROD_TYPE', '코드그룹id': '003', '코드그룹 한글명칭': '상품유형그룹', '코드값': '03', '코드한글명': '디지털콘텐츠'},
 
                 # 4. SALE_STAT (판매상태)
-                {'컬럼명': 'SALE_STAT', '코드그룹id': 'SALE_STAT_GRP', '코드그룹 한글명칭': '판매상태그룹', '코드값': '10', '코드한글명': '판매중'},
-                {'컬럼명': 'SALE_STAT', '코드그룹id': 'SALE_STAT_GRP', '코드그룹 한글명칭': '판매상태그룹', '코드값': '20', '코드한글명': '품절'},
-                {'컬럼명': 'SALE_STAT', '코드그룹id': 'SALE_STAT_GRP', '코드그룹 한글명칭': '판매상태그룹', '코드값': '30', '코드한글명': '판매종료'},
+                {'컬럼명': 'SALE_STAT', '코드그룹id': '004', '코드그룹 한글명칭': '판매상태그룹', '코드값': '10', '코드한글명': '판매중'},
+                {'컬럼명': 'SALE_STAT', '코드그룹id': '004', '코드그룹 한글명칭': '판매상태그룹', '코드값': '20', '코드한글명': '품절'},
+                {'컬럼명': 'SALE_STAT', '코드그룹id': '004', '코드그룹 한글명칭': '판매상태그룹', '코드값': '30', '코드한글명': '판매종료'},
 
                 # 5. CAT_STAT (카테고리상태)
-                {'컬럼명': 'CAT_STAT', '코드그룹id': 'CAT_STAT_GRP', '코드그룹 한글명칭': '카테고리상태그룹', '코드값': '10', '코드한글명': '정상운영'},
-                {'컬럼명': 'CAT_STAT', '코드그룹id': 'CAT_STAT_GRP', '코드그룹 한글명칭': '카테고리상태그룹', '코드값': '20', '코드한글명': '일시중지'},
+                {'컬럼명': 'CAT_STAT', '코드그룹id': '005', '코드그룹 한글명칭': '카테고리상태그룹', '코드값': '10', '코드한글명': '정상운영'},
+                {'컬럼명': 'CAT_STAT', '코드그룹id': '005', '코드그룹 한글명칭': '카테고리상태그룹', '코드값': '20', '코드한글명': '일시중지'},
 
                 # 6. DISP_YN (노출여부)
-                {'컬럼명': 'DISP_YN', '코드그룹id': 'DISP_YN_GRP', '코드그룹 한글명칭': '노출여부그룹', '코드값': 'Y', '코드한글명': '화면노출'},
-                {'컬럼명': 'DISP_YN', '코드그룹id': 'DISP_YN_GRP', '코드그룹 한글명칭': '노출여부그룹', '코드값': 'N', '코드한글명': '화면숨김'},
+                {'컬럼명': 'DISP_YN', '코드그룹id': '006', '코드그룹 한글명칭': '노출여부그룹', '코드값': 'Y', '코드한글명': '화면노출'},
+                {'컬럼명': 'DISP_YN', '코드그룹id': '006', '코드그룹 한글명칭': '노출여부그룹', '코드값': 'N', '코드한글명': '화면숨김'},
 
                 # 7. ORDER_STAT (주문상태)
-                {'컬럼명': 'ORDER_STAT', '코드그룹id': 'ORDER_STAT_GRP', '코드그룹 한글명칭': '주문진행상태그룹', '코드값': '10', '코드한글명': '주문완료'},
-                {'컬럼명': 'ORDER_STAT', '코드그룹id': 'ORDER_STAT_GRP', '코드그룹 한글명칭': '주문진행상태그룹', '코드값': '20', '코드한글명': '결제완료'},
-                {'컬럼명': 'ORDER_STAT', '코드그룹id': 'ORDER_STAT_GRP', '코드그룹 한글명칭': '주문진행상태그룹', '코드값': '30', '코드한글명': '배송진행중'},
-                {'컬럼명': 'ORDER_STAT', '코드그룹id': 'ORDER_STAT_GRP', '코드그룹 한글명칭': '주문진행상태그룹', '코드값': '40', '코드한글명': '배송완료'},
-                {'컬럼명': 'ORDER_STAT', '코드그룹id': 'ORDER_STAT_GRP', '코드그룹 한글명칭': '주문진행상태그룹', '코드값': '90', '코드한글명': '주문취소'},
+                {'컬럼명': 'ORDER_STAT', '코드그룹id': '007', '코드그룹 한글명칭': '주문진행상태그룹', '코드값': '10', '코드한글명': '주문완료'},
+                {'컬럼명': 'ORDER_STAT', '코드그룹id': '007', '코드그룹 한글명칭': '주문진행상태그룹', '코드값': '20', '코드한글명': '결제완료'},
+                {'컬럼명': 'ORDER_STAT', '코드그룹id': '007', '코드그룹 한글명칭': '주문진행상태그룹', '코드값': '30', '코드한글명': '배송진행중'},
+                {'컬럼명': 'ORDER_STAT', '코드그룹id': '007', '코드그룹 한글명칭': '주문진행상태그룹', '코드값': '40', '코드한글명': '배송완료'},
+                {'컬럼명': 'ORDER_STAT', '코드그룹id': '007', '코드그룹 한글명칭': '주문진행상태그룹', '코드값': '90', '코드한글명': '주문취소'},
 
                 # 8. PAY_METHOD (결제수단)
-                {'컬럼명': 'PAY_METHOD', '코드그룹id': 'PAY_METHOD_GRP', '코드그룹 한글명칭': '결제수단그룹', '코드값': 'CARD', '코드한글명': '신용/체크카드'},
-                {'컬럼명': 'PAY_METHOD', '코드그룹id': 'PAY_METHOD_GRP', '코드그룹 한글명칭': '결제수단그룹', '코드값': 'BANK', '코드한글명': '실시간계좌이체'},
-                {'컬럼명': 'PAY_METHOD', '코드그룹id': 'PAY_METHOD_GRP', '코드그룹 한글명칭': '결제수단그룹', '코드값': 'VBANK', '코드한글명': '가상계좌입금'},
-                {'컬럼명': 'PAY_METHOD', '코드그룹id': 'PAY_METHOD_GRP', '코드그룹 한글명칭': '결제수단그룹', '코드값': 'POINT', '코드한글명': '전액포인트결제'},
+                {'컬럼명': 'PAY_METHOD', '코드그룹id': '008', '코드그룹 한글명칭': '결제수단그룹', '코드값': 'CARD', '코드한글명': '신용/체크카드'},
+                {'컬럼명': 'PAY_METHOD', '코드그룹id': '008', '코드그룹 한글명칭': '결제수단그룹', '코드값': 'BANK', '코드한글명': '실시간계좌이체'},
+                {'컬럼명': 'PAY_METHOD', '코드그룹id': '008', '코드그룹 한글명칭': '결제수단그룹', '코드값': 'VBANK', '코드한글명': '가상계좌입금'},
+                {'컬럼명': 'PAY_METHOD', '코드그룹id': '008', '코드그룹 한글명칭': '결제수단그룹', '코드값': 'POINT', '코드한글명': '전액포인트결제'},
 
                 # 9. ITEM_STAT (상품진행상태)
-                {'컬럼명': 'ITEM_STAT', '코드그룹id': 'ITEM_STAT_GRP', '코드그룹 한글명칭': '상품진행상태그룹', '코드값': '10', '코드한글명': '상품준비중'},
-                {'컬럼명': 'ITEM_STAT', '코드그룹id': 'ITEM_STAT_GRP', '코드그룹 한글명칭': '상품진행상태그룹', '코드값': '20', '코드한글명': '물류출고완료'},
-                {'컬럼명': 'ITEM_STAT', '코드그룹id': 'ITEM_STAT_GRP', '코드그룹 한글명칭': '상품진행상태그룹', '코드값': '90', '코드한글명': '주문취소'},
+                {'컬럼명': 'ITEM_STAT', '코드그룹id': '009', '코드그룹 한글명칭': '상품진행상태그룹', '코드값': '10', '코드한글명': '상품준비중'},
+                {'컬럼명': 'ITEM_STAT', '코드그룹id': '009', '코드그룹 한글명칭': '상품진행상태그룹', '코드값': '20', '코드한글명': '물류출고완료'},
+                {'컬럼명': 'ITEM_STAT', '코드그룹id': '009', '코드그룹 한글명칭': '상품진행상태그룹', '코드값': '90', '코드한글명': '주문취소'},
 
                 # 10. CLAIM_TYPE (클레임유형)
-                {'컬럼명': 'CLAIM_TYPE', '코드그룹id': 'CLAIM_TYPE_GRP', '코드그룹 한글명칭': '클레임유형그룹', '코드값': '00', '코드한글명': '클레임없음'},
-                {'컬럼명': 'CLAIM_TYPE', '코드그룹id': 'CLAIM_TYPE_GRP', '코드그룹 한글명칭': '클레임유형그룹', '코드값': '01', '코드한글명': '단순변심반품'},
-                {'컬럼명': 'CLAIM_TYPE', '코드그룹id': 'CLAIM_TYPE_GRP', '코드그룹 한글명칭': '클레임유형그룹', '코드값': '02', '코드한글명': '상품불량교환'},
-                {'컬럼명': 'CLAIM_TYPE', '코드그룹id': 'CLAIM_TYPE_GRP', '코드그룹 한글명칭': '클레임유형그룹', '코드값': '03', '코드한글명': '배송지연환불'},
+                {'컬럼명': 'CLAIM_TYPE', '코드그룹id': '010', '코드그룹 한글명칭': '클레임유형그룹', '코드값': '00', '코드한글명': '클레임없음'},
+                {'컬럼명': 'CLAIM_TYPE', '코드그룹id': '010', '코드그룹 한글명칭': '클레임유형그룹', '코드값': '01', '코드한글명': '단순변심반품'},
+                {'컬럼명': 'CLAIM_TYPE', '코드그룹id': '010', '코드그룹 한글명칭': '클레임유형그룹', '코드값': '02', '코드한글명': '상품불량교환'},
+                {'컬럼명': 'CLAIM_TYPE', '코드그룹id': '010', '코드그룹 한글명칭': '클레임유형그룹', '코드값': '03', '코드한글명': '배송지연환불'},
 
                 # 11. PAY_TYPE (결제방식)
-                {'컬럼명': 'PAY_TYPE', '코드그룹id': 'PAY_TYPE_GRP', '코드그룹 한글명칭': '결제방식구분그룹', '코드값': '10', '코드한글명': '일시불'},
-                {'컬럼명': 'PAY_TYPE', '코드그룹id': 'PAY_TYPE_GRP', '코드그룹 한글명칭': '결제방식구분그룹', '코드값': '20', '코드한글명': '무이자할부'},
-                {'컬럼명': 'PAY_TYPE', '코드그룹id': 'PAY_TYPE_GRP', '코드그룹 한글명칭': '결제방식구분그룹', '코드값': '30', '코드한글명': '간편페이결제'},
+                {'컬럼명': 'PAY_TYPE', '코드그룹id': '011', '코드그룹 한글명칭': '결제방식구분그룹', '코드값': '10', '코드한글명': '일시불'},
+                {'컬럼명': 'PAY_TYPE', '코드그룹id': '011', '코드그룹 한글명칭': '결제방식구분그룹', '코드값': '20', '코드한글명': '무이자할부'},
+                {'컬럼명': 'PAY_TYPE', '코드그룹id': '011', '코드그룹 한글명칭': '결제방식구분그룹', '코드값': '30', '코드한글명': '간편페이결제'},
 
                 # 12. PAY_STAT (결제상태)
-                {'컬럼명': 'PAY_STAT', '코드그룹id': 'PAY_STAT_GRP', '코드그룹 한글명칭': '결제승인상태그룹', '코드값': '10', '코드한글명': '결제대기중'},
-                {'컬럼명': 'PAY_STAT', '코드그룹id': 'PAY_STAT_GRP', '코드그룹 한글명칭': '결제승인상태그룹', '코드값': '20', '코드한글명': '결제승인완료'},
-                {'컬럼명': 'PAY_STAT', '코드그룹id': 'PAY_STAT_GRP', '코드그룹 한글명칭': '결제승인상태그룹', '코드값': '30', '코드한글명': '결제전체취소'},
-                {'컬럼명': 'PAY_STAT', '코드그룹id': 'PAY_STAT_GRP', '코드그룹 한글명칭': '결제승인상태그룹', '코드값': '90', '코드한글명': '결제승인실패'},
+                {'컬럼명': 'PAY_STAT', '코드그룹id': '012', '코드그룹 한글명칭': '결제승인상태그룹', '코드값': '10', '코드한글명': '결제대기중'},
+                {'컬럼명': 'PAY_STAT', '코드그룹id': '012', '코드그룹 한글명칭': '결제승인상태그룹', '코드값': '20', '코드한글명': '결제승인완료'},
+                {'컬럼명': 'PAY_STAT', '코드그룹id': '012', '코드그룹 한글명칭': '결제승인상태그룹', '코드값': '30', '코드한글명': '결제전체취소'},
+                {'컬럼명': 'PAY_STAT', '코드그룹id': '012', '코드그룹 한글명칭': '결제승인상태그룹', '코드값': '90', '코드한글명': '결제승인실패'},
 
                 # 13. DELIV_STAT (배송상태)
-                {'컬럼명': 'DELIV_STAT', '코드그룹id': 'DELIV_STAT_GRP', '코드그룹 한글명칭': '배송상태단계그룹', '코드값': '10', '코드한글명': '배송준비중'},
-                {'컬럼명': 'DELIV_STAT', '코드그룹id': 'DELIV_STAT_GRP', '코드그룹 한글명칭': '배송상태단계그룹', '코드값': '20', '코드한글명': '택배사집하중'},
-                {'컬럼명': 'DELIV_STAT', '코드그룹id': 'DELIV_STAT_GRP', '코드그룹 한글명칭': '배송상태단계그룹', '코드값': '30', '코드한글명': '배송완료'},
-                {'컬럼명': 'DELIV_STAT', '코드그룹id': 'DELIV_STAT_GRP', '코드그룹 한글명칭': '배송상태단계그룹', '코드값': '40', '코드한글명': '반품회수진행'},
+                {'컬럼명': 'DELIV_STAT', '코드그룹id': '013', '코드그룹 한글명칭': '배송상태단계그룹', '코드값': '10', '코드한글명': '배송준비중'},
+                {'컬럼명': 'DELIV_STAT', '코드그룹id': '013', '코드그룹 한글명칭': '배송상태단계그룹', '코드값': '20', '코드한글명': '택배사집하중'},
+                {'컬럼명': 'DELIV_STAT', '코드그룹id': '013', '코드그룹 한글명칭': '배송상태단계그룹', '코드값': '30', '코드한글명': '배송완료'},
+                {'컬럼명': 'DELIV_STAT', '코드그룹id': '013', '코드그룹 한글명칭': '배송상태단계그룹', '코드값': '40', '코드한글명': '반품회수진행'},
 
                 # 14. DELIV_CORP (택배사)
-                {'컬럼명': 'DELIV_CORP', '코드그룹id': 'DELIV_CORP_GRP', '코드그룹 한글명칭': '제휴택배사코드그룹', '코드값': 'CJ', '코드한글명': 'CJ대한통운'},
-                {'컬럼명': 'DELIV_CORP', '코드그룹id': 'DELIV_CORP_GRP', '코드그룹 한글명칭': '제휴택배사코드그룹', '코드값': 'POST', '코드한글명': '우체국택배'},
-                {'컬럼명': 'DELIV_CORP', '코드그룹id': 'DELIV_CORP_GRP', '코드그룹 한글명칭': '제휴택배사코드그룹', '코드값': 'LOGEN', '코드한글명': '로젠택배'},
-                {'컬럼명': 'DELIV_CORP', '코드그룹id': 'DELIV_CORP_GRP', '코드그룹 한글명칭': '제휴택배사코드그룹', '코드값': 'HANJIN', '코드한글명': '한진택배'},
+                {'컬럼명': 'DELIV_CORP', '코드그룹id': '014', '코드그룹 한글명칭': '제휴택배사코드그룹', '코드값': 'CJ', '코드한글명': 'CJ대한통운'},
+                {'컬럼명': 'DELIV_CORP', '코드그룹id': '014', '코드그룹 한글명칭': '제휴택배사코드그룹', '코드값': 'POST', '코드한글명': '우체국택배'},
+                {'컬럼명': 'DELIV_CORP', '코드그룹id': '014', '코드그룹 한글명칭': '제휴택배사코드그룹', '코드값': 'LOGEN', '코드한글명': '로젠택배'},
+                {'컬럼명': 'DELIV_CORP', '코드그룹id': '014', '코드그룹 한글명칭': '제휴택배사코드그룹', '코드값': 'HANJIN', '코드한글명': '한진택배'},
 
                 # 15. COUPON_TYPE (쿠폰할인유형)
-                {'컬럼명': 'COUPON_TYPE', '코드그룹id': 'COUPON_TYPE_GRP', '코드그룹 한글명칭': '쿠폰할인유형그룹', '코드값': 'RATE', '코드한글명': '정률할인(%)'},
-                {'컬럼명': 'COUPON_TYPE', '코드그룹id': 'COUPON_TYPE_GRP', '코드그룹 한글명칭': '쿠폰할인유형그룹', '코드값': 'AMT', '코드한글명': '정액할인(원)'},
-                {'컬럼명': 'COUPON_TYPE', '코드그룹id': 'COUPON_TYPE_GRP', '코드그룹 한글명칭': '쿠폰할인유형그룹', '코드값': 'SHIP', '코드한글명': '무료배송'},
+                {'컬럼명': 'COUPON_TYPE', '코드그룹id': '015', '코드그룹 한글명칭': '쿠폰할인유형그룹', '코드값': 'RATE', '코드한글명': '정률할인(%)'},
+                {'컬럼명': 'COUPON_TYPE', '코드그룹id': '015', '코드그룹 한글명칭': '쿠폰할인유형그룹', '코드값': 'AMT', '코드한글명': '정액할인(원)'},
+                {'컬럼명': 'COUPON_TYPE', '코드그룹id': '015', '코드그룹 한글명칭': '쿠폰할인유형그룹', '코드값': 'SHIP', '코드한글명': '무료배송'},
 
                 # 16. COUPON_STAT (쿠폰사용상태)
-                {'컬럼명': 'COUPON_STAT', '코드그룹id': 'COUPON_STAT_GRP', '코드그룹 한글명칭': '쿠폰사용상태그룹', '코드값': '10', '코드한글명': '사용가능'},
-                {'컬럼명': 'COUPON_STAT', '코드그룹id': 'COUPON_STAT_GRP', '코드그룹 한글명칭': '쿠폰사용상태그룹', '코드값': '20', '코드한글명': '사용완료'},
-                {'컬럼명': 'COUPON_STAT', '코드그룹id': 'COUPON_STAT_GRP', '코드그룹 한글명칭': '쿠폰사용상태그룹', '코드값': '90', '코드한글명': '기간만료'},
+                {'컬럼명': 'COUPON_STAT', '코드그룹id': '016', '코드그룹 한글명칭': '쿠폰사용상태그룹', '코드값': '10', '코드한글명': '사용가능'},
+                {'컬럼명': 'COUPON_STAT', '코드그룹id': '016', '코드그룹 한글명칭': '쿠폰사용상태그룹', '코드값': '20', '코드한글명': '사용완료'},
+                {'컬럼명': 'COUPON_STAT', '코드그룹id': '016', '코드그룹 한글명칭': '쿠폰사용상태그룹', '코드값': '90', '코드한글명': '기간만료'},
 
                 # 17. POINT_TYPE (포인트구분)
-                {'컬럼명': 'POINT_TYPE', '코드그룹id': 'POINT_TYPE_GRP', '코드그룹 한글명칭': '포인트발생구분그룹', '코드값': '01', '코드한글명': '상품구매적립'},
-                {'컬럼명': 'POINT_TYPE', '코드그룹id': 'POINT_TYPE_GRP', '코드그룹 한글명칭': '포인트발생구분그룹', '코드값': '02', '코드한글명': '이벤트참여지급'},
-                {'컬럼명': 'POINT_TYPE', '코드그룹id': 'POINT_TYPE_GRP', '코드그룹 한글명칭': '포인트발생구분그룹', '코드값': '03', '코드한글명': '주문결제사용'},
-                {'컬럼명': 'POINT_TYPE', '코드그룹id': 'POINT_TYPE_GRP', '코드그룹 한글명칭': '포인트발생구분그룹', '코드값': '04', '코드한글명': '유효기간소멸'},
+                {'컬럼명': 'POINT_TYPE', '코드그룹id': '017', '코드그룹 한글명칭': '포인트발생구분그룹', '코드값': '01', '코드한글명': '상품구매적립'},
+                {'컬럼명': 'POINT_TYPE', '코드그룹id': '017', '코드그룹 한글명칭': '포인트발생구분그룹', '코드값': '02', '코드한글명': '이벤트참여지급'},
+                {'컬럼명': 'POINT_TYPE', '코드그룹id': '017', '코드그룹 한글명칭': '포인트발생구분그룹', '코드값': '03', '코드한글명': '주문결제사용'},
+                {'컬럼명': 'POINT_TYPE', '코드그룹id': '017', '코드그룹 한글명칭': '포인트발생구분그룹', '코드값': '04', '코드한글명': '유효기간소멸'},
 
                 # 18. POINT_STAT (포인트상태)
-                {'컬럼명': 'POINT_STAT', '코드그룹id': 'POINT_STAT_GRP', '코드그룹 한글명칭': '포인트상태그룹', '코드값': '10', '코드한글명': '정상적립'},
-                {'컬럼명': 'POINT_STAT', '코드그룹id': 'POINT_STAT_GRP', '코드그룹 한글명칭': '포인트상태그룹', '코드값': '20', '코드한글명': '사용차감'},
-                {'컬럼명': 'POINT_STAT', '코드그룹id': 'POINT_STAT_GRP', '코드그룹 한글명칭': '포인트상태그룹', '코드값': '90', '코드한글명': '취소회수'},
+                {'컬럼명': 'POINT_STAT', '코드그룹id': '018', '코드그룹 한글명칭': '포인트상태그룹', '코드값': '10', '코드한글명': '정상적립'},
+                {'컬럼명': 'POINT_STAT', '코드그룹id': '018', '코드그룹 한글명칭': '포인트상태그룹', '코드값': '20', '코드한글명': '사용차감'},
+                {'컬럼명': 'POINT_STAT', '코드그룹id': '018', '코드그룹 한글명칭': '포인트상태그룹', '코드값': '90', '코드한글명': '취소회수'},
 
                 # 19. RATING_SCORE (평점점수)
-                {'컬럼명': 'RATING_SCORE', '코드그룹id': 'RATING_SCORE_GRP', '코드그룹 한글명칭': '평점점수그룹', '코드값': '5', '코드한글명': '★★★★★ (아주만족)'},
-                {'컬럼명': 'RATING_SCORE', '코드그룹id': 'RATING_SCORE_GRP', '코드그룹 한글명칭': '평점점수그룹', '코드값': '4', '코드한글명': '★★★★☆ (만족)'},
-                {'컬럼명': 'RATING_SCORE', '코드그룹id': 'RATING_SCORE_GRP', '코드그룹 한글명칭': '평점점수그룹', '코드값': '3', '코드한글명': '★★★☆☆ (보통)'},
-                {'컬럼명': 'RATING_SCORE', '코드그룹id': 'RATING_SCORE_GRP', '코드그룹 한글명칭': '평점점수그룹', '코드값': '2', '코드한글명': '★★☆☆☆ (불만)'},
-                {'컬럼명': 'RATING_SCORE', '코드그룹id': 'RATING_SCORE_GRP', '코드그룹 한글명칭': '평점점수그룹', '코드값': '1', '코드한글명': '★☆☆☆☆ (매우불만)'},
+                {'컬럼명': 'RATING_SCORE', '코드그룹id': '019', '코드그룹 한글명칭': '평점점수그룹', '코드값': '5', '코드한글명': '★★★★★ (아주만족)'},
+                {'컬럼명': 'RATING_SCORE', '코드그룹id': '019', '코드그룹 한글명칭': '평점점수그룹', '코드값': '4', '코드한글명': '★★★★☆ (만족)'},
+                {'컬럼명': 'RATING_SCORE', '코드그룹id': '019', '코드그룹 한글명칭': '평점점수그룹', '코드값': '3', '코드한글명': '★★★☆☆ (보통)'},
+                {'컬럼명': 'RATING_SCORE', '코드그룹id': '019', '코드그룹 한글명칭': '평점점수그룹', '코드값': '2', '코드한글명': '★★☆☆☆ (불만)'},
+                {'컬럼명': 'RATING_SCORE', '코드그룹id': '019', '코드그룹 한글명칭': '평점점수그룹', '코드값': '1', '코드한글명': '★☆☆☆☆ (매우불만)'},
 
                 # 20. REVIEW_STAT (게시상태)
-                {'컬럼명': 'REVIEW_STAT', '코드그룹id': 'REVIEW_STAT_GRP', '코드그룹 한글명칭': '게시물상태그룹', '코드값': '10', '코드한글명': '정상공개'},
-                {'컬럼명': 'REVIEW_STAT', '코드그룹id': 'REVIEW_STAT_GRP', '코드그룹 한글명칭': '게시물상태그룹', '코드값': '20', '코드한글명': '관리자비공개'},
-                {'컬럼명': 'REVIEW_STAT', '코드그룹id': 'REVIEW_STAT_GRP', '코드그룹 한글명칭': '게시물상태그룹', '코드값': '90', '코드한글명': '작성자삭제'}
+                {'컬럼명': 'REVIEW_STAT', '코드그룹id': '020', '코드그룹 한글명칭': '게시물상태그룹', '코드값': '10', '코드한글명': '정상공개'},
+                {'컬럼명': 'REVIEW_STAT', '코드그룹id': '020', '코드그룹 한글명칭': '게시물상태그룹', '코드값': '20', '코드한글명': '관리자비공개'},
+                {'컬럼명': 'REVIEW_STAT', '코드그룹id': '020', '코드그룹 한글명칭': '게시물상태그룹', '코드값': '90', '코드한글명': '작성자삭제'}
             ]
 
             # 3. 테이블 간 수동관계 정의 (20개 관계)
@@ -9852,7 +9835,7 @@ class CommonCodeMapDialog(QDialog):
         lbl_custom_desc = QLabel(
             "💡 변환 쿼리 작성 가이드:\n"
             "   - 콤마(,)와 SELECT 서브쿼리 및 별칭(AS)을 포함해 작성합니다.\n"
-            "   - 예시: , (SELECT CODE_NAME FROM COMMON_CODE_SUB WHERE CODE_GROUP_VAL = 'USER_STATUS_GRP' AND CODE_VALUE = DEPT_CD) AS \"부서코드명\""
+            "   - 예시: , (SELECT CODE_NAME FROM COMMON_CODE_SUB WHERE CODE_GROUP_VAL = '001' AND CODE_VALUE = DEPT_CD) AS \"부서코드명\""
         )
         lbl_custom_desc.setStyleSheet("font-size: 10px; color: #475569; line-height: 14px;")
         custom_lay.addWidget(lbl_custom_desc)
@@ -9860,7 +9843,7 @@ class CommonCodeMapDialog(QDialog):
         self.txt_custom_query = QTextEdit()
         self.txt_custom_query.setFont(QFont("Consolas", 9))
         self.txt_custom_query.setPlaceholderText(
-            ', (SELECT CODE_NAME FROM COMMON_CODE_SUB WHERE CODE_GROUP_VAL = \'USER_STATUS_GRP\' AND CODE_VALUE = DEPT_CD) AS "부서코드명"'
+            ', (SELECT CODE_NAME FROM COMMON_CODE_SUB WHERE CODE_GROUP_VAL = \'001\' AND CODE_VALUE = DEPT_CD) AS "부서코드명"'
         )
         self.txt_custom_query.setPlainText(self.custom_query)
         self.txt_custom_query.setStyleSheet("""
@@ -12497,297 +12480,6 @@ class TableSpecGuideDialog(QDialog):
             self.db_mgr.set_setting('table_spec_guide_dismissed', '1')
         super().reject()
 
-
-class QueryInfoGuideDialog(QDialog):
-    """쿼리 정보 사용 안내 플로팅 팝업 다이얼로그"""
-    def __init__(self, db_mgr, parent=None):
-        super().__init__(parent)
-        self.db_mgr = db_mgr
-        self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint |
-            Qt.WindowType.Dialog
-        )
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedWidth(560)
-        self.init_ui()
-
-    def init_ui(self):
-        outer_layout = QVBoxLayout(self)
-        outer_layout.setContentsMargins(12, 12, 12, 12)
-
-        self.card = QFrame()
-        self.card.setObjectName("FloatingQueryGuideCard")
-        self.card.setStyleSheet("""
-            QFrame#FloatingQueryGuideCard {
-                background-color: #FFFFFF;
-                border: 1.5px solid #3B82F6;
-                border-radius: 10px;
-            }
-        """)
-
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(20)
-        shadow.setColor(QColor(0, 0, 0, 70))
-        shadow.setOffset(0, 4)
-        self.card.setGraphicsEffect(shadow)
-
-        card_layout = QVBoxLayout(self.card)
-        card_layout.setContentsMargins(20, 16, 20, 16)
-        card_layout.setSpacing(14)
-
-        # 1. 헤더바
-        header_layout = QHBoxLayout()
-        header_layout.setContentsMargins(0, 0, 0, 0)
-        
-        lbl_title = QLabel("쿼리 정보 관리 가이드")
-        lbl_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #1E3A8A;")
-        header_layout.addWidget(lbl_title)
-        header_layout.addStretch()
-
-        btn_close_x = QPushButton("✕")
-        btn_close_x.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_close_x.setStyleSheet("""
-            QPushButton {
-                border: none;
-                font-size: 13px;
-                color: #64748B;
-                font-weight: bold;
-                padding: 2px 6px;
-                background: transparent;
-            }
-            QPushButton:hover {
-                color: #0F172A;
-            }
-        """)
-        btn_close_x.clicked.connect(self.reject)
-        header_layout.addWidget(btn_close_x)
-        card_layout.addLayout(header_layout)
-
-        # 2. 본문 영역 (공문서 개조식, 내부 테두리 없음)
-        content_lbl = QLabel(
-            "<div style=\"font-family: 'Malgun Gothic', sans-serif; color: #1E293B;\">"
-            "<p style=\"margin: 0 0 6px 0; font-size: 13px; font-weight: bold; color: #1E3A8A;\">"
-            "□ 쿼리 보관 및 계층 관리"
-            "</p>"
-            "<div style=\"margin: 0 0 14px 10px; font-size: 11px; line-height: 165%; color: #334155;\">"
-            "○ <b>분류 체계</b>: 업무별 상위·하위 폴더(카테고리) 생성을 통한 체계적 SQL 자산 관리<br>"
-            "○ <b>드래그 앤 드롭</b>: 마우스 드래그로 쿼리 및 분류의 위치·순서 자유 이동 및 재배치<br>"
-            "○ <b>즐겨찾는 쿼리</b>: 자주 사용하는 주요 SQL을 상단 즐겨찾기 탭에 등록하여 신속 조회"
-            "</div>"
-            "<p style=\"margin: 0 0 6px 0; font-size: 13px; font-weight: bold; color: #1E3A8A;\">"
-            "□ 검색 편의 및 일괄 처리"
-            "</p>"
-            "<div style=\"margin: 0 0 14px 10px; font-size: 11px; line-height: 165%; color: #334155;\">"
-            "○ <b>다중 조건 검색</b>: '쿼리제목', 'SQL 내용', '설명' 기준 실시간 필터링 지원<br>"
-            "○ <b>가져오기 / 내보내기</b>: 엑셀 파일 기반 쿼리 대량 일괄 등록 및 백업 파일 추출 지원<br>"
-            "○ <b>SQL 상세 편집기</b>: 구문 강조(Syntax Highlighting) 및 클립보드 원클릭 복사"
-            "</div>"
-            "<div style=\"margin: 0; font-size: 11px; color: #64748B;\">"
-            "※ 좌측 툴바의 <b>[사용 가이드]</b> 버튼을 통해 언제든 본 안내를 다시 확인할 수 있습니다."
-            "</div>"
-            "</div>"
-        )
-        content_lbl.setWordWrap(True)
-        content_lbl.setTextFormat(Qt.TextFormat.RichText)
-        card_layout.addWidget(content_lbl)
-
-        # 3. 하단 액션 영역
-        footer_layout = QHBoxLayout()
-        footer_layout.setContentsMargins(0, 4, 0, 0)
-
-        self.chk_dont_show = QCheckBox("다시 보지 않기")
-        self.chk_dont_show.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.chk_dont_show.setStyleSheet("font-size: 11px; font-weight: 500; color: #475569;")
-        footer_layout.addWidget(self.chk_dont_show)
-        footer_layout.addStretch()
-
-        btn_confirm = QPushButton("확인")
-        btn_confirm.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_confirm.setStyleSheet("""
-            QPushButton {
-                background-color: #2563EB;
-                color: #FFFFFF;
-                border: none;
-                border-radius: 4px;
-                padding: 6px 22px;
-                font-size: 12px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1D4ED8;
-            }
-        """)
-        btn_confirm.clicked.connect(self.on_confirm)
-        footer_layout.addWidget(btn_confirm)
-
-        card_layout.addLayout(footer_layout)
-        outer_layout.addWidget(self.card)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            event.accept()
-
-    def mouseMoveEvent(self, event):
-        if event.buttons() == Qt.MouseButton.LeftButton and hasattr(self, '_drag_pos'):
-            self.move(event.globalPosition().toPoint() - self._drag_pos)
-            event.accept()
-
-    def on_confirm(self):
-        if self.chk_dont_show.isChecked():
-            self.db_mgr.set_setting('query_info_guide_dismissed', '1')
-        self.accept()
-
-    def reject(self):
-        if self.chk_dont_show.isChecked():
-            self.db_mgr.set_setting('query_info_guide_dismissed', '1')
-        super().reject()
-
-
-class TaskInfoGuideDialog(QDialog):
-    """업무 정보 사용 안내 플로팅 팝업 다이얼로그"""
-    def __init__(self, db_mgr, parent=None):
-        super().__init__(parent)
-        self.db_mgr = db_mgr
-        self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint |
-            Qt.WindowType.Dialog
-        )
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedWidth(560)
-        self.init_ui()
-
-    def init_ui(self):
-        outer_layout = QVBoxLayout(self)
-        outer_layout.setContentsMargins(12, 12, 12, 12)
-
-        self.card = QFrame()
-        self.card.setObjectName("FloatingTaskGuideCard")
-        self.card.setStyleSheet("""
-            QFrame#FloatingTaskGuideCard {
-                background-color: #FFFFFF;
-                border: 1.5px solid #3B82F6;
-                border-radius: 10px;
-            }
-        """)
-
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(20)
-        shadow.setColor(QColor(0, 0, 0, 70))
-        shadow.setOffset(0, 4)
-        self.card.setGraphicsEffect(shadow)
-
-        card_layout = QVBoxLayout(self.card)
-        card_layout.setContentsMargins(20, 16, 20, 16)
-        card_layout.setSpacing(14)
-
-        # 1. 헤더바
-        header_layout = QHBoxLayout()
-        header_layout.setContentsMargins(0, 0, 0, 0)
-        
-        lbl_title = QLabel("업무 정보 관리 가이드")
-        lbl_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #1E3A8A;")
-        header_layout.addWidget(lbl_title)
-        header_layout.addStretch()
-
-        btn_close_x = QPushButton("✕")
-        btn_close_x.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_close_x.setStyleSheet("""
-            QPushButton {
-                border: none;
-                font-size: 13px;
-                color: #64748B;
-                font-weight: bold;
-                padding: 2px 6px;
-                background: transparent;
-            }
-            QPushButton:hover {
-                color: #0F172A;
-            }
-        """)
-        btn_close_x.clicked.connect(self.reject)
-        header_layout.addWidget(btn_close_x)
-        card_layout.addLayout(header_layout)
-
-        # 2. 본문 영역 (공문서 개조식, 내부 테두리 없음)
-        content_lbl = QLabel(
-            "<div style=\"font-family: 'Malgun Gothic', sans-serif; color: #1E293B;\">"
-            "<p style=\"margin: 0 0 6px 0; font-size: 13px; font-weight: bold; color: #1E3A8A;\">"
-            "□ 업무 문서 및 폴더 관리"
-            "</p>"
-            "<div style=\"margin: 0 0 14px 10px; font-size: 11px; line-height: 165%; color: #334155;\">"
-            "○ <b>계층형 폴더 구성</b>: 업무 분야별 폴더 및 서브 폴더 생성을 통한 문서 체계화<br>"
-            "○ <b>서식 템플릿 지원</b>: 회의록, 장애보고서, 정기점검 등 표준 업무 서식 원클릭 적용<br>"
-            "○ <b>마우스 순서 변경</b>: 드래그 앤 드롭을 통한 폴더 및 업무 문서의 간편한 위치 이동"
-            "</div>"
-            "<p style=\"margin: 0 0 6px 0; font-size: 13px; font-weight: bold; color: #1E3A8A;\">"
-            "□ 상세 편집 및 업무 연계"
-            "</p>"
-            "<div style=\"margin: 0 0 14px 10px; font-size: 11px; line-height: 165%; color: #334155;\">"
-            "○ <b>리치 텍스트 편집</b>: 서식 스타일, 폰트 색상 및 본문 캡처 이미지 붙여넣기(Ctrl+V)<br>"
-            "○ <b>첨부파일 관리</b>: 업무 증빙 문서 및 파일 드래그 등록 및 즉시 실행 지원<br>"
-            "○ <b>반복 주기 설정</b>: 매일/매주/매월 주기 지정 시 [업무 달력] 화면과 실시간 자동 연동"
-            "</div>"
-            "<div style=\"margin: 0; font-size: 11px; color: #64748B;\">"
-            "※ 좌측 툴바의 <b>[사용 가이드]</b> 버튼을 통해 언제든 본 안내를 다시 확인할 수 있습니다."
-            "</div>"
-            "</div>"
-        )
-        content_lbl.setWordWrap(True)
-        content_lbl.setTextFormat(Qt.TextFormat.RichText)
-        card_layout.addWidget(content_lbl)
-
-        # 3. 하단 액션 영역
-        footer_layout = QHBoxLayout()
-        footer_layout.setContentsMargins(0, 4, 0, 0)
-
-        self.chk_dont_show = QCheckBox("다시 보지 않기")
-        self.chk_dont_show.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.chk_dont_show.setStyleSheet("font-size: 11px; font-weight: 500; color: #475569;")
-        footer_layout.addWidget(self.chk_dont_show)
-        footer_layout.addStretch()
-
-        btn_confirm = QPushButton("확인")
-        btn_confirm.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_confirm.setStyleSheet("""
-            QPushButton {
-                background-color: #2563EB;
-                color: #FFFFFF;
-                border: none;
-                border-radius: 4px;
-                padding: 6px 22px;
-                font-size: 12px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1D4ED8;
-            }
-        """)
-        btn_confirm.clicked.connect(self.on_confirm)
-        footer_layout.addWidget(btn_confirm)
-
-        card_layout.addLayout(footer_layout)
-        outer_layout.addWidget(self.card)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            event.accept()
-
-    def mouseMoveEvent(self, event):
-        if event.buttons() == Qt.MouseButton.LeftButton and hasattr(self, '_drag_pos'):
-            self.move(event.globalPosition().toPoint() - self._drag_pos)
-            event.accept()
-
-    def on_confirm(self):
-        if self.chk_dont_show.isChecked():
-            self.db_mgr.set_setting('task_info_guide_dismissed', '1')
-        self.accept()
-
-    def reject(self):
-        if self.chk_dont_show.isChecked():
-            self.db_mgr.set_setting('task_info_guide_dismissed', '1')
-        super().reject()
 
 
 class TableDetailWidget(QWidget):
@@ -19053,7 +18745,7 @@ class CategoryAddEditDialog(QDialog):
             layout.addWidget(self.chk_top_level)
 
         btn_layout = QHBoxLayout()
-        btn_save = QPushButton("💾 저장")
+        btn_save = QPushButton("저장")
         btn_save.clicked.connect(self.accept)
         btn_close = QPushButton("닫기")
         btn_close.clicked.connect(self.reject)
@@ -19101,7 +18793,7 @@ class QueryAddEditDialog(QDialog):
         self.refresh_categories(current_cat_id)
         
         # 새 카테고리 바로 추가용 버튼
-        btn_new_cat = QPushButton("➕ 새 카테고리")
+        btn_new_cat = QPushButton("새 카테고리")
         btn_new_cat.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         btn_new_cat.clicked.connect(self.on_new_cat_clicked)
         btn_new_cat.setStyleSheet("padding: 2px 8px; font-size: 11px;")
@@ -19140,7 +18832,7 @@ class QueryAddEditDialog(QDialog):
 
         # 버튼 영역
         btn_layout = QHBoxLayout()
-        btn_save = QPushButton("💾 저장")
+        btn_save = QPushButton("저장")
         btn_save.clicked.connect(self.on_save_clicked)
         btn_close = QPushButton("닫기")
         btn_close.clicked.connect(self.reject)
@@ -19237,7 +18929,7 @@ class BulkImportSetupDialog(QDialog):
         self.combo_cat = QComboBox()
         self._reload_cats()
 
-        btn_new_cat = QPushButton("➕ 새 카테고리")
+        btn_new_cat = QPushButton("새 카테고리")
         btn_new_cat.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         btn_new_cat.clicked.connect(self.on_new_cat_clicked)
         btn_new_cat.setStyleSheet("padding: 2px 8px; font-size: 11px;")
@@ -19267,9 +18959,9 @@ class BulkImportSetupDialog(QDialog):
 
         # ── 하단 버튼 ──
         btn_layout = QHBoxLayout()
-        btn_files = QPushButton("🗂️ 다중 파일 선택")
+        btn_files = QPushButton("다중 파일 선택")
         btn_files.clicked.connect(self.on_files_clicked)
-        self.btn_folder = QPushButton("📂 폴더 일괄 선택")
+        self.btn_folder = QPushButton("폴더 일괄 선택")
         self.btn_folder.clicked.connect(self.on_folder_clicked)
         btn_close = QPushButton("취소")
         btn_close.clicked.connect(self.reject)
@@ -19722,8 +19414,8 @@ class QuerySidebarWidget(QWidget):
         # 보관함 하단 도구 툴바: 모두 열기/닫기 행 추가
         cat_expand_layout = QHBoxLayout()
         cat_expand_layout.setSpacing(4)
-        btn_cat_expand = QPushButton("📂 모두 열기")
-        btn_cat_collapse = QPushButton("📁 모두 닫기")
+        btn_cat_expand = QPushButton("모두 열기")
+        btn_cat_collapse = QPushButton("모두 닫기")
         cat_exp_style = """
             QPushButton {
                 font-size: 10px;
@@ -19748,12 +19440,12 @@ class QuerySidebarWidget(QWidget):
 
         # 분류/쿼리 관리 버튼 툴바
         cat_tb = QHBoxLayout()
-        btn_cat_add = QPushButton("➕ 분류추가")
-        btn_cat_edit = QPushButton("✏️ 분류수정")
-        btn_cat_del = QPushButton("❌ 분류삭제")
-        btn_query_add = QPushButton("➕ 쿼리등록")
-        btn_bulk_import = QPushButton("📥 가져오기")
-        btn_bulk_export = QPushButton("📤 내보내기")
+        btn_cat_add = QPushButton("분류추가")
+        btn_cat_edit = QPushButton("분류수정")
+        btn_cat_del = QPushButton("분류삭제")
+        btn_query_add = QPushButton("쿼리등록")
+        btn_bulk_import = QPushButton("가져오기")
+        btn_bulk_export = QPushButton("내보내기")
         
         # 버튼에 호버 효과 추가
         btn_common_style = """
@@ -19811,28 +19503,6 @@ class QuerySidebarWidget(QWidget):
         cat_tb2.setSpacing(4)
         cat_tb2.addWidget(btn_bulk_import)
         cat_tb2.addWidget(btn_bulk_export)
-
-        btn_query_guide = QPushButton("사용 가이드")
-        btn_query_guide.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_query_guide.setStyleSheet("""
-            QPushButton {
-                font-size: 10px;
-                padding: 4px 6px;
-                border: 1px solid #93C5FD;
-                border-radius: 3px;
-                background-color: #EFF6FF;
-                color: #1D4ED8;
-                font-weight: 600;
-            }
-            QPushButton:hover {
-                background-color: #DBEAFE;
-                border-color: #3B82F6;
-            }
-        """)
-        btn_query_guide.setSizePolicy(_QSP.Policy.Expanding, _QSP.Policy.Fixed)
-        btn_query_guide.clicked.connect(self.open_query_guide_dialog)
-        cat_tb2.addWidget(btn_query_guide)
-
         cat_layout.addLayout(cat_tb2)
 
         # 2. 즐겨찾는 쿼리 탭
@@ -19939,7 +19609,7 @@ class QuerySidebarWidget(QWidget):
         
         # 최근조회 하단 도구 툴바
         rec_tb = QHBoxLayout()
-        btn_rec_clear = QPushButton("🧹 최근이력 전체비우기")
+        btn_rec_clear = QPushButton("최근이력 전체비우기")
         btn_rec_clear.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         btn_rec_clear.setStyleSheet("""
             QPushButton {
@@ -19964,23 +19634,9 @@ class QuerySidebarWidget(QWidget):
         self.tabs.addTab(self.tab_fav, "즐겨찾기")
         self.tabs.addTab(self.tab_recent, "최근조회")
 
-        # 초기 데이터 로드
         self.refresh_cat_tree()
         self.refresh_fav_tree()
         self.refresh_recent_tree()
-        QTimer.singleShot(350, self._check_and_show_guide)
-
-    def _check_and_show_guide(self):
-        try:
-            dismissed = self.db_mgr.get_setting('query_info_guide_dismissed', '0')
-            if dismissed != '1':
-                self.open_query_guide_dialog()
-        except Exception as e:
-            print(f"[QueryInfoGuide AutoShow Error] {e}")
-
-    def open_query_guide_dialog(self):
-        dlg = QueryInfoGuideDialog(self.db_mgr, self)
-        dlg.exec()
 
     def clear_query_search(self):
         self.txt_query_search.clear()
@@ -20586,6 +20242,9 @@ class QueryDetailTabWidget(QWidget):
         )
 
         self.is_dirty = has_changed
+        if hasattr(self, 'btn_revert') and self.btn_revert is not None:
+            self.btn_revert.setEnabled(self.is_dirty)
+
         idx = self.main_win.tab_widget.indexOf(self)
         if idx != -1:
             title_str = title.strip() or "무제"
@@ -20645,24 +20304,43 @@ class QueryDetailTabWidget(QWidget):
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(6)
 
-        btn_copy = QPushButton("📋 클립보드 복사")
-        btn_format = QPushButton("✨ SQL 정렬")
-        btn_fav = QPushButton("⭐ 즐겨찾기 토글")
-        btn_revert = QPushButton("🔄 되돌리기")
+        btn_copy = QPushButton("클립보드 복사")
+        btn_format = QPushButton("SQL 정렬")
+        btn_fav = QPushButton("즐겨찾기 토글")
+        self.btn_revert = QPushButton("되돌리기")
+        self.btn_revert.setEnabled(False)
         
-        btn_del = QPushButton("🗑️ 삭제")
-        btn_save = QPushButton("💾 저장(S)")
+        btn_del = QPushButton("삭제")
+        btn_save = QPushButton("저장(S)")
 
         # Ctrl+S 단축키 등록
         self.save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
         self.save_shortcut.activated.connect(self.on_save_clicked)
 
-        for btn in [btn_copy, btn_format, btn_fav, btn_revert, btn_del, btn_save]:
+        for btn in [btn_copy, btn_format, btn_fav, self.btn_revert, btn_del, btn_save]:
             btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             
         btn_copy.setStyleSheet("background-color: #059669; color: white; font-weight: bold; padding: 8px 16px; border-radius: 4px; font-size: 12px;")
         btn_format.setStyleSheet("background-color: #E0F2FE; color: #0369A1; border: 1px solid #BAE6FD; font-weight: bold; padding: 8px 16px; border-radius: 4px; font-size: 12px;")
-        btn_revert.setStyleSheet("background-color: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; font-weight: bold; padding: 8px 16px; border-radius: 4px; font-size: 12px;")
+        self.btn_revert.setStyleSheet("""
+            QPushButton {
+                background-color: #F1F5F9;
+                color: #475569;
+                border: 1px solid #CBD5E1;
+                font-weight: bold;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #E2E8F0;
+            }
+            QPushButton:disabled {
+                background-color: #F8FAFC;
+                color: #94A3B8;
+                border: 1px solid #E2E8F0;
+            }
+        """)
         
         btn_del.setStyleSheet("""
             QPushButton {
@@ -20701,14 +20379,14 @@ class QueryDetailTabWidget(QWidget):
         btn_copy.clicked.connect(self.on_copy_clicked)
         btn_format.clicked.connect(self.on_format_clicked)
         btn_fav.clicked.connect(lambda: self.on_fav_clicked(btn_fav))
-        btn_revert.clicked.connect(self.on_revert_clicked)
+        self.btn_revert.clicked.connect(self.on_revert_clicked)
         btn_del.clicked.connect(self.on_delete_clicked)
         btn_save.clicked.connect(self.on_save_clicked)
 
         btn_layout.addWidget(btn_copy)
         btn_layout.addWidget(btn_format)
         btn_layout.addWidget(btn_fav)
-        btn_layout.addWidget(btn_revert)
+        btn_layout.addWidget(self.btn_revert)
         btn_layout.addStretch()
         btn_layout.addWidget(btn_del)
         btn_layout.addWidget(btn_save)
@@ -20716,10 +20394,10 @@ class QueryDetailTabWidget(QWidget):
 
     def update_fav_btn_style(self, btn, is_fav):
         if is_fav:
-            btn.setText("⭐ 즐겨찾기 해제")
+            btn.setText("즐겨찾기 해제")
             btn.setStyleSheet("background-color: #FEF3C7; color: #D97706; border: 1px solid #FDE68A; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
         else:
-            btn.setText("☆ 즐겨찾기 등록")
+            btn.setText("즐겨찾기 등록")
             btn.setStyleSheet("background-color: #FFFFFF; color: #475569; border: 1px solid #CBD5E1; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
 
     def on_format_clicked(self):
@@ -20778,6 +20456,8 @@ class QueryDetailTabWidget(QWidget):
         if reply == QMessageBox.StandardButton.Yes:
             self.load_query_data()
             self.is_dirty = False
+            if hasattr(self, 'btn_revert') and self.btn_revert is not None:
+                self.btn_revert.setEnabled(False)
             
             # Reset tab title (remove *)
             idx = self.main_win.tab_widget.indexOf(self)
@@ -20800,6 +20480,8 @@ class QueryDetailTabWidget(QWidget):
             show_copy_message("💾 변경사항이 저장되었습니다.", self)
             
             self.is_dirty = False
+            if hasattr(self, 'btn_revert') and self.btn_revert is not None:
+                self.btn_revert.setEnabled(False)
             self.original_title = title
             self.original_desc = desc
             self.original_cat_id = cat_id
@@ -21451,9 +21133,9 @@ class RecentQueryDetailTabWidget(QWidget):
 
         # 하단 버튼
         btn_layout = QHBoxLayout()
-        btn_copy = QPushButton("📋 클립보드에 재복사")
-        btn_format = QPushButton("✨ SQL 정렬")
-        btn_del = QPushButton("❌ 이력 삭제")
+        btn_copy = QPushButton("클립보드에 재복사")
+        btn_format = QPushButton("SQL 정렬")
+        btn_del = QPushButton("이력 삭제")
 
         for btn in [btn_copy, btn_format, btn_del]:
             btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -21550,17 +21232,18 @@ def main():
 def format_sql(sql):
     if not sql:
         return ""
-        
+
     import re
+
     # 1. 홑따옴표와 쌍따옴표 내부 문자열 및 주석(Line/Block comment) 임시 마스킹
     strings = []
     def repl_string(m):
         strings.append(m.group(0))
         return f"__SQL_STR_{len(strings)-1}__"
-        
+
     # Block comment 마스킹
     masked_sql = re.sub(r"/\*.*?\*/", repl_string, sql, flags=re.DOTALL)
-    
+
     # Line comment 마스킹 (개행 문자 보존)
     def repl_line_comment(m):
         val = m.group(0)
@@ -21568,43 +21251,60 @@ def format_sql(sql):
         strings.append(val.rstrip("\r\n"))
         return f"__SQL_STR_{len(strings)-1}__" + suffix
     masked_sql = re.sub(r"--.*?(?:\r?\n|$)", repl_line_comment, masked_sql)
-    
+
     # 문자열 마스킹
     masked_sql = re.sub(r"'(?:''|[^'])*'", repl_string, masked_sql)
     masked_sql = re.sub(r'"(?:""|[^"])*"', repl_string, masked_sql)
 
-    # 2. SQL 예약어 목록 정의
-    keywords = [
-        "SELECT", "FROM", "WHERE", "GROUP BY", "ORDER BY", "HAVING", "LIMIT",
-        "INSERT INTO", "INSERT", "VALUES", "UPDATE", "SET", "DELETE",
-        "LEFT JOIN", "RIGHT JOIN", "INNER JOIN", "OUTER JOIN", "JOIN", "ON",
-        "AND", "OR", "AS", "INTO", "UNION ALL", "UNION", "DISTINCT", "CASE", "WHEN",
-        "THEN", "ELSE", "END", "CREATE TABLE", "ALTER TABLE", "DROP TABLE",
-        "COUNT", "SUM", "AVG", "MIN", "MAX"
+    # 2. SQL 예약어 목록 정의 (길이 긴 순으로 정렬하여 정확한 매칭 보장)
+    join_keywords = [
+        "NATURAL LEFT OUTER JOIN", "NATURAL RIGHT OUTER JOIN", "NATURAL FULL OUTER JOIN",
+        "NATURAL LEFT JOIN", "NATURAL RIGHT JOIN", "NATURAL FULL JOIN",
+        "NATURAL INNER JOIN", "NATURAL JOIN",
+        "LEFT OUTER JOIN", "RIGHT OUTER JOIN", "FULL OUTER JOIN",
+        "LEFT JOIN", "RIGHT JOIN", "FULL JOIN",
+        "INNER JOIN", "CROSS JOIN", "JOIN",
+        "CROSS APPLY", "OUTER APPLY"
     ]
-    
-    for kw in sorted(keywords, key=len, reverse=True):
-        pattern = re.compile(rf"\b{kw}\b", re.IGNORECASE)
+
+    major_keywords = [
+        "FROM", "WHERE", "GROUP BY", "ORDER BY", "HAVING", "LIMIT",
+        "INSERT INTO", "INSERT", "VALUES", "UPDATE", "SET", "DELETE",
+        "UNION ALL", "UNION", "CREATE TABLE", "ALTER TABLE", "DROP TABLE"
+    ]
+
+    other_keywords = [
+        "SELECT", "ON", "AND", "OR", "AS", "INTO", "DISTINCT", "CASE", "WHEN",
+        "THEN", "ELSE", "END", "NOT IN", "IN", "IS NOT NULL", "IS NULL", "NOT EXISTS", "EXISTS",
+        "BETWEEN", "LIKE", "COUNT", "SUM", "AVG", "MIN", "MAX"
+    ]
+
+    all_keywords = join_keywords + major_keywords + other_keywords
+    all_keywords_sorted = sorted(list(set(all_keywords)), key=len, reverse=True)
+
+    for kw in all_keywords_sorted:
+        pattern = re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE)
         masked_sql = pattern.sub(kw.upper(), masked_sql)
 
-    # 3. 토크나이징 (단어, 한글 식별자, 예약어, 구분 기호 등 매칭)
+    # 3. 토크나이징 (바인드 변수, 단어, Oracle 식별자, 복합 연산자, 예약어 등)
     token_pattern = re.compile(
         r'(__SQL_STR_\d+__)|'
-        r'\b(' + '|'.join(keywords) + r')\b|'
-        r'([a-zA-Z0-9_가-힣{}]+)|'
-        r'([^\w\s])',
+        r'(:\w+)|'  # 바인드 변수 (:ID, :NAME 등)
+        r'\b(' + '|'.join(re.escape(k) for k in all_keywords_sorted) + r')\b|'
+        r'([a-zA-Z0-9_가-힣$#{}]+)|'  # Oracle 식별자 ($와 # 포함)
+        r'(>=|<=|<>|!=|:=|\|\||[^\w\s])',
         re.IGNORECASE
     )
-    
+
     tokens = []
     for match in token_pattern.finditer(masked_sql):
         tokens.append(match.group(0))
-        
+
     # 멀티라인 서브쿼리 여부 사전 식별
     multiline_parens = set()
     multiline_closers = set()
     stack = []
-    
+
     def should_multiline_paren(start_idx):
         depth = 0
         end_idx = -1
@@ -21625,8 +21325,7 @@ def format_sql(sql):
                     contains_select = True
         if end_idx == -1:
             return False
-        # 서브쿼리를 포함하고 있고, 괄호 내부 토큰 수가 8개를 초과하는 경우만 멀티라인으로 배치
-        return contains_select and token_count > 8
+        return contains_select and token_count > 6
 
     for idx, tok in enumerate(tokens):
         if tok == '(':
@@ -21643,21 +21342,18 @@ def format_sql(sql):
     formatted_parts = []
     paren_depth = 0
     paren_indent_stack = []
-    paren_multiline_stack = [] # 각 괄호 차수의 멀티라인 여부를 추적할 스택
+    paren_multiline_stack = []
     current_indent = 0
-    
-    newline_keywords = {
-        "FROM", "WHERE", "GROUP BY", "ORDER BY", "HAVING", "LIMIT",
-        "INSERT", "VALUES", "UPDATE", "SET", "DELETE",
-        "LEFT JOIN", "RIGHT JOIN", "INNER JOIN", "OUTER JOIN", "JOIN",
-        "UNION ALL", "UNION"
-    }
-    
-    indent_keywords = {"AND", "OR"}
-    
-    # SELECT 바로 직후 컬럼명 줄바꿈 처리를 위한 상태 플래그
-    after_select = False
-    
+
+    newline_keywords = set(major_keywords + join_keywords) - {"WHERE", "HAVING", "SET"}
+    on_indent_keywords = {"ON"}
+    condition_indent_keywords = {"AND", "OR"}
+
+    after_clause_start = False
+    current_clause = ""
+    current_clause_indent = 7
+    current_join_indent = 10
+
     def add_newline(indent_size):
         nonlocal current_indent
         if formatted_parts and not formatted_parts[-1].endswith("\n"):
@@ -21668,25 +21364,39 @@ def format_sql(sql):
         current_indent = indent_size
 
     def is_multiline_context():
-        # 메인 쿼리문 레벨이거나, 현재 속한 최인접 괄호 블록이 멀티라인인 경우에만 포맷팅(줄바꿈) 적용
         return len(paren_multiline_stack) == 0 or paren_multiline_stack[-1] is True
-        
+
     def get_current_base_indent():
         if paren_indent_stack:
-            return paren_indent_stack[-1] + 4
+            return paren_indent_stack[-1] + 7
         else:
             return 0
-    
+
+    sql_functions = {
+        "COUNT", "SUM", "AVG", "MIN", "MAX", "DECODE", "NVL", "SUBSTR", "INSTR",
+        "TO_CHAR", "TO_DATE", "TRUNC", "ROUND", "ADD_MONTHS", "NVL2", "COALESCE",
+        "UPPER", "LOWER", "LENGTH", "REPLACE", "LPAD", "RPAD", "TRIM",
+        "RATIO_TO_REPORT", "DENSE_RANK", "ROW_NUMBER", "RANK", "LEAD", "LAG",
+        "KEEP", "LISTAGG", "CONCAT", "MOD", "ABS", "FLOOR", "CEIL", "SYS_GUID",
+        "GREATEST", "LEAST", "CAST"
+    }
+
     i = 0
     while i < len(tokens):
         tok = tokens[i]
-        
+
         if tok == '(':
             is_multi = (i in multiline_parens)
             paren_multiline_stack.append(is_multi)
-            
+
             if is_multi:
-                paren_print_indent = get_current_base_indent() if paren_indent_stack else current_indent
+                prev_tok = tokens[i-1] if i > 0 else ""
+                if prev_tok in join_keywords:
+                    paren_print_indent = get_current_base_indent() + current_join_indent
+                elif prev_tok in ["FROM"]:
+                    paren_print_indent = get_current_base_indent() + len(prev_tok) + 1
+                else:
+                    paren_print_indent = get_current_base_indent() if paren_indent_stack else current_indent
                 if formatted_parts and not formatted_parts[-1].endswith("\n"):
                     add_newline(paren_print_indent)
                 else:
@@ -21695,8 +21405,7 @@ def format_sql(sql):
                         current_indent = paren_print_indent
                 paren_indent_stack.append(paren_print_indent)
             else:
-                # 함수명이 아닌 일반 괄호 앞에 공백 삽입
-                if formatted_parts and not formatted_parts[-1].endswith(("\n", " ", "(")):
+                if formatted_parts and not formatted_parts[-1].endswith(("\n", " ", "(", ".")):
                     last_non_space = ""
                     for p in reversed(formatted_parts):
                         if p.strip():
@@ -21704,16 +21413,17 @@ def format_sql(sql):
                             if cleaned:
                                 last_non_space = cleaned
                                 break
-                    if last_non_space not in ["COUNT", "SUM", "AVG", "MIN", "MAX", "DECODE", "NVL", "SUBSTR", "INSTR", "TO_CHAR", "TO_DATE"]:
+                    if last_non_space.upper() not in sql_functions:
                         formatted_parts.append(" ")
+
             formatted_parts.append("(")
             paren_depth += 1
-            after_select = False
-            
+            after_clause_start = False
+
         elif tok == ')':
             paren_depth = max(0, paren_depth - 1)
             is_multi = paren_multiline_stack.pop() if paren_multiline_stack else False
-            
+
             if is_multi:
                 align_indent = paren_indent_stack.pop() if paren_indent_stack else get_current_base_indent()
                 add_newline(align_indent)
@@ -21721,17 +21431,35 @@ def format_sql(sql):
                 if formatted_parts and formatted_parts[-1].endswith(" ") and not formatted_parts[-1].endswith("\n"):
                     formatted_parts[-1] = formatted_parts[-1].rstrip(" ")
             formatted_parts.append(")")
-            after_select = False
-            
+            after_clause_start = False
+
         elif tok == ',':
             formatted_parts.append(",")
-            if paren_depth == 0:
-                add_newline(4)
+            # SELECT 절이나 SET 절에서 최상위 레벨(paren_depth == 0)일 때만 항목마다 줄바꿈 (키워드 길이+1 들여쓰기)
+            # GROUP BY나 ORDER BY에서는 줄바꿈하지 않고 한 줄에 콤마 공백으로 연결 ("GROUP BY a, b, c")
+            if paren_depth == 0 and current_clause in ["SELECT", "SET"]:
+                add_newline(get_current_base_indent() + current_clause_indent)
             else:
                 formatted_parts.append(" ")
-            after_select = False
-            
+            after_clause_start = False
+
+        elif tok in ["SELECT", "WHERE", "HAVING", "SET"]:
+            current_clause = tok
+            current_clause_indent = len(tok) + 1  # SELECT: 7, WHERE: 6, HAVING: 7, SET: 4
+            if is_multiline_context():
+                add_newline(get_current_base_indent())
+                after_clause_start = True
+            else:
+                if formatted_parts and not formatted_parts[-1].endswith(("\n", " ", "(", ".")):
+                    formatted_parts.append(" ")
+                after_clause_start = False
+            formatted_parts.append(tok)
+            formatted_parts.append(" ")
+
         elif tok in newline_keywords:
+            current_clause = tok
+            if tok in join_keywords:
+                current_join_indent = len(tok) + 1  # LEFT JOIN: 10, INNER JOIN: 11, JOIN: 5
             if is_multiline_context():
                 add_newline(get_current_base_indent())
             else:
@@ -21739,55 +21467,64 @@ def format_sql(sql):
                     formatted_parts.append(" ")
             formatted_parts.append(tok)
             formatted_parts.append(" ")
-            after_select = False
-            
-        elif tok in indent_keywords:
+            after_clause_start = False
+
+        elif tok in on_indent_keywords:
+            current_clause = "ON"
             if is_multiline_context():
-                add_newline(get_current_base_indent() + 4)
+                add_newline(get_current_base_indent() + current_join_indent)
             else:
                 if formatted_parts and not formatted_parts[-1].endswith(("\n", " ", "(", ".")):
                     formatted_parts.append(" ")
             formatted_parts.append(tok)
             formatted_parts.append(" ")
-            after_select = False
-            
-        elif tok == "SELECT":
+            after_clause_start = False
+
+        elif tok in condition_indent_keywords:
             if is_multiline_context():
-                add_newline(get_current_base_indent())
-                after_select = True
+                if current_clause == "ON":
+                    add_newline(get_current_base_indent() + current_join_indent)
+                else:
+                    add_newline(get_current_base_indent() + current_clause_indent)
             else:
                 if formatted_parts and not formatted_parts[-1].endswith(("\n", " ", "(", ".")):
                     formatted_parts.append(" ")
-                after_select = False
             formatted_parts.append(tok)
             formatted_parts.append(" ")
-            
+            after_clause_start = False
+
         else:
-            # 일반 단어, 식별자, 숫자, 마스킹된 문자열 등
-            if after_select:
+            # 음수 기호(-) 처리: 앞 토큰이 연산자나 쉼표, 여는 괄호인 경우 뒤 숫자와 붙여씀
+            prev_tok = tokens[i-1] if i > 0 else ""
+            is_unary_minus = (tok == "-" and prev_tok in ["(", ",", "=", "<", ">", "<=", ">=", "!=", "<>", "BETWEEN"])
+
+            if after_clause_start:
                 if tok != "*":
-                    add_newline(get_current_base_indent() + 4)
-                after_select = False
+                    add_newline(get_current_base_indent() + current_clause_indent)
+                after_clause_start = False
             elif formatted_parts and not formatted_parts[-1].endswith(("\n", " ", "(", ".")):
-                if tok not in [".", ";", "="]:
+                # 단항 음수 기호 뒤에는 공백 추가 안 함
+                if tok not in [".", ";"] and not (prev_tok == "-" and i > 1 and tokens[i-2] in ["(", ",", "=", "<", ">"]):
                     formatted_parts.append(" ")
-            
-            if tok in ["=", "<", ">", "<=", ">=", "!=", "<>"] and formatted_parts and not formatted_parts[-1].endswith(" "):
+
+            # 비교 연산자 앞뒤 공백 처리 (단항 마이너스가 아닐 때)
+            is_cmp_op = (tok in ["=", "<", ">", "<=", ">=", "!=", "<>"])
+            if is_cmp_op and formatted_parts and not formatted_parts[-1].endswith(" "):
                 formatted_parts.append(" ")
-                
+
             formatted_parts.append(tok)
-            
-            if tok in ["=", "<", ">", "<=", ">=", "!=", "<>"]:
+
+            if is_cmp_op and not is_unary_minus:
                 formatted_parts.append(" ")
-                
+
         i += 1
-        
+
     res = "".join(formatted_parts)
-    
+
     # 5. 마스킹 복원
     for idx, orig_str in enumerate(strings):
         res = res.replace(f"__SQL_STR_{idx}__", orig_str)
-        
+
     # 중복 공백 및 빈 개행 정리
     res = re.sub(r"[ \t]+\n", "\n", res)
     res = re.sub(r"\n\s*\n+", "\n", res)
