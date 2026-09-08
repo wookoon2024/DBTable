@@ -13833,19 +13833,12 @@ class TableDetailWidget(QWidget):
             sql = "\n".join(lines)
             
         elif query_type == "insert":
-            # INSERT에서는 [선택] 및 [조건]에 체크된 모든 컬럼을 누락 없이 다이얼로그에 포함
-            insert_col_names = {col['name'] for col in selected_cols}
-            insert_columns = list(selected_cols)
-            for col in where_cols:
-                if col['name'] not in insert_col_names:
-                    insert_columns.append(col)
-                    insert_col_names.add(col['name'])
-            
-            if not insert_columns:
-                show_copy_message("⚠️ 추가할 컬럼을 선택하거나 지정해 주세요.", self)
+            # INSERT 생성은 [선택] 체크박스로 선택된 컬럼들만 목록에 표시
+            if not selected_cols:
+                show_copy_message("⚠️ 추가할 컬럼을 [선택] 체크박스로 지정해 주세요.", self)
                 return
 
-            dialog = InsertUpdateDialog(self.table_name, insert_columns, pk_cols, where_cols, "insert", self.db_mgr, self)
+            dialog = InsertUpdateDialog(self.table_name, selected_cols, pk_cols, where_cols, "insert", self.db_mgr, self)
             dialog.exec()
             return
             
@@ -13873,26 +13866,16 @@ class TableDetailWidget(QWidget):
             return
             
         elif query_type == "delete":
-            # DELETE에서는 [선택] 및 [조건]에 체크된 모든 컬럼(또는 PK)을 다이얼로그에 표시하여 사용자가 [조건] 체크박스로 제어
-            delete_col_names = set()
-            delete_columns = []
-            for col in selected_cols:
-                if col['name'] not in delete_col_names:
-                    delete_columns.append(col)
-                    delete_col_names.add(col['name'])
-            for col in where_cols:
-                if col['name'] not in delete_col_names:
-                    delete_columns.append(col)
-                    delete_col_names.add(col['name'])
-            for pk_name in pk_cols:
-                if pk_name not in delete_col_names:
-                    pk_info = get_col_info_by_names([pk_name])
-                    if pk_info:
-                        delete_columns.append(pk_info[0])
-                        delete_col_names.add(pk_name)
+            # DELETE 생성은 [조건] 체크박스로 지정된 컬럼들만 목록에 표시 (지정된 게 없으면 PK 또는 선택 컬럼으로 대체)
+            if where_cols:
+                delete_columns = list(where_cols)
+            elif pk_cols:
+                delete_columns = get_col_info_by_names(pk_cols)
+            else:
+                delete_columns = list(selected_cols)
 
             if not delete_columns:
-                show_copy_message("⚠️ 삭제 조건으로 사용할 컬럼을 선택하거나 지정해 주세요.", self)
+                show_copy_message("⚠️ 삭제 조건으로 사용할 컬럼을 [조건] 체크박스로 지정해 주세요.", self)
                 return
 
             dialog = InsertUpdateDialog(self.table_name, delete_columns, pk_cols, where_cols, "delete", self.db_mgr, self)
