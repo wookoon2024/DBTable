@@ -5362,24 +5362,58 @@ class TaskInfoSidebarWidget(QWidget):
 
         main_layout.addLayout(action_layout)
 
-        # 5. 가져오기 / 내보내기 버튼 행
+        # 5. 가져오기 / 내보내기 / 사용 가이드 버튼 행
         share_layout = QHBoxLayout()
         share_layout.setSpacing(4)
 
         self.btn_import = QPushButton("📥 가져오기")
         self.btn_export = QPushButton("📤 내보내기")
+        self.btn_task_guide = QPushButton("사용 가이드")
 
         for btn in [self.btn_import, self.btn_export]:
             btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             btn.setStyleSheet(exp_btn_style)
             share_layout.addWidget(btn)
 
+        self.btn_task_guide.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.btn_task_guide.setStyleSheet("""
+            QPushButton {
+                background-color: #EFF6FF;
+                border: 1px solid #93C5FD;
+                border-radius: 4px;
+                padding: 4px 6px;
+                font-size: 11px;
+                font-weight: 600;
+                color: #1D4ED8;
+            }
+            QPushButton:hover {
+                background-color: #DBEAFE;
+                border-color: #3B82F6;
+            }
+        """)
+        share_layout.addWidget(self.btn_task_guide)
+
         self.btn_import.clicked.connect(self.import_tasks_flow)
         self.btn_export.clicked.connect(self.export_tasks_flow)
+        self.btn_task_guide.clicked.connect(self.open_task_guide_dialog)
 
         main_layout.addLayout(share_layout)
         
         self.refresh_tree()
+        QTimer.singleShot(300, self._check_and_show_guide)
+
+    def _check_and_show_guide(self):
+        try:
+            dismissed = self.db_mgr.get_setting('task_info_guide_dismissed', '0')
+            if dismissed != '1':
+                self.open_task_guide_dialog()
+        except Exception as e:
+            print(f"[TaskInfoGuide AutoShow Error] {e}")
+
+    def open_task_guide_dialog(self):
+        dlg = TaskInfoGuideDialog(self.db_mgr, self)
+        dlg.exec()
+
 
     def refresh_tree(self):
         self.tree.blockSignals(True)
@@ -12331,22 +12365,19 @@ class TableSpecGuideDialog(QDialog):
         self.init_ui()
 
     def init_ui(self):
-        # 최외곽 레이아웃 (그림자 여백 확보)
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(12, 12, 12, 12)
 
-        # 메인 플로팅 카드 (단일 카드, 내부 테두리선/박스 없음)
         self.card = QFrame()
-        self.card.setObjectName("FloatingGuideCard")
+        self.card.setObjectName("FloatingTableGuideCard")
         self.card.setStyleSheet("""
-            QFrame#FloatingGuideCard {
+            QFrame#FloatingTableGuideCard {
                 background-color: #FFFFFF;
                 border: 1.5px solid #3B82F6;
                 border-radius: 10px;
             }
         """)
 
-        # 부드러운 드롭 섀도우 효과
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(20)
         shadow.setColor(QColor(0, 0, 0, 70))
@@ -12357,11 +12388,11 @@ class TableSpecGuideDialog(QDialog):
         card_layout.setContentsMargins(20, 16, 20, 16)
         card_layout.setSpacing(14)
 
-        # 1. 상단 헤더바 (드래그 이동 가능, 닫기 버튼)
+        # 1. 상단 헤더바
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(0, 0, 0, 0)
         
-        lbl_title = QLabel("💡 테이블 명세서 & 쿼리 생성 가이드")
+        lbl_title = QLabel("테이블 명세서 및 쿼리 생성 가이드")
         lbl_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #1E3A8A;")
         header_layout.addWidget(lbl_title)
         header_layout.addStretch()
@@ -12385,7 +12416,7 @@ class TableSpecGuideDialog(QDialog):
         header_layout.addWidget(btn_close_x)
         card_layout.addLayout(header_layout)
 
-        # 2. 본문 영역 (내부 테두리/박스 없이 개조식 공문서 스타일로 간결하게 배치)
+        # 2. 본문 영역 (공문서 개조식)
         content_lbl = QLabel(
             "<div style=\"font-family: 'Malgun Gothic', sans-serif; color: #1E293B;\">"
             "<p style=\"margin: 0 0 6px 0; font-size: 13px; font-weight: bold; color: #1E3A8A;\">"
@@ -12406,7 +12437,7 @@ class TableSpecGuideDialog(QDialog):
             "&nbsp;&nbsp;&nbsp;<b>-</b> 테이블 기본키(PK) 컬럼 자동 체크로 전건 오수정·오삭제 방지"
             "</div>"
             "<div style=\"margin: 0; font-size: 11px; color: #64748B;\">"
-            "※ 상단 툴바의 <b>[💡 사용 가이드]</b> 버튼을 통해 언제든 본 안내를 다시 확인할 수 있습니다."
+            "※ 상단 툴바의 <b>[사용 가이드]</b> 버튼을 통해 언제든 본 안내를 다시 확인할 수 있습니다."
             "</div>"
             "</div>"
         )
@@ -12414,7 +12445,7 @@ class TableSpecGuideDialog(QDialog):
         content_lbl.setTextFormat(Qt.TextFormat.RichText)
         card_layout.addWidget(content_lbl)
 
-        # 3. 하단 액션 영역 ([ ] 다시 보지 않기 + 확인 버튼)
+        # 3. 하단 액션 영역
         footer_layout = QHBoxLayout()
         footer_layout.setContentsMargins(0, 4, 0, 0)
 
@@ -12464,6 +12495,298 @@ class TableSpecGuideDialog(QDialog):
     def reject(self):
         if self.chk_dont_show.isChecked():
             self.db_mgr.set_setting('table_spec_guide_dismissed', '1')
+        super().reject()
+
+
+class QueryInfoGuideDialog(QDialog):
+    """쿼리 정보 사용 안내 플로팅 팝업 다이얼로그"""
+    def __init__(self, db_mgr, parent=None):
+        super().__init__(parent)
+        self.db_mgr = db_mgr
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint |
+            Qt.WindowType.Dialog
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setFixedWidth(560)
+        self.init_ui()
+
+    def init_ui(self):
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(12, 12, 12, 12)
+
+        self.card = QFrame()
+        self.card.setObjectName("FloatingQueryGuideCard")
+        self.card.setStyleSheet("""
+            QFrame#FloatingQueryGuideCard {
+                background-color: #FFFFFF;
+                border: 1.5px solid #3B82F6;
+                border-radius: 10px;
+            }
+        """)
+
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 0, 0, 70))
+        shadow.setOffset(0, 4)
+        self.card.setGraphicsEffect(shadow)
+
+        card_layout = QVBoxLayout(self.card)
+        card_layout.setContentsMargins(20, 16, 20, 16)
+        card_layout.setSpacing(14)
+
+        # 1. 헤더바
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        
+        lbl_title = QLabel("쿼리 정보 관리 가이드")
+        lbl_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #1E3A8A;")
+        header_layout.addWidget(lbl_title)
+        header_layout.addStretch()
+
+        btn_close_x = QPushButton("✕")
+        btn_close_x.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_close_x.setStyleSheet("""
+            QPushButton {
+                border: none;
+                font-size: 13px;
+                color: #64748B;
+                font-weight: bold;
+                padding: 2px 6px;
+                background: transparent;
+            }
+            QPushButton:hover {
+                color: #0F172A;
+            }
+        """)
+        btn_close_x.clicked.connect(self.reject)
+        header_layout.addWidget(btn_close_x)
+        card_layout.addLayout(header_layout)
+
+        # 2. 본문 영역 (공문서 개조식, 내부 테두리 없음)
+        content_lbl = QLabel(
+            "<div style=\"font-family: 'Malgun Gothic', sans-serif; color: #1E293B;\">"
+            "<p style=\"margin: 0 0 6px 0; font-size: 13px; font-weight: bold; color: #1E3A8A;\">"
+            "□ 쿼리 보관 및 계층 관리"
+            "</p>"
+            "<div style=\"margin: 0 0 14px 10px; font-size: 11px; line-height: 165%; color: #334155;\">"
+            "○ <b>분류 체계</b>: 업무별 상위·하위 폴더(카테고리) 생성을 통한 체계적 SQL 자산 관리<br>"
+            "○ <b>드래그 앤 드롭</b>: 마우스 드래그로 쿼리 및 분류의 위치·순서 자유 이동 및 재배치<br>"
+            "○ <b>즐겨찾는 쿼리</b>: 자주 사용하는 주요 SQL을 상단 즐겨찾기 탭에 등록하여 신속 조회"
+            "</div>"
+            "<p style=\"margin: 0 0 6px 0; font-size: 13px; font-weight: bold; color: #1E3A8A;\">"
+            "□ 검색 편의 및 일괄 처리"
+            "</p>"
+            "<div style=\"margin: 0 0 14px 10px; font-size: 11px; line-height: 165%; color: #334155;\">"
+            "○ <b>다중 조건 검색</b>: '쿼리제목', 'SQL 내용', '설명' 기준 실시간 필터링 지원<br>"
+            "○ <b>가져오기 / 내보내기</b>: 엑셀 파일 기반 쿼리 대량 일괄 등록 및 백업 파일 추출 지원<br>"
+            "○ <b>SQL 상세 편집기</b>: 구문 강조(Syntax Highlighting) 및 클립보드 원클릭 복사"
+            "</div>"
+            "<div style=\"margin: 0; font-size: 11px; color: #64748B;\">"
+            "※ 좌측 툴바의 <b>[사용 가이드]</b> 버튼을 통해 언제든 본 안내를 다시 확인할 수 있습니다."
+            "</div>"
+            "</div>"
+        )
+        content_lbl.setWordWrap(True)
+        content_lbl.setTextFormat(Qt.TextFormat.RichText)
+        card_layout.addWidget(content_lbl)
+
+        # 3. 하단 액션 영역
+        footer_layout = QHBoxLayout()
+        footer_layout.setContentsMargins(0, 4, 0, 0)
+
+        self.chk_dont_show = QCheckBox("다시 보지 않기")
+        self.chk_dont_show.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.chk_dont_show.setStyleSheet("font-size: 11px; font-weight: 500; color: #475569;")
+        footer_layout.addWidget(self.chk_dont_show)
+        footer_layout.addStretch()
+
+        btn_confirm = QPushButton("확인")
+        btn_confirm.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_confirm.setStyleSheet("""
+            QPushButton {
+                background-color: #2563EB;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 4px;
+                padding: 6px 22px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1D4ED8;
+            }
+        """)
+        btn_confirm.clicked.connect(self.on_confirm)
+        footer_layout.addWidget(btn_confirm)
+
+        card_layout.addLayout(footer_layout)
+        outer_layout.addWidget(self.card)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() == Qt.MouseButton.LeftButton and hasattr(self, '_drag_pos'):
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+            event.accept()
+
+    def on_confirm(self):
+        if self.chk_dont_show.isChecked():
+            self.db_mgr.set_setting('query_info_guide_dismissed', '1')
+        self.accept()
+
+    def reject(self):
+        if self.chk_dont_show.isChecked():
+            self.db_mgr.set_setting('query_info_guide_dismissed', '1')
+        super().reject()
+
+
+class TaskInfoGuideDialog(QDialog):
+    """업무 정보 사용 안내 플로팅 팝업 다이얼로그"""
+    def __init__(self, db_mgr, parent=None):
+        super().__init__(parent)
+        self.db_mgr = db_mgr
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint |
+            Qt.WindowType.Dialog
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setFixedWidth(560)
+        self.init_ui()
+
+    def init_ui(self):
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(12, 12, 12, 12)
+
+        self.card = QFrame()
+        self.card.setObjectName("FloatingTaskGuideCard")
+        self.card.setStyleSheet("""
+            QFrame#FloatingTaskGuideCard {
+                background-color: #FFFFFF;
+                border: 1.5px solid #3B82F6;
+                border-radius: 10px;
+            }
+        """)
+
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 0, 0, 70))
+        shadow.setOffset(0, 4)
+        self.card.setGraphicsEffect(shadow)
+
+        card_layout = QVBoxLayout(self.card)
+        card_layout.setContentsMargins(20, 16, 20, 16)
+        card_layout.setSpacing(14)
+
+        # 1. 헤더바
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        
+        lbl_title = QLabel("업무 정보 관리 가이드")
+        lbl_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #1E3A8A;")
+        header_layout.addWidget(lbl_title)
+        header_layout.addStretch()
+
+        btn_close_x = QPushButton("✕")
+        btn_close_x.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_close_x.setStyleSheet("""
+            QPushButton {
+                border: none;
+                font-size: 13px;
+                color: #64748B;
+                font-weight: bold;
+                padding: 2px 6px;
+                background: transparent;
+            }
+            QPushButton:hover {
+                color: #0F172A;
+            }
+        """)
+        btn_close_x.clicked.connect(self.reject)
+        header_layout.addWidget(btn_close_x)
+        card_layout.addLayout(header_layout)
+
+        # 2. 본문 영역 (공문서 개조식, 내부 테두리 없음)
+        content_lbl = QLabel(
+            "<div style=\"font-family: 'Malgun Gothic', sans-serif; color: #1E293B;\">"
+            "<p style=\"margin: 0 0 6px 0; font-size: 13px; font-weight: bold; color: #1E3A8A;\">"
+            "□ 업무 문서 및 폴더 관리"
+            "</p>"
+            "<div style=\"margin: 0 0 14px 10px; font-size: 11px; line-height: 165%; color: #334155;\">"
+            "○ <b>계층형 폴더 구성</b>: 업무 분야별 폴더 및 서브 폴더 생성을 통한 문서 체계화<br>"
+            "○ <b>서식 템플릿 지원</b>: 회의록, 장애보고서, 정기점검 등 표준 업무 서식 원클릭 적용<br>"
+            "○ <b>마우스 순서 변경</b>: 드래그 앤 드롭을 통한 폴더 및 업무 문서의 간편한 위치 이동"
+            "</div>"
+            "<p style=\"margin: 0 0 6px 0; font-size: 13px; font-weight: bold; color: #1E3A8A;\">"
+            "□ 상세 편집 및 업무 연계"
+            "</p>"
+            "<div style=\"margin: 0 0 14px 10px; font-size: 11px; line-height: 165%; color: #334155;\">"
+            "○ <b>리치 텍스트 편집</b>: 서식 스타일, 폰트 색상 및 본문 캡처 이미지 붙여넣기(Ctrl+V)<br>"
+            "○ <b>첨부파일 관리</b>: 업무 증빙 문서 및 파일 드래그 등록 및 즉시 실행 지원<br>"
+            "○ <b>반복 주기 설정</b>: 매일/매주/매월 주기 지정 시 [업무 달력] 화면과 실시간 자동 연동"
+            "</div>"
+            "<div style=\"margin: 0; font-size: 11px; color: #64748B;\">"
+            "※ 좌측 툴바의 <b>[사용 가이드]</b> 버튼을 통해 언제든 본 안내를 다시 확인할 수 있습니다."
+            "</div>"
+            "</div>"
+        )
+        content_lbl.setWordWrap(True)
+        content_lbl.setTextFormat(Qt.TextFormat.RichText)
+        card_layout.addWidget(content_lbl)
+
+        # 3. 하단 액션 영역
+        footer_layout = QHBoxLayout()
+        footer_layout.setContentsMargins(0, 4, 0, 0)
+
+        self.chk_dont_show = QCheckBox("다시 보지 않기")
+        self.chk_dont_show.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.chk_dont_show.setStyleSheet("font-size: 11px; font-weight: 500; color: #475569;")
+        footer_layout.addWidget(self.chk_dont_show)
+        footer_layout.addStretch()
+
+        btn_confirm = QPushButton("확인")
+        btn_confirm.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_confirm.setStyleSheet("""
+            QPushButton {
+                background-color: #2563EB;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 4px;
+                padding: 6px 22px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1D4ED8;
+            }
+        """)
+        btn_confirm.clicked.connect(self.on_confirm)
+        footer_layout.addWidget(btn_confirm)
+
+        card_layout.addLayout(footer_layout)
+        outer_layout.addWidget(self.card)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() == Qt.MouseButton.LeftButton and hasattr(self, '_drag_pos'):
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+            event.accept()
+
+    def on_confirm(self):
+        if self.chk_dont_show.isChecked():
+            self.db_mgr.set_setting('task_info_guide_dismissed', '1')
+        self.accept()
+
+    def reject(self):
+        if self.chk_dont_show.isChecked():
+            self.db_mgr.set_setting('task_info_guide_dismissed', '1')
         super().reject()
 
 
@@ -12682,8 +13005,8 @@ class TableDetailWidget(QWidget):
         self.btn_register_favorite.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         header_btn_layout.addWidget(self.btn_register_favorite)
 
-        # 💡 사용 가이드 버튼 추가
-        self.btn_help_guide = QPushButton("💡 사용 가이드")
+        # 사용 가이드 버튼 추가
+        self.btn_help_guide = QPushButton("사용 가이드")
         self.btn_help_guide.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_help_guide.setStyleSheet("""
             QPushButton {
@@ -19488,6 +19811,28 @@ class QuerySidebarWidget(QWidget):
         cat_tb2.setSpacing(4)
         cat_tb2.addWidget(btn_bulk_import)
         cat_tb2.addWidget(btn_bulk_export)
+
+        btn_query_guide = QPushButton("사용 가이드")
+        btn_query_guide.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_query_guide.setStyleSheet("""
+            QPushButton {
+                font-size: 10px;
+                padding: 4px 6px;
+                border: 1px solid #93C5FD;
+                border-radius: 3px;
+                background-color: #EFF6FF;
+                color: #1D4ED8;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #DBEAFE;
+                border-color: #3B82F6;
+            }
+        """)
+        btn_query_guide.setSizePolicy(_QSP.Policy.Expanding, _QSP.Policy.Fixed)
+        btn_query_guide.clicked.connect(self.open_query_guide_dialog)
+        cat_tb2.addWidget(btn_query_guide)
+
         cat_layout.addLayout(cat_tb2)
 
         # 2. 즐겨찾는 쿼리 탭
@@ -19623,6 +19968,19 @@ class QuerySidebarWidget(QWidget):
         self.refresh_cat_tree()
         self.refresh_fav_tree()
         self.refresh_recent_tree()
+        QTimer.singleShot(350, self._check_and_show_guide)
+
+    def _check_and_show_guide(self):
+        try:
+            dismissed = self.db_mgr.get_setting('query_info_guide_dismissed', '0')
+            if dismissed != '1':
+                self.open_query_guide_dialog()
+        except Exception as e:
+            print(f"[QueryInfoGuide AutoShow Error] {e}")
+
+    def open_query_guide_dialog(self):
+        dlg = QueryInfoGuideDialog(self.db_mgr, self)
+        dlg.exec()
 
     def clear_query_search(self):
         self.txt_query_search.clear()
