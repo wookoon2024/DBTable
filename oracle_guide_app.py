@@ -10723,11 +10723,24 @@ class ExcelBulkQueryDialog(QDialog):
             # 만약 [선택] 컬럼이 전부 WHERE 조건과 겹쳐서 SET 컬럼이 비었다면, self.columns 전체를 SET 대상으로 설정
             if not self.set_target_cols:
                 self.set_target_cols = [dict(c) for c in self.columns]
+        elif self.query_type == "delete":
+            # DELETE에서는 대상 컬럼들을 모두 WHERE 조건으로 처리
+            self.set_target_cols = []
+            if self.where_cols:
+                for col in self.where_cols:
+                    self.where_target_cols.append(dict(col))
+            elif self.columns:
+                for col in self.columns:
+                    self.where_target_cols.append(dict(col))
+            elif self.pk_cols:
+                for pk_name in self.pk_cols:
+                    self.where_target_cols.append({'name': pk_name, 'ko_name': '', 'data_type': ''})
         else:
             self.set_target_cols = [dict(c) for c in self.columns]
             self.where_target_cols = []
 
-        type_label = "INSERT" if query_type == "insert" else "UPDATE"
+        type_labels = {"insert": "INSERT", "update": "UPDATE", "delete": "DELETE"}
+        type_label = type_labels.get(query_type, query_type.upper())
         self.setWindowTitle(f"엑셀 대량 {type_label} 쿼리 생성 - {table_name}")
         
         # 3. 전체 창 및 창 크기 조절(최대화/최소화 버튼) 활성화 & 드래그 앤 드롭 지원
@@ -10749,7 +10762,8 @@ class ExcelBulkQueryDialog(QDialog):
         layout.setSpacing(8)
 
         # 1. 헤더 안내
-        type_label = "INSERT" if self.query_type == "insert" else "UPDATE"
+        type_labels = {"insert": "INSERT", "update": "UPDATE", "delete": "DELETE"}
+        type_label = type_labels.get(self.query_type, self.query_type.upper())
         title = QLabel(f"대량 {type_label} SQL 생성 ({self.table_name})")
         title.setStyleSheet("font-size: 14px; font-weight: bold; color: #1E293B; padding-bottom: 2px;")
         layout.addWidget(title)
@@ -11057,6 +11071,9 @@ class ExcelBulkQueryDialog(QDialog):
                 target_list.append(('SET', col))
             for col in self.where_target_cols:
                 target_list.append(('WHERE', col))
+        elif self.query_type == "delete":
+            for col in self.where_target_cols:
+                target_list.append(('WHERE', col))
         else:
             for col in self.set_target_cols:
                 target_list.append(('INSERT', col))
@@ -11323,6 +11340,26 @@ class ExcelBulkQueryDialog(QDialog):
                     where_parts.append(f"{col['name']} = {val_str}")
 
                 sql_lines.append(f"UPDATE {self.table_name} SET {', '.join(set_parts)} WHERE {' AND '.join(where_parts)};")
+
+        elif self.query_type == "delete":
+            where_entries = [item for item in active_entries if item[0]['role'] == 'WHERE']
+            
+            if not where_entries:
+                if silent:
+                    self.txt_result.clear()
+                    self.lbl_result_count.clear()
+                else:
+                    QMessageBox.warning(self, "알림", "삭제 조건(WHERE)으로 지정된 컬럼이 최소 1개 이상 필요합니다.")
+                return
+
+            for _, row in self.df.iterrows():
+                where_parts = []
+                for entry, expr_text in where_entries:
+                    col = entry['col']
+                    val_str = self._evaluate_expression(expr_text, row, col)
+                    where_parts.append(f"{col['name']} = {val_str}")
+
+                sql_lines.append(f"DELETE FROM {self.table_name} WHERE {' AND '.join(where_parts)};")
 
         full_sql = "\n".join(sql_lines)
 
