@@ -12,7 +12,8 @@ from PyQt6.QtWidgets import (
     QFileDialog, QMessageBox, QDialog, QInputDialog, QFormLayout, QFrame, QToolTip, QScrollArea,
     QStatusBar, QAbstractItemView, QMenu, QRadioButton, QButtonGroup, QComboBox, QCheckBox,
     QTextEdit, QPlainTextEdit, QTreeWidget, QTreeWidgetItem, QStackedWidget, QTreeWidgetItemIterator,
-    QStyledItemDelegate, QStyle, QStyleOptionViewItem, QGridLayout, QSpinBox, QSizePolicy
+    QStyledItemDelegate, QStyle, QStyleOptionViewItem, QGridLayout, QSpinBox, QSizePolicy,
+    QGraphicsDropShadowEffect
 )
 
 # SQLite DB 파일명 (실행 파일 및 스크립트 위치 기준으로 절대 경로 지정)
@@ -12317,124 +12318,111 @@ class JoinSettingsDialog(QDialog):
 
 
 class TableSpecGuideDialog(QDialog):
-    """테이블 명세서 및 쿼리 생성 사용법 팝업 안내 다이얼로그"""
+    """테이블 명세서 및 쿼리 생성 사용 안내 플로팅 팝업 다이얼로그"""
     def __init__(self, db_mgr, parent=None):
         super().__init__(parent)
         self.db_mgr = db_mgr
-        self.setWindowTitle("💡 테이블 명세서 & 쿼리 생성 사용 가이드")
-        self.setFixedWidth(640)
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #FFFFFF;
-            }
-            QLabel {
-                color: #334155;
-            }
-        """)
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint |
+            Qt.WindowType.Dialog
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setFixedWidth(560)
         self.init_ui()
 
     def init_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 16)
-        layout.setSpacing(14)
+        # 최외곽 레이아웃 (그림자 여백 확보)
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(12, 12, 12, 12)
 
-        # 1. 상단 타이틀 영역
+        # 메인 플로팅 카드 (단일 카드, 내부 테두리선/박스 없음)
+        self.card = QFrame()
+        self.card.setObjectName("FloatingGuideCard")
+        self.card.setStyleSheet("""
+            QFrame#FloatingGuideCard {
+                background-color: #FFFFFF;
+                border: 1.5px solid #3B82F6;
+                border-radius: 10px;
+            }
+        """)
+
+        # 부드러운 드롭 섀도우 효과
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 0, 0, 70))
+        shadow.setOffset(0, 4)
+        self.card.setGraphicsEffect(shadow)
+
+        card_layout = QVBoxLayout(self.card)
+        card_layout.setContentsMargins(20, 16, 20, 16)
+        card_layout.setSpacing(14)
+
+        # 1. 상단 헤더바 (드래그 이동 가능, 닫기 버튼)
         header_layout = QHBoxLayout()
-        header_layout.setSpacing(10)
+        header_layout.setContentsMargins(0, 0, 0, 0)
         
-        icon_lbl = QLabel("💡")
-        icon_lbl.setStyleSheet("font-size: 26px;")
-        header_layout.addWidget(icon_lbl)
-
-        title_vlayout = QVBoxLayout()
-        title_vlayout.setSpacing(2)
-        title_lbl = QLabel("테이블 명세서 & 쿼리 생성 사용 가이드")
-        title_lbl.setStyleSheet("font-size: 15px; font-weight: bold; color: #1E3A8A;")
-        sub_lbl = QLabel("SELECT, INSERT, UPDATE, DELETE 쿼리 생성과 컬럼 [선택] 및 [조건] 체크박스 활용법 안내")
-        sub_lbl.setStyleSheet("font-size: 11px; color: #64748B;")
-        title_vlayout.addWidget(title_lbl)
-        title_vlayout.addWidget(sub_lbl)
-        header_layout.addLayout(title_vlayout)
+        lbl_title = QLabel("💡 테이블 명세서 & 쿼리 생성 가이드")
+        lbl_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #1E3A8A;")
+        header_layout.addWidget(lbl_title)
         header_layout.addStretch()
 
-        layout.addLayout(header_layout)
-
-        # 구분선
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setFrameShadow(QFrame.Shadow.Sunken)
-        sep.setStyleSheet("color: #E2E8F0;")
-        layout.addWidget(sep)
-
-        # 2. 카드 1: 상단 쿼리 생성 버튼 안내
-        card1 = QFrame()
-        card1.setStyleSheet("""
-            QFrame {
-                background-color: #F8FAFC;
-                border: 1px solid #E2E8F0;
-                border-radius: 8px;
+        btn_close_x = QPushButton("✕")
+        btn_close_x.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_close_x.setStyleSheet("""
+            QPushButton {
+                border: none;
+                font-size: 13px;
+                color: #64748B;
+                font-weight: bold;
+                padding: 2px 6px;
+                background: transparent;
+            }
+            QPushButton:hover {
+                color: #0F172A;
             }
         """)
-        c1_layout = QVBoxLayout(card1)
-        c1_layout.setContentsMargins(14, 12, 14, 12)
-        c1_layout.setSpacing(8)
+        btn_close_x.clicked.connect(self.reject)
+        header_layout.addWidget(btn_close_x)
+        card_layout.addLayout(header_layout)
 
-        lbl_c1_title = QLabel("⚡ 상단 쿼리 생성 버튼")
-        lbl_c1_title.setStyleSheet("font-size: 12px; font-weight: bold; color: #1E293B;")
-        c1_layout.addWidget(lbl_c1_title)
-
-        desc1 = QLabel(
-            "• <b>Select생성 / Select(1줄)</b>: <b>[선택]</b> 체크된 컬럼들로 SELECT 조회 쿼리를 생성하여 클립보드에 복사합니다.<br>"
-            "• <b>Insert생성</b>: <b>[선택]</b> 체크된 컬럼 대상의 INSERT 쿼리를 생성합니다. (단일 및 엑셀 대량 생성 지원)<br>"
-            "• <b>Update생성</b>: <b>[선택]</b> 컬럼은 수정값(SET), <b>[조건]</b> 컬럼은 WHERE 조건절로 자동 구성하여 UPDATE 쿼리를 생성합니다. (엑셀 대량 지원)<br>"
-            "• <b>Delete생성</b>: <b>[조건]</b> 체크된 컬럼을 WHERE 조건절로 지정하여 안전하게 삭제 쿼리를 생성합니다. (엑셀 대량 지원)"
+        # 2. 본문 영역 (내부 테두리/박스 없이 개조식 공문서 스타일로 간결하게 배치)
+        content_lbl = QLabel(
+            "<div style=\"font-family: 'Malgun Gothic', sans-serif; color: #1E293B;\">"
+            "<p style=\"margin: 0 0 6px 0; font-size: 13px; font-weight: bold; color: #1E3A8A;\">"
+            "□ 쿼리 자동 생성 기능"
+            "</p>"
+            "<div style=\"margin: 0 0 14px 10px; font-size: 11px; line-height: 165%; color: #334155;\">"
+            "○ <b>Select(1줄) / Select생성</b>: [선택] 컬럼 기준 단일행·다중행 조회 SQL 생성 및 클립보드 복사<br>"
+            "○ <b>Insert생성</b>: [선택] 컬럼 대상 삽입 쿼리 생성 (단일 및 엑셀 대량 생성 지원)<br>"
+            "○ <b>Update생성</b>: [선택] 컬럼은 수정값(SET), [조건] 컬럼은 WHERE 조건절로 자동 분리 생성<br>"
+            "○ <b>Delete생성</b>: [조건] 컬럼 기준 삭제 쿼리 안전 생성 (엑셀 대량 삭제 지원)"
+            "</div>"
+            "<p style=\"margin: 0 0 6px 0; font-size: 13px; font-weight: bold; color: #1E3A8A;\">"
+            "□ 테이블 컬럼 설정 체크박스"
+            "</p>"
+            "<div style=\"margin: 0 0 14px 10px; font-size: 11px; line-height: 165%; color: #334155;\">"
+            "○ <b>[선택] (좌측 1열)</b>: SQL 문 포함 대상 컬럼 지정 (상단 '☑ 전체선택' 버튼 연동)<br>"
+            "○ <b>[조건] (우측 10열)</b>: UPDATE 및 DELETE 실행 시 WHERE 조건절 기준 컬럼 지정<br>"
+            "&nbsp;&nbsp;&nbsp;<b>-</b> 테이블 기본키(PK) 컬럼 자동 체크로 전건 오수정·오삭제 방지"
+            "</div>"
+            "<div style=\"margin: 0; font-size: 11px; color: #64748B;\">"
+            "※ 상단 툴바의 <b>[💡 사용 가이드]</b> 버튼을 통해 언제든 본 안내를 다시 확인할 수 있습니다."
+            "</div>"
+            "</div>"
         )
-        desc1.setStyleSheet("font-size: 11px; color: #475569; line-height: 150%;")
-        c1_layout.addWidget(desc1)
-        layout.addWidget(card1)
+        content_lbl.setWordWrap(True)
+        content_lbl.setTextFormat(Qt.TextFormat.RichText)
+        card_layout.addWidget(content_lbl)
 
-        # 3. 카드 2: 테이블 컬럼 체크박스 안내 ([선택] vs [조건])
-        card2 = QFrame()
-        card2.setStyleSheet("""
-            QFrame {
-                background-color: #F8FAFC;
-                border: 1px solid #E2E8F0;
-                border-radius: 8px;
-            }
-        """)
-        c2_layout = QVBoxLayout(card2)
-        c2_layout.setContentsMargins(14, 12, 14, 12)
-        c2_layout.setSpacing(8)
-
-        lbl_c2_title = QLabel("📌 테이블 컬럼 체크박스 ([선택] vs [조건])")
-        lbl_c2_title.setStyleSheet("font-size: 12px; font-weight: bold; color: #1E293B;")
-        c2_layout.addWidget(lbl_c2_title)
-
-        desc2 = QLabel(
-            "• <b>[선택] 체크박스 (맨 왼쪽 1열)</b>:<br>"
-            "   SQL 문에 포함할 대상 컬럼을 선택합니다. (상단 <b>'☑ 전체선택'</b> 버튼으로 한 번에 토글 가능)<br>"
-            "• <b>[조건] 체크박스 (맨 오른쪽 10열)</b>:<br>"
-            "   UPDATE 및 DELETE 쿼리 생성 시 <b>WHERE 조건절</b>에 사용할 기준 컬럼을 지정합니다.<br>"
-            "   (기본적으로 해당 테이블의 <b>PK(기본키)</b> 컬럼이 자동 체크되어 안전한 쿼리 생성을 돕습니다)"
-        )
-        desc2.setStyleSheet("font-size: 11px; color: #475569; line-height: 150%;")
-        c2_layout.addWidget(desc2)
-        layout.addWidget(card2)
-
-        # 4. 하단 팁 문구
-        lbl_tip = QLabel("💡 언제든 상단의 <b>[💡 사용 가이드]</b> 버튼을 누르면 이 안내 창을 다시 열 수 있습니다.")
-        lbl_tip.setStyleSheet("font-size: 11px; color: #64748B; padding-left: 2px;")
-        layout.addWidget(lbl_tip)
-
-        # 5. 하단 버튼 영역 ([ ] 다시 보지 않기 + 확인)
-        btn_layout = QHBoxLayout()
-        btn_layout.setContentsMargins(0, 4, 0, 0)
+        # 3. 하단 액션 영역 ([ ] 다시 보지 않기 + 확인 버튼)
+        footer_layout = QHBoxLayout()
+        footer_layout.setContentsMargins(0, 4, 0, 0)
 
         self.chk_dont_show = QCheckBox("다시 보지 않기")
         self.chk_dont_show.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.chk_dont_show.setStyleSheet("font-size: 11px; font-weight: 500; color: #475569;")
-        btn_layout.addWidget(self.chk_dont_show)
-        btn_layout.addStretch()
+        footer_layout.addWidget(self.chk_dont_show)
+        footer_layout.addStretch()
 
         btn_confirm = QPushButton("확인")
         btn_confirm.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -12444,7 +12432,7 @@ class TableSpecGuideDialog(QDialog):
                 color: #FFFFFF;
                 border: none;
                 border-radius: 4px;
-                padding: 7px 24px;
+                padding: 6px 22px;
                 font-size: 12px;
                 font-weight: bold;
             }
@@ -12453,9 +12441,20 @@ class TableSpecGuideDialog(QDialog):
             }
         """)
         btn_confirm.clicked.connect(self.on_confirm)
-        btn_layout.addWidget(btn_confirm)
+        footer_layout.addWidget(btn_confirm)
 
-        layout.addLayout(btn_layout)
+        card_layout.addLayout(footer_layout)
+        outer_layout.addWidget(self.card)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() == Qt.MouseButton.LeftButton and hasattr(self, '_drag_pos'):
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+            event.accept()
 
     def on_confirm(self):
         if self.chk_dont_show.isChecked():
