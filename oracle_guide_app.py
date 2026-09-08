@@ -3,15 +3,15 @@ import sys
 import sqlite3
 from datetime import datetime
 import pandas as pd
-from PyQt6.QtCore import Qt, pyqtSignal, QSize, QEvent, QRegularExpression, QByteArray, QBuffer, QIODevice, QDate, QRect
-from PyQt6.QtGui import QFont, QColor, QCursor, QIcon, QAction, QSyntaxHighlighter, QTextCharFormat, QImage, QTextCursor, QTextImageFormat, QTextTable, QShortcut, QKeySequence, QTextDocument
+from PyQt6.QtCore import Qt, pyqtSignal, QSize, QEvent, QRegularExpression, QByteArray, QBuffer, QIODevice, QDate, QRect, QObject
+from PyQt6.QtGui import QFont, QColor, QCursor, QIcon, QAction, QSyntaxHighlighter, QTextCharFormat, QImage, QTextCursor, QTextImageFormat, QTextTable, QShortcut, QKeySequence, QTextDocument, QPainter
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QSplitter, QLineEdit, QListWidget, QListWidgetItem, QTabWidget, 
     QTabBar, QTableWidget, QTableWidgetItem, QHeaderView, QPushButton, QLabel, 
     QFileDialog, QMessageBox, QDialog, QInputDialog, QFormLayout, QFrame, QToolTip, QScrollArea,
     QStatusBar, QAbstractItemView, QMenu, QRadioButton, QButtonGroup, QComboBox, QCheckBox,
-    QTextEdit, QTreeWidget, QTreeWidgetItem, QStackedWidget, QTreeWidgetItemIterator,
+    QTextEdit, QPlainTextEdit, QTreeWidget, QTreeWidgetItem, QStackedWidget, QTreeWidgetItemIterator,
     QStyledItemDelegate, QStyle, QStyleOptionViewItem, QGridLayout, QSpinBox, QSizePolicy
 )
 
@@ -24,7 +24,7 @@ else:
     base_dir = os.path.dirname(os.path.abspath(__file__))
 
 DB_FILE = os.path.normpath(os.path.join(base_dir, "metadata.db"))
-APP_VERSION = "v1.1"
+APP_VERSION = "v1.4"
 
 class ToastNotification(QFrame):
     """프로그램 중앙에 플로팅으로 안내 메시지를 띄워주는 토스트 위젯"""
@@ -10539,7 +10539,99 @@ class SqlHighlighter(QSyntaxHighlighter):
             start_index = self.block_comment_start_expression.match(text, start_index + comment_length).capturedStart()
 
 
-from PyQt6.QtCore import QObject
+class SqlLineNumberArea(QWidget):
+    """SQL 결과 편집기의 줄 번호만 그리는 영역."""
+    def __init__(self, editor):
+        super().__init__(editor)
+        self.editor = editor
+
+    def sizeHint(self):
+        return QSize(self.editor.line_number_area_width(), 0)
+
+    def paintEvent(self, event):
+        self.editor.paint_line_numbers(event)
+
+
+class SqlResultTextEdit(QPlainTextEdit):
+    """???? SQL ??? ??? ?? ??? ? ??? ????."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.line_number_area = SqlLineNumberArea(self)
+        self.setReadOnly(True)
+        self.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self.blockCountChanged.connect(self.update_line_number_area_width)
+        self.updateRequest.connect(self.update_line_number_area)
+        self.textChanged.connect(self.update_line_number_area_width)
+        self.update_line_number_area_width()
+
+    def line_number_area_width(self):
+        if not self.toPlainText().strip():
+            return 0
+        digits = len(str(max(1, self.blockCount())))
+        return 16 + self.fontMetrics().horizontalAdvance("9") * digits
+
+    def update_line_number_area_width(self, *_args):
+        w = self.line_number_area_width()
+        self.setViewportMargins(w, 0, 0, 0)
+        if w == 0:
+            self.line_number_area.hide()
+        else:
+            self.line_number_area.show()
+            contents = self.contentsRect()
+            self.line_number_area.setGeometry(
+                contents.left(), contents.top(), w, contents.height()
+            )
+
+    def update_line_number_area(self, rect, dy):
+        if not self.toPlainText().strip():
+            self.line_number_area.hide()
+            return
+        self.line_number_area.show()
+        if dy:
+            self.line_number_area.scroll(0, dy)
+        else:
+            self.line_number_area.update(0, rect.y(), self.line_number_area.width(), rect.height())
+        if rect.contains(self.viewport().rect()):
+            self.update_line_number_area_width()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        w = self.line_number_area_width()
+        contents = self.contentsRect()
+        self.line_number_area.setGeometry(
+            contents.left(), contents.top(), w, contents.height()
+        )
+        if w == 0:
+            self.line_number_area.hide()
+        else:
+            self.line_number_area.show()
+
+    def paint_line_numbers(self, event):
+        if not self.toPlainText().strip():
+            return
+        painter = QPainter(self.line_number_area)
+        painter.fillRect(event.rect(), QColor("#181825"))
+        painter.setPen(QColor("#313244"))
+        painter.drawLine(self.line_number_area.width() - 1, 0,
+                         self.line_number_area.width() - 1, self.line_number_area.height())
+        painter.setPen(QColor("#6C7086"))
+
+        block = self.firstVisibleBlock()
+        number = block.blockNumber()
+        top = round(self.blockBoundingGeometry(block).translated(self.contentOffset()).top())
+        bottom = top + round(self.blockBoundingRect(block).height())
+        while block.isValid() and top <= event.rect().bottom():
+            if block.isVisible() and bottom >= event.rect().top():
+                painter.drawText(
+                    0, top, self.line_number_area.width() - 6, self.fontMetrics().height(),
+                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                    str(number + 1)
+                )
+            block = block.next()
+            top = bottom
+            bottom = top + round(self.blockBoundingRect(block).height())
+            number += 1
+
 
 class PasteEventFilter(QObject):
     def __init__(self, parent_dialog, current_index):
@@ -10640,7 +10732,7 @@ class ExcelBulkQueryDialog(QDialog):
         
         # 3. 전체 창 및 창 크기 조절(최대화/최소화 버튼) 활성화 & 드래그 앤 드롭 지원
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMinMaxButtonsHint | Qt.WindowType.WindowMaximizeButtonHint)
-        self.resize(1020, 780)
+        self.resize(1080, 840)
         self.setMinimumSize(850, 600)
         self.setAcceptDrops(True)
         
@@ -10658,56 +10750,53 @@ class ExcelBulkQueryDialog(QDialog):
 
         # 1. 헤더 안내
         type_label = "INSERT" if self.query_type == "insert" else "UPDATE"
-        title = QLabel(f"엑셀 불러오기 기반 대량 {type_label} SQL 생성 ({self.table_name})")
+        title = QLabel(f"대량 {type_label} SQL 생성 ({self.table_name})")
         title.setStyleSheet("font-size: 14px; font-weight: bold; color: #1E293B; padding-bottom: 2px;")
         layout.addWidget(title)
 
-        if self.query_type == "update":
-            desc = QLabel("좌측의 수정값(SET) 및 조건(WHERE) 컬럼에 대해 엑셀 컬럼을 매핑하거나, 우측에 {컬럼명} 또는 SQL 함수(TO_DATE 등), 고정값을 직접 입력하여 대량 UPDATE 쿼리를 생성합니다. (입력란을 비워두면 해당 컬럼은 제외됩니다)")
-        else:
-            desc = QLabel("좌측의 대상 테이블 컬럼에 대해 엑셀 컬럼을 매핑하거나, 우측에 {컬럼명} 또는 SQL 함수, 고정값을 직접 입력하여 대량 INSERT 쿼리를 생성합니다. (입력란을 비워두면 해당 컬럼은 제외됩니다)")
-        desc.setStyleSheet("font-size: 11px; color: #64748B;")
-        layout.addWidget(desc)
-
-        # 2. 파일 선택 및 클립보드 붙여넣기 그룹
+        # 2. 서로 다른 데이터 입력 방식을 시각적으로 구분
         file_box = QFrame()
         file_box.setStyleSheet("QFrame { background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px; }")
         file_layout = QHBoxLayout(file_box)
         file_layout.setContentsMargins(8, 6, 8, 6)
-        file_layout.setSpacing(6)
+        file_layout.setSpacing(10)
 
-        lbl_file = QLabel("엑셀 파일 / 데이터:")
-        lbl_file.setStyleSheet("font-weight: bold; color: #334155;")
+        lbl_file = QLabel("① 엑셀 파일")
+        lbl_file.setStyleSheet("font-weight: bold; color: #1D4ED8;")
         self.txt_file_path = QLineEdit()
         self.txt_file_path.setReadOnly(True)
-        self.txt_file_path.setPlaceholderText("파일 선택, 드래그&드롭 또는 클립보드(Ctrl+V) 붙여넣기 (*.xlsx, *.xls, *.csv)")
+        self.txt_file_path.setPlaceholderText("파일 선택 시 자동 불러오기 (*.xlsx, *.xls, *.csv)")
 
-        btn_browse = QPushButton("찾아보기")
+        btn_browse = QPushButton("엑셀 파일 선택")
         btn_browse.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_browse.setStyleSheet("background-color: #E2E8F0; color: #334155; border: none; border-radius: 4px; padding: 6px 12px; font-weight: bold; font-size: 11px;")
+        btn_browse.setStyleSheet("background-color: #2563EB; color: #FFFFFF; border: none; border-radius: 4px; padding: 6px 12px; font-weight: bold; font-size: 11px;")
         btn_browse.clicked.connect(self.browse_file)
 
-        btn_paste = QPushButton("📋 클립보드 붙여넣기")
-        btn_paste.setToolTip("복사한 엑셀 파일(Ctrl+C) 또는 엑셀 셀 데이터 영역을 즉시 붙여넣습니다 (Ctrl+V)")
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.VLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        separator.setStyleSheet("color: #CBD5E1;")
+
+        lbl_clipboard = QLabel("② 클립보드 데이터")
+        lbl_clipboard.setStyleSheet("font-weight: bold; color: #6D28D9;")
+
+        btn_paste = QPushButton("클립보드 붙여넣기")
+        btn_paste.setToolTip("복사한 엑셀 파일 또는 셀 데이터를 붙여넣습니다.")
         btn_paste.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         btn_paste.setStyleSheet("background-color: #7C3AED; color: #FFFFFF; border: none; border-radius: 4px; padding: 6px 13px; font-weight: bold; font-size: 11px;")
         btn_paste.clicked.connect(self.paste_from_clipboard)
 
-        btn_load = QPushButton("불러오기")
-        btn_load.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_load.setStyleSheet("background-color: #2563EB; color: #FFFFFF; border: none; border-radius: 4px; padding: 6px 14px; font-weight: bold; font-size: 11px;")
-        btn_load.clicked.connect(self.load_excel)
-
         file_layout.addWidget(lbl_file)
         file_layout.addWidget(self.txt_file_path, 1)
         file_layout.addWidget(btn_browse)
+        file_layout.addWidget(separator)
+        file_layout.addWidget(lbl_clipboard)
         file_layout.addWidget(btn_paste)
-        file_layout.addWidget(btn_load)
         layout.addWidget(file_box)
 
         # 상태 안내 라벨
-        self.lbl_status = QLabel("엑셀 파일 선택 또는 클립보드(Ctrl+V) 붙여넣기 시 엑셀 컬럼 목록이 자동 연동됩니다.")
-        self.lbl_status.setStyleSheet("font-size: 11px; font-weight: bold; color: #0284C7; padding-left: 4px;")
+        self.lbl_status = QLabel("○ 대기: 입력 방식을 선택하면 컬럼을 자동 매핑합니다.")
+        self.lbl_status.setStyleSheet("font-size: 12px; font-weight: bold; color: #047857; background-color: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 4px; padding: 6px 8px;")
         layout.addWidget(self.lbl_status)
 
         # 3. 분할 스플리터 (매핑 테이블 영역과 SQL 결과 영역을 자유롭게 크기 조절 가능)
@@ -10719,7 +10808,7 @@ class ExcelBulkQueryDialog(QDialog):
         top_layout.setContentsMargins(0, 0, 0, 0)
         top_layout.setSpacing(6)
 
-        lbl_map = QLabel("테이블 컬럼 ↔ 엑셀 매핑 / 직접 입력 설정")
+        lbl_map = QLabel("컬럼 매핑 및 입력값 설정")
         lbl_map.setStyleSheet("font-size: 12px; font-weight: bold; color: #334155;")
         top_layout.addWidget(lbl_map)
 
@@ -10736,25 +10825,15 @@ class ExcelBulkQueryDialog(QDialog):
             QHeaderView::section { background-color: #F1F5F9; color: #475569; padding: 6px 8px; font-weight: bold; font-size: 11px; border: none; border-bottom: 1px solid #E2E8F0; }
         """)
         h = self.tbl_map.horizontalHeader()
-        h.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
-        h.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        h.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        h.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         h.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
-        h.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self.tbl_map.setColumnWidth(0, 110)
-        self.tbl_map.setColumnWidth(1, 240)
+        h.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        self.tbl_map.setColumnWidth(0, 105)
         self.tbl_map.setColumnWidth(2, 230)
+        self.tbl_map.setColumnWidth(3, 280)
         self.tbl_map.setMinimumHeight(180)
         top_layout.addWidget(self.tbl_map, 1)
-
-        # 실행 버튼
-        btn_action_layout = QHBoxLayout()
-        btn_gen_bulk = QPushButton("대량 SQL 쿼리 생성")
-        btn_gen_bulk.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_gen_bulk.setStyleSheet("background-color: #059669; color: #FFFFFF; border: none; border-radius: 4px; padding: 8px 18px; font-weight: bold; font-size: 12px;")
-        btn_gen_bulk.clicked.connect(self.generate_bulk_sql)
-        btn_action_layout.addWidget(btn_gen_bulk)
-        btn_action_layout.addStretch()
-        top_layout.addLayout(btn_action_layout)
 
         # 하단 결과 SQL 영역
         bottom_widget = QWidget()
@@ -10766,11 +10845,10 @@ class ExcelBulkQueryDialog(QDialog):
         lbl_res.setStyleSheet("font-size: 12px; font-weight: bold; color: #334155;")
         bottom_layout_pane.addWidget(lbl_res)
 
-        self.txt_result = QTextEdit()
-        self.txt_result.setReadOnly(True)
+        self.txt_result = SqlResultTextEdit()
         self.txt_result.setFont(QFont("Consolas", 10))
         self.txt_result.setStyleSheet("""
-            QTextEdit {
+            QPlainTextEdit {
                 background-color: #1E1E2E;
                 color: #D4D4D4;
                 border: 1px solid #313244;
@@ -10779,19 +10857,16 @@ class ExcelBulkQueryDialog(QDialog):
             }
         """)
         self.sql_highlighter = SqlHighlighter(self.txt_result.document(), dark=True)
-        self.txt_result.setMinimumHeight(80)
+        self.txt_result.setMinimumHeight(180)
         bottom_layout_pane.addWidget(self.txt_result, 1)
 
         splitter.addWidget(top_widget)
         splitter.addWidget(bottom_widget)
-        # 하단 대량 SQL 결과 영역 높이를 절반(130px)으로 축소하여 상단 매핑 테이블을 훨씬 넓게 표시
-        splitter.setSizes([510, 130])
+        # 매핑과 SQL 결과를 함께 확인할 수 있도록 결과 영역의 기본 높이를 확대
+        splitter.setSizes([430, 260])
         splitter.setCollapsible(0, False)
         splitter.setCollapsible(1, False)
         layout.addWidget(splitter, 1)
-
-        # 초기 테이블 컬럼 목록 렌더링
-        self.populate_mapping_table()
 
         # 4. 하단 버튼
         bottom_layout = QHBoxLayout()
@@ -10800,7 +10875,7 @@ class ExcelBulkQueryDialog(QDialog):
         bottom_layout.addWidget(self.lbl_result_count)
         bottom_layout.addStretch()
 
-        btn_copy = QPushButton("클립보드 전체 복사")
+        btn_copy = QPushButton("복사")
         btn_copy.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         btn_copy.setStyleSheet("background-color: #2563EB; color: #FFFFFF; border: none; border-radius: 4px; padding: 7px 16px; font-weight: bold; font-size: 11px;")
         btn_copy.clicked.connect(self.copy_result)
@@ -10819,6 +10894,9 @@ class ExcelBulkQueryDialog(QDialog):
         bottom_layout.addWidget(btn_save)
         bottom_layout.addWidget(btn_close)
         layout.addLayout(bottom_layout)
+
+        # 결과 상태 위젯까지 준비된 뒤 초기 테이블 컬럼 목록을 렌더링한다.
+        self.populate_mapping_table()
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -10891,7 +10969,7 @@ class ExcelBulkQueryDialog(QDialog):
             if len(df_clip) > 0 and len(df_clip.columns) > 0:
                 self.df = df_clip
                 self.txt_file_path.setText(f"[클립보드 데이터] {len(df_clip):,}행 × {len(df_clip.columns)}열")
-                self.lbl_status.setText(f"클립보드 데이터 로드 완료: 총 {len(df_clip):,}건의 데이터 행 (컬럼 수: {len(df_clip.columns)}개)")
+                self.lbl_status.setText(f"● 클립보드 로드 완료  |  데이터 {len(df_clip):,}건  |  컬럼 {len(df_clip.columns)}개")
                 self.populate_mapping_table()
                 show_copy_message(f"클립보드 셀 데이터({len(df_clip):,}건)가 로드되었습니다!", self)
                 return
@@ -10921,7 +10999,7 @@ class ExcelBulkQueryDialog(QDialog):
             
             row_count = len(self.df)
             col_count = len(self.df.columns)
-            self.lbl_status.setText(f"엑셀 로드 완료: 총 {row_count:,}건의 데이터 행 (컬럼 수: {col_count}개)")
+            self.lbl_status.setText(f"● 엑셀 로드 완료  |  데이터 {row_count:,}건  |  컬럼 {col_count}개")
 
             self.populate_mapping_table()
         except Exception as e:
@@ -11021,11 +11099,12 @@ class ExcelBulkQueryDialog(QDialog):
             self.tbl_map.setItem(r_idx, 0, item_role)
 
             # 대상 테이블 컬럼명
-            col_display = f"{col_name}"
+            col_display_parts = [col_name]
             if ko_name:
-                col_display += f" ({ko_name})"
+                col_display_parts.append(ko_name)
             if dt:
-                col_display += f" [{dt}]"
+                col_display_parts.append(dt)
+            col_display = " | ".join(col_display_parts)
             
             item_col = QTableWidgetItem(col_display)
             item_col.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
@@ -11048,9 +11127,10 @@ class ExcelBulkQueryDialog(QDialog):
             # 직접 입력값 / 수식 표현식 에디터
             val_edit = QLineEdit()
             
-            def make_on_combo_change(c_box, v_edit, c_name):
+            def make_on_combo_change(c_box, v_edit):
                 def handler():
                     c_data = c_box.currentData()
+                    was_blocked = v_edit.blockSignals(True)
                     if c_data == "__DIRECT__":
                         if v_edit.text().startswith("{") and v_edit.text().endswith("}"):
                             v_edit.setText("")
@@ -11059,9 +11139,11 @@ class ExcelBulkQueryDialog(QDialog):
                         v_edit.setText(f"{{{c_data}}}")
                         s_val = str(first_row[c_data]) if (first_row is not None and c_data in first_row) else ""
                         v_edit.setPlaceholderText(f"1행 샘플: {s_val}" if s_val else "(빈 값)")
+                    v_edit.blockSignals(was_blocked)
+                    self.generate_bulk_sql(silent=True)
                 return handler
 
-            combo.currentIndexChanged.connect(make_on_combo_change(combo, val_edit, col_name))
+            combo.currentIndexChanged.connect(make_on_combo_change(combo, val_edit))
             
             if best_match_idx > 0:
                 combo.setCurrentIndex(best_match_idx)
@@ -11106,9 +11188,12 @@ class ExcelBulkQueryDialog(QDialog):
                 'combo': combo,
                 'edit': val_edit
             })
+            val_edit.textChanged.connect(lambda _text: self.generate_bulk_sql(silent=True))
 
         for i in range(len(self.row_entries) - 1):
             self.setTabOrder(self.row_entries[i]['edit'], self.row_entries[i+1]['edit'])
+
+        self.generate_bulk_sql(silent=True)
 
     def _format_cell_value(self, val, data_type):
         import re
@@ -11177,21 +11262,20 @@ class ExcelBulkQueryDialog(QDialog):
                     result_expr = result_expr.replace(f"{{{tok}}}", raw_val)
         return result_expr
 
-    def generate_bulk_sql(self):
+    def generate_bulk_sql(self, silent=False):
         if self.df is None or len(self.df) == 0:
-            QMessageBox.warning(self, "알림", "불러온 엑셀 데이터가 없습니다. 먼저 엑셀 파일을 불러와 주세요.")
+            if silent:
+                self.txt_result.clear()
+                self.lbl_result_count.clear()
+            else:
+                QMessageBox.warning(self, "알림", "불러온 엑셀 데이터가 없습니다. 먼저 엑셀 파일을 불러와 주세요.")
             return
 
-        # 활성 컬럼 수집 (입력란에 텍스트가 있는 컬럼만 쿼리 생성 대상)
-        active_entries = []
-        for entry in self.row_entries:
-            expr_text = entry['edit'].text().strip()
-            if expr_text:
-                active_entries.append((entry, expr_text))
-
-        if not active_entries:
-            QMessageBox.warning(self, "알림", "설정된 컬럼이 없습니다. 최소 하나 이상의 컬럼에 엑셀 매핑 또는 직접 입력값을 지정해 주세요.")
-            return
+        # 입력값을 지운 컬럼도 제외하지 않고 빈값(NULL)으로 쿼리에 유지한다.
+        active_entries = [
+            (entry, entry['edit'].text().strip())
+            for entry in self.row_entries
+        ]
 
         sql_lines = []
         if self.query_type == "insert":
@@ -11211,10 +11295,18 @@ class ExcelBulkQueryDialog(QDialog):
             where_entries = [item for item in active_entries if item[0]['role'] == 'WHERE']
             
             if not set_entries:
-                QMessageBox.warning(self, "알림", "수정값(SET)으로 지정된 컬럼이 최소 1개 이상 필요합니다.")
+                if silent:
+                    self.txt_result.clear()
+                    self.lbl_result_count.clear()
+                else:
+                    QMessageBox.warning(self, "알림", "수정값(SET)으로 지정된 컬럼이 최소 1개 이상 필요합니다.")
                 return
             if not where_entries:
-                QMessageBox.warning(self, "알림", "조건(WHERE)으로 지정된 컬럼이 최소 1개 이상 필요합니다.")
+                if silent:
+                    self.txt_result.clear()
+                    self.lbl_result_count.clear()
+                else:
+                    QMessageBox.warning(self, "알림", "조건(WHERE)으로 지정된 컬럼이 최소 1개 이상 필요합니다.")
                 return
 
             for _, row in self.df.iterrows():
@@ -11233,9 +11325,27 @@ class ExcelBulkQueryDialog(QDialog):
                 sql_lines.append(f"UPDATE {self.table_name} SET {', '.join(set_parts)} WHERE {' AND '.join(where_parts)};")
 
         full_sql = "\n".join(sql_lines)
+
+        # 결과를 갱신할 때 QTextEdit이 자동으로 맨 아래로 이동하지 않도록
+        # 기존 위치를 보존한다. 단, 사용자가 원래 맨 아래를 보고 있었다면
+        # 새 결과의 맨 아래도 계속 볼 수 있도록 유지한다.
+        result_scrollbar = self.txt_result.verticalScrollBar()
+        had_previous_result = bool(self.txt_result.toPlainText())
+        previous_scroll_value = result_scrollbar.value()
+        was_at_bottom = previous_scroll_value >= result_scrollbar.maximum()
+
         self.txt_result.setPlainText(full_sql)
+
+        if not had_previous_result:
+            result_scrollbar.setValue(0)
+        elif was_at_bottom:
+            result_scrollbar.setValue(result_scrollbar.maximum())
+        else:
+            result_scrollbar.setValue(previous_scroll_value)
+
         self.lbl_result_count.setText(f"총 {len(sql_lines):,}건의 SQL 쿼리가 생성되었습니다.")
-        show_copy_message(f"총 {len(sql_lines):,}건의 대량 SQL이 생성되었습니다!", self)
+        if not silent:
+            show_copy_message(f"총 {len(sql_lines):,}건의 대량 SQL이 생성되었습니다!", self)
 
     def copy_result(self):
         text = self.txt_result.toPlainText().strip()
@@ -11276,6 +11386,7 @@ class InsertUpdateDialog(QDialog):
     def __init__(self, table_name, columns, pk_cols, where_cols, query_type, db_mgr, parent=None):
         super().__init__(parent)
         self.table_name = table_name
+        # UPDATE에서도 PK를 포함한 모든 컬럼을 SET 또는 WHERE에 자유롭게 사용할 수 있다.
         self.columns = columns
         self.pk_cols = pk_cols
         self.where_cols = where_cols
@@ -11288,6 +11399,13 @@ class InsertUpdateDialog(QDialog):
 
         self.setWindowTitle(f"{self.type_label} {title_verb} - {table_name}")
         self.setMinimumSize(680, 580)
+        self.resize(900, 760)
+        self.setWindowFlags(
+            self.windowFlags()
+            | Qt.WindowType.WindowMinMaxButtonsHint
+            | Qt.WindowType.WindowMaximizeButtonHint
+        )
+        self.setSizeGripEnabled(True)
         self.setStyleSheet("""
             QDialog { background-color: #FFFFFF; }
             QLabel { font-size: 11px; color: #334155; }
@@ -11354,9 +11472,14 @@ class InsertUpdateDialog(QDialog):
         layout.addWidget(hint)
 
         # 테이블
+        has_condition_col = self.query_type in ["update", "delete"]
         self.tbl = QTableWidget()
-        self.tbl.setColumnCount(5)
-        self.tbl.setHorizontalHeaderLabels(["컬럼명", "한글명", "데이터타입", "값", "NULL"])
+        self.tbl.setColumnCount(6 if has_condition_col else 5)
+        self.tbl.setHorizontalHeaderLabels(
+            ["컬럼명", "한글명", "데이터타입", "값", "", "조건"]
+            if has_condition_col
+            else ["컬럼명", "한글명", "데이터타입", "값", ""]
+        )
         self.tbl.verticalHeader().setVisible(False)
         self.tbl.setEditTriggers(QAbstractItemView.EditTrigger.AllEditTriggers)
         self.tbl.setStyleSheet("""
@@ -11372,9 +11495,13 @@ class InsertUpdateDialog(QDialog):
         h.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         h.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
         self.tbl.setColumnWidth(4, 55)
+        if has_condition_col:
+            h.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
+            self.tbl.setColumnWidth(5, 55)
 
         self.tbl.setRowCount(len(self.columns))
         self.value_editors = []
+        self.condition_checks = []
         for i, col in enumerate(self.columns):
             name_item = QTableWidgetItem(col['name'])
             name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
@@ -11426,6 +11553,33 @@ class InsertUpdateDialog(QDialog):
             self.tbl.setItem(i, 2, type_item)
             self.tbl.setCellWidget(i, 3, val_edit)
             self.tbl.setCellWidget(i, 4, btn_row_null)
+            if has_condition_col:
+                condition_check = QCheckBox()
+                condition_check.setToolTip("체크한 컬럼을 WHERE 조건에 사용합니다.")
+                if self.query_type == "update":
+                    is_checked = any(
+                        where_col.get('name') == col.get('name')
+                        for where_col in self.where_cols
+                    )
+                else: # delete
+                    if self.where_cols:
+                        is_checked = any(
+                            where_col.get('name') == col.get('name')
+                            for where_col in self.where_cols
+                        )
+                    elif self.pk_cols:
+                        is_checked = col.get('name') in self.pk_cols
+                    else:
+                        is_checked = True
+                condition_check.setChecked(is_checked)
+                condition_check.stateChanged.connect(self._update_preview)
+                condition_container = QWidget()
+                condition_layout = QHBoxLayout(condition_container)
+                condition_layout.setContentsMargins(0, 0, 0, 0)
+                condition_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                condition_layout.addWidget(condition_check)
+                self.tbl.setCellWidget(i, 5, condition_container)
+                self.condition_checks.append(condition_check)
             self.value_editors.append(val_edit)
 
         layout.addWidget(self.tbl, 1)
@@ -11438,7 +11592,11 @@ class InsertUpdateDialog(QDialog):
         self.txt_preview = QTextEdit()
         self.txt_preview.setReadOnly(True)
         self.txt_preview.setFont(QFont("Consolas", 10))
-        self.txt_preview.setFixedHeight(130)
+        self.txt_preview.setMinimumHeight(220)
+        self.txt_preview.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
         self.txt_preview.setStyleSheet("""
             QTextEdit {
                 background-color: #1E1E2E;
@@ -11449,34 +11607,34 @@ class InsertUpdateDialog(QDialog):
             }
         """)
         self.preview_highlighter = SqlHighlighter(self.txt_preview.document(), dark=True)
-        layout.addWidget(self.txt_preview, 0)
+        layout.addWidget(self.txt_preview, 1)
 
         # 버튼
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
 
         is_delete = self.query_type == "delete"
-        btn_gen = QPushButton(f"{'🗑️' if is_delete else '📋'} {self.type_label} SQL 생성 및 복사")
-        btn_gen.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.btn_copy = QPushButton("복사")
+        self.btn_copy.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         if is_delete:
-            btn_gen.setStyleSheet("""
-                QPushButton { background-color: #EF4444; color: #FFFFFF; border: none; border-radius: 4px; padding: 8px 16px; font-weight: bold; font-size: 12px; }
+            self.btn_copy.setStyleSheet("""
+                QPushButton { background-color: #EF4444; color: #FFFFFF; border: none; border-radius: 4px; padding: 8px 18px; font-weight: bold; font-size: 12px; }
                 QPushButton:hover { background-color: #DC2626; }
             """)
         else:
-            btn_gen.setStyleSheet("""
-                QPushButton { background-color: #2563EB; color: #FFFFFF; border: none; border-radius: 4px; padding: 8px 16px; font-weight: bold; font-size: 12px; }
+            self.btn_copy.setStyleSheet("""
+                QPushButton { background-color: #2563EB; color: #FFFFFF; border: none; border-radius: 4px; padding: 8px 18px; font-weight: bold; font-size: 12px; }
                 QPushButton:hover { background-color: #1D4ED8; }
             """)
-        btn_gen.clicked.connect(self._generate_sql)
+        self.btn_copy.clicked.connect(self._copy_sql)
 
-        btn_cancel = QPushButton("취소")
-        btn_cancel.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_cancel.setStyleSheet("background-color: #E2E8F0; color: #475569; border: none; border-radius: 4px; padding: 8px 16px; font-weight: bold; font-size: 12px;")
-        btn_cancel.clicked.connect(self.reject)
+        self.btn_close = QPushButton("닫기")
+        self.btn_close.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.btn_close.setStyleSheet("background-color: #E2E8F0; color: #475569; border: none; border-radius: 4px; padding: 8px 18px; font-weight: bold; font-size: 12px;")
+        self.btn_close.clicked.connect(self.reject)
 
-        btn_layout.addWidget(btn_gen)
-        btn_layout.addWidget(btn_cancel)
+        btn_layout.addWidget(self.btn_copy)
+        btn_layout.addWidget(self.btn_close)
         layout.addLayout(btn_layout)
 
         # 초기 상태 미리보기 표시 (INSERT/DELETE는 기본값이 이미 채워져 있어 즉시 완성된 SQL이 보임)
@@ -11625,19 +11783,17 @@ class InsertUpdateDialog(QDialog):
                 raw_val = editor.text()
                 is_null = getattr(editor, 'is_null_active', False)
                 formatted_val = self._format_value_by_type(raw_val, col.get('data_type', ''), is_null)
-                if col['name'] not in self.pk_cols:
-                    set_cols.append((col, formatted_val))
+                set_cols.append((col, formatted_val))
 
             set_lines = [f"\t{col['name']} = {val}" for col, val in set_cols]
             set_clause = ",\n".join(set_lines)
 
-            # WHERE절 대상 컬럼 값 결정
-            if self.where_cols:
-                where_targets = self.where_cols
-            elif self.pk_cols:
-                where_targets = [{'name': n, 'data_type': ''} for n in self.pk_cols]
-            else:
-                where_targets = [{'name': c['name'], 'data_type': c.get('data_type', '')} for c in self.columns]
+            # 다이얼로그에서 체크한 컬럼만 WHERE 조건으로 사용한다.
+            checked_names = {
+                col['name'] for col, check in zip(self.columns, self.condition_checks)
+                if check.isChecked()
+            }
+            where_targets = [col for col in self.columns if col['name'] in checked_names]
 
             for wt in where_targets:
                 for col, editor in zip(self.columns, self.value_editors):
@@ -11652,23 +11808,39 @@ class InsertUpdateDialog(QDialog):
                 literal = wt['_val'] if '_val' in wt else self._get_default_value(wt['name'], wt.get('data_type', ''))
                 where_conds.append(f"{wt['name']} = {literal}")
 
-            where_lines = ["WHERE", f"    {where_conds[0]}"]
-            for cond in where_conds[1:]:
-                where_lines.append(f"    AND {cond}")
+            sql_lines = [f"UPDATE {self.table_name}  SET ", set_clause]
+            if where_conds:
+                where_lines = ["WHERE", f"    {where_conds[0]}"]
+                for cond in where_conds[1:]:
+                    where_lines.append(f"    AND {cond}")
+                sql_lines.append("\n".join(where_lines))
 
-            sql = "\n".join([f"UPDATE {self.table_name}  SET ", set_clause, "\n".join(where_lines) + ";"])
+            sql = "\n".join(sql_lines) + ";"
             return sql, None
 
         elif self.query_type == "delete":
+            # 다이얼로그에서 체크한 컬럼만 WHERE 조건으로 사용한다.
+            if hasattr(self, 'condition_checks') and self.condition_checks:
+                checked_names = {
+                    col['name'] for col, check in zip(self.columns, self.condition_checks)
+                    if check.isChecked()
+                }
+                where_targets = [col for col in self.columns if col['name'] in checked_names]
+            else:
+                where_targets = self.columns
+
             conds = []
-            for col, editor in zip(self.columns, self.value_editors):
-                raw_val = editor.text()
-                is_null = getattr(editor, 'is_null_active', False)
-                formatted_val = self._format_value_by_type(raw_val, col.get('data_type', ''), is_null)
-                conds.append(f"{col['name']} = {formatted_val}")
+            for wt in where_targets:
+                for col, editor in zip(self.columns, self.value_editors):
+                    if col['name'] == wt['name']:
+                        raw_val = editor.text()
+                        is_null = getattr(editor, 'is_null_active', False)
+                        formatted_val = self._format_value_by_type(raw_val, col.get('data_type', ''), is_null)
+                        conds.append(f"{wt['name']} = {formatted_val}")
+                        break
 
             if not conds:
-                return None, "삭제 조건으로 사용할 컬럼이 없습니다."
+                return None, "삭제 조건(WHERE)으로 사용할 컬럼을 최소 1개 이상 체크해 주세요."
 
             where_lines = ["WHERE", f"    {conds[0]}"]
             for cond in conds[1:]:
@@ -11686,14 +11858,28 @@ class InsertUpdateDialog(QDialog):
         else:
             self.txt_preview.setPlainText(f"-- {err}" if err else "-- 값을 입력하면 SQL이 여기에 표시됩니다.")
 
-    def _generate_sql(self):
+    def _copy_sql(self):
         sql, err = self._build_sql()
         if not sql:
             QMessageBox.warning(self, "경고", err or "입력값을 확인해 주세요.")
             return
         self.result_sql = sql
         QApplication.clipboard().setText(self.result_sql)
-        self.accept()
+        show_copy_message(f"📋 {self.type_label} 쿼리가 클립보드에 복사되었습니다!", self)
+        history_title = f"[{self.table_name}] {self.type_label} 생성"
+        try:
+            main_win = self.window()
+            if main_win and hasattr(main_win, 'add_recent_query_log'):
+                main_win.add_recent_query_log(history_title, sql)
+            elif hasattr(self, 'db_mgr') and self.db_mgr:
+                self.db_mgr.add_recent_query(history_title, sql)
+        except Exception as e:
+            print(f"[History Log Fail] {str(e)}")
+
+    def _generate_sql(self):
+        self._copy_sql()
+        if self.result_sql:
+            self.accept()
 
 
 class RegisterTaskFolderDialog(QDialog):
@@ -12319,7 +12505,7 @@ class TableDetailWidget(QWidget):
         self.table_widget = QTableWidget()
         self.table_widget.setColumnCount(10)
         self.table_widget.setHorizontalHeaderLabels([
-            "선택", "번호", "PK", "컬럼명", "컬럼한글명", "데이터타입", "Null여부", "연결테이블", "공통코드", "조건"
+            "선택", "번호", "PK", "컬럼명", "컬럼한글명", "데이터타입", "", "연결테이블", "공통코드", "조건"
         ])
         self.table_widget.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table_widget.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -12583,7 +12769,7 @@ class TableDetailWidget(QWidget):
             type_item = QTableWidgetItem(type_str)
             self.table_widget.setItem(row_idx, 5, type_item)
 
-            # 6. Null여부
+            # 6. NULL 여부
             null_val = "NULL" if col['is_nullable'] in ['Y', 'y', 1, '1'] else "NOT NULL"
             null_item = QTableWidgetItem(null_val)
             null_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -13647,65 +13833,70 @@ class TableDetailWidget(QWidget):
             sql = "\n".join(lines)
             
         elif query_type == "insert":
-            dialog = InsertUpdateDialog(self.table_name, selected_cols, pk_cols, where_cols, "insert", self.db_mgr, self)
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                sql = dialog.result_sql
-                QApplication.clipboard().setText(sql)
-                show_copy_message("📋 INSERT 쿼리가 클립보드에 복사되었습니다!", self)
-                history_title = f"[{self.table_name}] INSERT 생성"
-                try:
-                    main_win = self.window()
-                    if main_win and hasattr(main_win, 'add_recent_query_log'):
-                        main_win.add_recent_query_log(history_title, sql)
-                    else:
-                        self.db_mgr.add_recent_query(history_title, sql)
-                except Exception as e:
-                    print(f"[History Log Fail] {str(e)}")
+            # INSERT에서는 [선택] 및 [조건]에 체크된 모든 컬럼을 누락 없이 다이얼로그에 포함
+            insert_col_names = {col['name'] for col in selected_cols}
+            insert_columns = list(selected_cols)
+            for col in where_cols:
+                if col['name'] not in insert_col_names:
+                    insert_columns.append(col)
+                    insert_col_names.add(col['name'])
+            
+            if not insert_columns:
+                show_copy_message("⚠️ 추가할 컬럼을 선택하거나 지정해 주세요.", self)
+                return
+
+            dialog = InsertUpdateDialog(self.table_name, insert_columns, pk_cols, where_cols, "insert", self.db_mgr, self)
+            dialog.exec()
             return
             
         elif query_type == "update":
-            dialog = InsertUpdateDialog(self.table_name, selected_cols, pk_cols, where_cols, "update", self.db_mgr, self)
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                sql = dialog.result_sql
-                QApplication.clipboard().setText(sql)
-                show_copy_message("📋 UPDATE 쿼리가 클립보드에 복사되었습니다!", self)
-                history_title = f"[{self.table_name}] UPDATE 생성"
-                try:
-                    main_win = self.window()
-                    if main_win and hasattr(main_win, 'add_recent_query_log'):
-                        main_win.add_recent_query_log(history_title, sql)
-                    else:
-                        self.db_mgr.add_recent_query(history_title, sql)
-                except Exception as e:
-                    print(f"[History Log Fail] {str(e)}")
+            update_col_names = {col['name'] for col in selected_cols}
+            update_columns = list(selected_cols)
+            for col in where_cols:
+                if col['name'] not in update_col_names:
+                    update_columns.append(col)
+                    update_col_names.add(col['name'])
+            for pk_name in pk_cols:
+                if pk_name not in update_col_names:
+                    for col in selected_cols + where_cols:
+                        if col['name'] == pk_name:
+                            update_columns.append(col)
+                            update_col_names.add(col['name'])
+                            break
+
+            if not update_columns:
+                show_copy_message("⚠️ 수정할 컬럼을 선택하거나 지정해 주세요.", self)
+                return
+
+            dialog = InsertUpdateDialog(self.table_name, update_columns, pk_cols, where_cols, "update", self.db_mgr, self)
+            dialog.exec()
             return
             
         elif query_type == "delete":
-            if where_cols:
-                where_targets = where_cols
-            elif pk_cols:
-                where_targets = get_col_info_by_names(pk_cols)
-            else:
-                where_targets = selected_cols
+            # DELETE에서는 [선택] 및 [조건]에 체크된 모든 컬럼(또는 PK)을 다이얼로그에 표시하여 사용자가 [조건] 체크박스로 제어
+            delete_col_names = set()
+            delete_columns = []
+            for col in selected_cols:
+                if col['name'] not in delete_col_names:
+                    delete_columns.append(col)
+                    delete_col_names.add(col['name'])
+            for col in where_cols:
+                if col['name'] not in delete_col_names:
+                    delete_columns.append(col)
+                    delete_col_names.add(col['name'])
+            for pk_name in pk_cols:
+                if pk_name not in delete_col_names:
+                    pk_info = get_col_info_by_names([pk_name])
+                    if pk_info:
+                        delete_columns.append(pk_info[0])
+                        delete_col_names.add(pk_name)
 
-            if not where_targets:
+            if not delete_columns:
                 show_copy_message("⚠️ 삭제 조건으로 사용할 컬럼을 선택하거나 지정해 주세요.", self)
                 return
 
-            dialog = InsertUpdateDialog(self.table_name, where_targets, pk_cols, where_cols, "delete", self.db_mgr, self)
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                sql = dialog.result_sql
-                QApplication.clipboard().setText(sql)
-                show_copy_message("📋 DELETE 쿼리가 클립보드에 복사되었습니다!", self)
-                history_title = f"[{self.table_name}] DELETE 생성"
-                try:
-                    main_win = self.window()
-                    if main_win and hasattr(main_win, 'add_recent_query_log'):
-                        main_win.add_recent_query_log(history_title, sql)
-                    else:
-                        self.db_mgr.add_recent_query(history_title, sql)
-                except Exception as e:
-                    print(f"[History Log Fail] {str(e)}")
+            dialog = InsertUpdateDialog(self.table_name, delete_columns, pk_cols, where_cols, "delete", self.db_mgr, self)
+            dialog.exec()
             return
 
         QApplication.clipboard().setText(sql)
@@ -15263,19 +15454,19 @@ class OracleGuideApp(QMainWindow):
         """)
 
         act_import = QAction("📁  데이터 불러오기", self)
-        act_import.setStatusTip("엑셀/CSV 명세서를 읽어 테이블·컬럼·관계 정보를 적재합니다.")
+        act_import.setStatusTip("○ 엑셀·CSV 명세서 불러오기\n○ 테이블·컬럼·관계 정보 적재\n○ 기존 데이터와의 중복 및 반영 결과 확인")
         act_import.triggered.connect(self.on_import_clicked)
         self.settings_menu.addAction(act_import)
 
         act_code_setup = QAction("🔤  공통코드 설정", self)
-        act_code_setup.setStatusTip("공통코드 테이블과 컬럼 매핑 규칙(최대 3개)을 설정합니다.")
+        act_code_setup.setStatusTip("○ 공통코드 테이블 및 컬럼 지정\n○ 공통코드와 명세 컬럼 간 매핑 기준 설정\n○ 최대 3개 공통코드 설정 관리")
         act_code_setup.triggered.connect(self.on_code_setup_clicked)
         self.settings_menu.addAction(act_code_setup)
 
         self.settings_menu.addSeparator()
 
         act_reset = QAction("🗑️  기본 정보 초기화", self)
-        act_reset.setStatusTip("저장된 모든 데이터를 삭제하고 빈 상태로 되돌립니다.")
+        act_reset.setStatusTip("○ 저장된 테이블·컬럼·관계·쿼리·업무자료 삭제\n○ 초기화 전 백업 생성\n○ 확인 절차 완료 후 빈 상태로 전환")
         act_reset.triggered.connect(self.on_reset_all_data)
         self.settings_menu.addAction(act_reset)
 
@@ -16026,7 +16217,7 @@ class OracleGuideApp(QMainWindow):
         
         lbl_welcome = QLabel("🔍 DB 돋보기 — 통합 데이터베이스 명세 & SQL 플랫폼")
         lbl_welcome.setStyleSheet("font-size: 18px; color: #FFFFFF; font-weight: bold; font-family: 'Malgun Gothic'; background: transparent;")
-        lbl_sub_welcome = QLabel("오라클/SQLite 테이블 명세서, 공통코드 3개 슬롯 매핑, 다중 조인 및 업무정보/달력 통합 관리 시스템")
+        lbl_sub_welcome = QLabel("데이터베이스 명세·업무자료·SQL을 체계적으로 관리하는 전산업무 지원 도구")
         lbl_sub_welcome.setStyleSheet("font-size: 12px; color: #DBEAFE; font-family: 'Malgun Gothic'; background: transparent;")
         
         # 상단 뱃지 영역
@@ -16058,7 +16249,7 @@ class OracleGuideApp(QMainWindow):
         header_layout.addLayout(badge_layout)
         welcome_layout.addWidget(header_container)
 
-        # 2. 6대 핵심 기능 가이드 카드 (2열 그리드 배치로 공간 활용 극대화)
+        # 2. 좌측 메뉴 5개 + 설정 가이드 카드 (2열 그리드 배치)
         grid_widget = QWidget()
         grid_widget.setStyleSheet("background: transparent;")
         grid_layout = QGridLayout(grid_widget)
@@ -16114,34 +16305,34 @@ class OracleGuideApp(QMainWindow):
             return card
 
         card1 = create_guide_card(
-            "🔍", "테이블 명세 & 원클릭 SQL 생성", 
-            "테이블 컬럼 체크박스 선택 기반 <b>[SELECT 1]</b>(코드 서브쿼리 자동생성), <b>[SELECT 2]</b>(기본/주석), <b>[INSERT]</b>, <b>[UPDATE]</b>, <b>[DELETE]</b> 쿼리를 즉시 생성 및 복사합니다.",
-            "명세/쿼리"
+            "🔍", "테이블", 
+            "○ 테이블·컬럼 명세 조회\n○ 필요한 컬럼 선택 후 SQL 생성\n○ 테이블별 명세 및 공통코드 확인",
+            "테이블"
         )
         card2 = create_guide_card(
-            "🏷️", "공통코드 3개 슬롯 & 테이블 일괄 변경", 
-            "설정(⚙️)에서 최대 3개의 공통코드 테이블을 등록하고, 컬럼 우클릭을 통해 슬롯 지정 및 <b>[🌐 테이블 전체 일괄 변경]</b>을 지원합니다.",
-            "공통코드"
+            "📁", "업무별", 
+            "○ 업무 분류별 문서 및 처리 절차 관리\n○ 텍스트·표·이미지·첨부파일 등록\n○ 반복 업무 일정 및 달력 연동",
+            "업무"
         )
         card3 = create_guide_card(
-            "🤝", "드래그 앤 드롭 테이블 JOIN & 업무 뷰", 
-            "열려있는 테이블로 다른 테이블을 <b>드래그 앤 드롭</b>하여 다중 JOIN 및 복수 ON 조건을 구성하고, <b>[⭐ 업무 폴더 등록]</b>으로 나만의 조인 뷰를 저장합니다.",
-            "조인/뷰"
+            "🏷️", "공통코드", 
+            "○ 공통코드 목록 및 검색\n○ 컬럼별 공통코드 매핑 정보 확인\n○ 공통코드 기준으로 테이블 정보 관리",
+            "공통코드"
         )
         card4 = create_guide_card(
-            "📁", "업무정보 & 리치 에디터 & 첨부파일", 
-            "업무 분류별 문서 작성, 서식 텍스트/표/이미지 삽입 및 리사이징, 파일 첨부 드래그 앤 드롭, <b>[반복 주기 설정]</b>으로 정기 업무를 관리합니다.",
-            "업무문서"
+            "🔗", "관계", 
+            "○ 테이블 간 연결 관계 조회\n○ JOIN 대상 및 연결 조건 확인\n○ 전체 테이블 관계를 한눈에 파악",
+            "관계"
         )
         card5 = create_guide_card(
-            "📅", "업무 달력 & 일정 시각화", 
-            "반복 업무와 일회성 업무 일정을 캘린더에서 한눈에 확인하고, 날짜 클릭으로 해당일의 업무 문서를 즉시 열람 및 관리합니다.",
-            "캘린더"
+            "💾", "쿼리", 
+            "○ 자주 사용하는 SQL 등록·검색·수정\n○ 오라클 SQL·PL/SQL 문법 활용\n○ 엑셀 자료를 활용한 대량 쿼리 생성",
+            "쿼리"
         )
         card6 = create_guide_card(
-            "💾", "보관 쿼리함 & 오라클 문법 & 대량 치환", 
-            "자주 쓰는 SQL 보관/포맷팅(<b>Ctrl+S</b> 즉시 저장), 오라클 PL/SQL 문법 검색 및 엑셀 데이터를 활용한 대량 쿼리 자동 생성기를 제공합니다.",
-            "쿼리함/도구"
+            "⚙️", "설정", 
+            "○ 엑셀·CSV 명세서 및 공통코드 불러오기\n○ 공통코드 테이블·컬럼 매핑 기준 설정\n○ 데이터 초기화 및 백업 관리",
+            "설정"
         )
 
         grid_layout.addWidget(card1, 0, 0)
