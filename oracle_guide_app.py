@@ -11481,8 +11481,8 @@ class InsertUpdateDialog(QDialog):
         btn_paste.clicked.connect(self.paste_from_clipboard)
         header_layout.addWidget(btn_paste)
 
-        # 엑셀 불러오기(대량) 버튼 (INSERT/UPDATE 쿼리 지원)
-        if self.query_type in ["insert", "update"]:
+        # 엑셀 불러오기(대량) 버튼 (INSERT/UPDATE/DELETE 쿼리 지원)
+        if self.query_type in ["insert", "update", "delete"]:
             btn_excel_bulk = QPushButton("엑셀 불러오기(대량)")
             btn_excel_bulk.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             btn_excel_bulk.setStyleSheet("""
@@ -11724,7 +11724,18 @@ class InsertUpdateDialog(QDialog):
                 editor.setText(val)
 
     def open_excel_bulk_dialog(self):
-        dlg = ExcelBulkQueryDialog(self.table_name, self.columns, self.pk_cols, self.where_cols, self.query_type, self)
+        current_where_cols = []
+        if self.query_type in ["update", "delete"] and hasattr(self, 'condition_checks'):
+            for i, col in enumerate(self.columns):
+                if i < len(self.condition_checks) and self.condition_checks[i].isChecked():
+                    current_where_cols.append(col)
+        else:
+            current_where_cols = list(self.where_cols) if self.where_cols else []
+
+        if self.query_type == "delete" and not current_where_cols:
+            current_where_cols = list(self.columns)
+
+        dlg = ExcelBulkQueryDialog(self.table_name, self.columns, self.pk_cols, current_where_cols, self.query_type, self)
         dlg.exec()
 
     def _get_default_value(self, col_name, data_type):
