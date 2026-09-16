@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QStyledItemDelegate, QStyle, QStyleOptionViewItem, QGridLayout, QSpinBox, QSizePolicy,
     QGraphicsDropShadowEffect
 )
+from erd_widget import ErDiagramView
 
 # SQLite DB 파일명 (실행 파일 및 스크립트 위치 기준으로 절대 경로 지정)
 if getattr(sys, 'frozen', False):
@@ -25,7 +26,7 @@ else:
     base_dir = os.path.dirname(os.path.abspath(__file__))
 
 DB_FILE = os.path.normpath(os.path.join(base_dir, "metadata.db"))
-APP_VERSION = "v1.5"
+APP_VERSION = "v1.6"
 
 class ToastNotification(QFrame):
     """프로그램 중앙에 플로팅으로 안내 메시지를 띄워주는 토스트 위젯"""
@@ -7004,6 +7005,361 @@ class TaskInfoSidebarWidget(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "오류", f"가져오기 중 오류가 발생했습니다:\n{str(e)}")
         
+
+# ==========================================
+# 🛡️ 보안 기능 모듈 (개인정보 마스킹 및 비밀번호 잠금)
+# ==========================================
+import hashlib
+import re
+
+def mask_private_info(text):
+    """주민등록번호, 전화번호, 이메일 등 개인정보를 정규식으로 자동 마스킹"""
+    if not text or not isinstance(text, str):
+        return text
+    
+    # 1. 주민등록번호 (6자리-7자리)
+    def rrn_repl(m):
+        front = m.group(1)
+        sep = m.group(2) if m.group(2) else "-"
+        gender = m.group(3)
+        return f"{front}{sep}{gender}******"
+    text = re.sub(r'(\d{6})([- ]?)([1-8])\d{6}', rrn_repl, text)
+
+    # 2. 휴대전화번호 (010, 011 등)
+    def phone_repl(m):
+        p1 = m.group(1)
+        sep1 = m.group(2) if m.group(2) else "-"
+        mid = m.group(3)
+        sep2 = m.group(4) if m.group(4) else "-"
+        p3 = m.group(5)
+        return f"{p1}{sep1}{'*' * len(mid)}{sep2}{p3}"
+    text = re.sub(r'(01[016789])([- ]?)(\d{3,4})([- ]?)(\d{4})', phone_repl, text)
+
+    # 3. 이메일 주소
+    def email_repl(m):
+        user = m.group(1)
+        domain = m.group(2)
+        if len(user) <= 2:
+            masked_user = user[0] + "*"
+        else:
+            masked_user = user[:2] + "*" * (len(user) - 2)
+        return f"{masked_user}@{domain}"
+    text = re.sub(r'([a-zA-Z0-9_.+-]+)@([a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)', email_repl, text)
+
+    return text
+
+
+class PasswordAuthDialog(QDialog):
+    """프로그램 실행 시 비밀번호 인증 팝업"""
+    def __init__(self, db_mgr, parent=None):
+        super().__init__(parent)
+        self.db_mgr = db_mgr
+        self.setWindowTitle("🔒 프로그램 보안 인증")
+        self.setFixedSize(360, 220)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
+        self.fail_count = 0
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 20)
+        layout.setSpacing(14)
+
+        title_lbl = QLabel("🛡️ 병무 전산 바이블 보안 잠금")
+        title_lbl.setStyleSheet("font-size: 15px; font-weight: bold; color: #1E3A8A;")
+        layout.addWidget(title_lbl)
+
+        desc_lbl = QLabel("인가된 사용자 확인을 위해 비밀번호를 입력해 주세요.")
+        desc_lbl.setStyleSheet("font-size: 12px; color: #64748B;")
+        desc_lbl.setWordWrap(True)
+        layout.addWidget(desc_lbl)
+
+        self.txt_pwd = QLineEdit()
+        self.txt_pwd.setEchoMode(QLineEdit.EchoMode.Password)
+        self.txt_pwd.setPlaceholderText("비밀번호를 입력하세요")
+        self.txt_pwd.setStyleSheet("""
+            QLineEdit {
+                border: 1.5px solid #CBD5E1;
+                border-radius: 6px;
+                padding: 8px 12px;
+                font-size: 13px;
+            }
+            QLineEdit:focus {
+                border-color: #2563EB;
+            }
+        """)
+        self.txt_pwd.returnPressed.connect(self.on_verify)
+        layout.addWidget(self.txt_pwd)
+
+        self.lbl_error = QLabel("")
+        self.lbl_error.setStyleSheet("color: #EF4444; font-size: 11px; font-weight: bold;")
+        layout.addWidget(self.lbl_error)
+
+        btn_layout = QHBoxLayout()
+        btn_cancel = QPushButton("종료")
+        btn_cancel.setStyleSheet("""
+            QPushButton {
+                background-color: #F1F5F9;
+                color: #475569;
+                border: 1px solid #CBD5E1;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #E2E8F0;
+            }
+        """)
+        btn_cancel.clicked.connect(self.reject)
+
+        btn_ok = QPushButton("인증 및 시작")
+        btn_ok.setStyleSheet("""
+            QPushButton {
+                background-color: #2563EB;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 20px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1D4ED8;
+            }
+        """)
+        btn_ok.clicked.connect(self.on_verify)
+
+        btn_layout.addWidget(btn_cancel)
+        btn_layout.addWidget(btn_ok)
+        layout.addLayout(btn_layout)
+
+    def on_verify(self):
+        pwd = self.txt_pwd.text().strip()
+        if not pwd:
+            self.lbl_error.setText("⚠️ 비밀번호를 입력해 주세요.")
+            return
+
+        if self.db_mgr.verify_password(pwd):
+            self.accept()
+        else:
+            self.fail_count += 1
+            self.lbl_error.setText(f"❌ 비밀번호가 일치하지 않습니다. ({self.fail_count}회 오류)")
+            self.txt_pwd.selectAll()
+            self.txt_pwd.setFocus()
+            if self.fail_count >= 5:
+                QMessageBox.critical(self, "보안 경고", "비밀번호 5회 연속 오류로 프로그램을 종료합니다.")
+                self.reject()
+
+
+class ChangePasswordDialog(QDialog):
+    """비밀번호 설정 및 변경 다이얼로그"""
+    def __init__(self, db_mgr, parent=None):
+        super().__init__(parent)
+        self.db_mgr = db_mgr
+        self.setWindowTitle("🔑 비밀번호 설정 / 변경")
+        self.setFixedSize(380, 260)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
+        self.has_existing_pwd = bool(self.db_mgr.get_setting('password_hash', ''))
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(12)
+
+        form = QFormLayout()
+        form.setSpacing(10)
+
+        if self.has_existing_pwd:
+            self.txt_curr_pwd = QLineEdit()
+            self.txt_curr_pwd.setEchoMode(QLineEdit.EchoMode.Password)
+            self.txt_curr_pwd.setPlaceholderText("현재 비밀번호")
+            form.addRow("현재 비밀번호:", self.txt_curr_pwd)
+
+        self.txt_new_pwd = QLineEdit()
+        self.txt_new_pwd.setEchoMode(QLineEdit.EchoMode.Password)
+        self.txt_new_pwd.setPlaceholderText("새 비밀번호 (4자리 이상)")
+        form.addRow("새 비밀번호:", self.txt_new_pwd)
+
+        self.txt_confirm_pwd = QLineEdit()
+        self.txt_confirm_pwd.setEchoMode(QLineEdit.EchoMode.Password)
+        self.txt_confirm_pwd.setPlaceholderText("새 비밀번호 확인")
+        form.addRow("비밀번호 확인:", self.txt_confirm_pwd)
+
+        layout.addLayout(form)
+
+        self.lbl_msg = QLabel("")
+        self.lbl_msg.setStyleSheet("color: #EF4444; font-size: 11px;")
+        layout.addWidget(self.lbl_msg)
+
+        btn_layout = QHBoxLayout()
+        btn_cancel = QPushButton("취소")
+        btn_cancel.clicked.connect(self.reject)
+        btn_save = QPushButton("비밀번호 저장")
+        btn_save.setStyleSheet("background-color: #2563EB; color: white; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
+        btn_save.clicked.connect(self.on_save)
+
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_cancel)
+        btn_layout.addWidget(btn_save)
+        layout.addLayout(btn_layout)
+
+    def on_save(self):
+        if self.has_existing_pwd:
+            curr = self.txt_curr_pwd.text().strip()
+            if not self.db_mgr.verify_password(curr):
+                self.lbl_msg.setText("⚠️ 현재 비밀번호가 일치하지 않습니다.")
+                return
+
+        new_p = self.txt_new_pwd.text().strip()
+        conf_p = self.txt_confirm_pwd.text().strip()
+
+        if len(new_p) < 4:
+            self.lbl_msg.setText("⚠️ 비밀번호는 4자리 이상이어야 합니다.")
+            return
+        if new_p != conf_p:
+            self.lbl_msg.setText("⚠️ 새 비밀번호가 서로 일치하지 않습니다.")
+            return
+
+        self.db_mgr.set_password(new_p)
+        QMessageBox.information(self, "완료", "✅ 비밀번호가 성공적으로 저장되었습니다.")
+        self.accept()
+
+
+class AppSettingsDialog(QDialog):
+    """보안 및 환경설정 관리 다이얼로그"""
+    def __init__(self, db_mgr, parent=None):
+        super().__init__(parent)
+        self.db_mgr = db_mgr
+        self.setWindowTitle("🛡️ 보안 및 환경설정")
+        self.setFixedSize(480, 360)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(16)
+
+        # 1. 개인정보 자동 마스킹 그룹
+        grp_privacy = QFrame()
+        grp_privacy.setStyleSheet("QFrame { background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; }")
+        v_priv = QVBoxLayout(grp_privacy)
+        v_priv.setSpacing(6)
+
+        lbl_p_title = QLabel("🔒 개인정보 자동 마스킹")
+        lbl_p_title.setStyleSheet("font-weight: bold; font-size: 13px; color: #1E293B;")
+        v_priv.addWidget(lbl_p_title)
+
+        self.chk_masking = QCheckBox("문서 및 쿼리 저장 시 개인정보 자동 마스킹 (비식별화)")
+        self.chk_masking.setChecked(self.db_mgr.is_privacy_masking_enabled())
+        self.chk_masking.setStyleSheet("font-size: 12px; color: #334155;")
+        v_priv.addWidget(self.chk_masking)
+
+        lbl_p_desc = QLabel("※ 주민등록번호(950101-1******), 휴대전화번호(010-****-1234), 이메일 주소를 정규표현식으로 자동 감지하여 마스킹합니다.")
+        lbl_p_desc.setStyleSheet("font-size: 11px; color: #64748B;")
+        lbl_p_desc.setWordWrap(True)
+        v_priv.addWidget(lbl_p_desc)
+
+        layout.addWidget(grp_privacy)
+
+        # 2. 프로그램 비밀번호 잠금 그룹
+        grp_lock = QFrame()
+        grp_lock.setStyleSheet("QFrame { background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; }")
+        v_lock = QVBoxLayout(grp_lock)
+        v_lock.setSpacing(8)
+
+        lbl_l_title = QLabel("🔑 프로그램 실행 보안 잠금")
+        lbl_l_title.setStyleSheet("font-weight: bold; font-size: 13px; color: #1E293B;")
+        v_lock.addWidget(lbl_l_title)
+
+        h_lock = QHBoxLayout()
+        self.chk_password = QCheckBox("프로그램 시작 시 비밀번호 인증 사용")
+        self.chk_password.setChecked(self.db_mgr.is_password_lock_enabled())
+        self.chk_password.setStyleSheet("font-size: 12px; color: #334155;")
+        self.chk_password.toggled.connect(self.on_pwd_toggle)
+        h_lock.addWidget(self.chk_password)
+
+        btn_change_pwd = QPushButton("비밀번호 변경 / 설정")
+        btn_change_pwd.setStyleSheet("""
+            QPushButton {
+                background-color: #FFFFFF;
+                color: #2563EB;
+                border: 1px solid #93C5FD;
+                border-radius: 4px;
+                padding: 4px 10px;
+                font-size: 11px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #EFF6FF;
+            }
+        """)
+        btn_change_pwd.clicked.connect(self.on_change_password)
+        h_lock.addWidget(btn_change_pwd)
+        v_lock.addLayout(h_lock)
+
+        lbl_l_desc = QLabel("※ 실행 잠금을 활성화하면 올바른 비밀번호를 입력해야만 프로그램을 열 수 있습니다.")
+        lbl_l_desc.setStyleSheet("font-size: 11px; color: #64748B;")
+        lbl_l_desc.setWordWrap(True)
+        v_lock.addWidget(lbl_l_desc)
+
+        layout.addWidget(grp_lock)
+        layout.addStretch()
+
+        # 하단 버튼
+        btn_layout = QHBoxLayout()
+        btn_cancel = QPushButton("취소")
+        btn_cancel.setStyleSheet("padding: 7px 16px; font-size: 12px;")
+        btn_cancel.clicked.connect(self.reject)
+
+        btn_save = QPushButton("설정 저장")
+        btn_save.setStyleSheet("""
+            QPushButton {
+                background-color: #2563EB;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 4px;
+                padding: 7px 20px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1D4ED8;
+            }
+        """)
+        btn_save.clicked.connect(self.on_save)
+
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_cancel)
+        btn_layout.addWidget(btn_save)
+        layout.addLayout(btn_layout)
+
+    def on_pwd_toggle(self, checked):
+        if checked:
+            has_pwd = bool(self.db_mgr.get_setting('password_hash', ''))
+            if not has_pwd:
+                QMessageBox.information(self, "안내", "비밀번호 잠금을 사용하려면 먼저 비밀번호를 설정해야 합니다.")
+                dlg = ChangePasswordDialog(self.db_mgr, self)
+                if dlg.exec() != QDialog.DialogCode.Accepted:
+                    self.chk_password.setChecked(False)
+
+    def on_change_password(self):
+        dlg = ChangePasswordDialog(self.db_mgr, self)
+        dlg.exec()
+
+    def on_save(self):
+        mask_val = 'Y' if self.chk_masking.isChecked() else 'N'
+        self.db_mgr.set_setting('privacy_masking', mask_val)
+
+        lock_val = 'Y' if self.chk_password.isChecked() else 'N'
+        if lock_val == 'Y' and not self.db_mgr.get_setting('password_hash', ''):
+            QMessageBox.warning(self, "경고", "비밀번호가 설정되지 않아 잠금 기능을 활성화할 수 없습니다.")
+            return
+
+        self.db_mgr.set_setting('password_lock', lock_val)
+        show_copy_message("✅ 보안 및 환경설정이 저장되었습니다.", self)
+        self.accept()
+
 class DatabaseManager:
     """SQLite 내부 데이터베이스 관리 및 데이터 입출력 처리 클래스"""
     def __init__(self, db_path=DB_FILE):
@@ -7338,6 +7694,10 @@ class DatabaseManager:
                 cursor.execute("INSERT OR REPLACE INTO app_metadata (key, value) VALUES ('query_columns', ?)", (default_query_columns,))
             
             cursor.execute("INSERT OR IGNORE INTO app_metadata (key, value) VALUES ('query_common_codes', ?)", (default_query_common_codes,))
+            # 9. 보안 및 환경설정 기본값 초기화
+            cursor.execute("INSERT OR IGNORE INTO app_metadata (key, value) VALUES ('privacy_masking', 'Y')")
+            cursor.execute("INSERT OR IGNORE INTO app_metadata (key, value) VALUES ('password_lock', 'N')")
+            cursor.execute("INSERT OR IGNORE INTO app_metadata (key, value) VALUES ('password_hash', '')")
             
             # 공통코드 설정값 초기 데이터 세팅
             cursor.execute("INSERT OR IGNORE INTO app_metadata (key, value) VALUES ('common_code_table', 'COMMON_CODE_SUB')")
@@ -8878,6 +9238,38 @@ class DatabaseManager:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM task_doc_attachments WHERE id = ?", (att_id,))
             conn.commit()
+
+    # --- 보안 및 환경설정 관련 메서드 ---
+    def get_setting(self, key, default=None):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT value FROM app_metadata WHERE key = ?", (key,))
+            row = cursor.fetchone()
+            return row['value'] if row else default
+
+    def set_setting(self, key, value):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("INSERT OR REPLACE INTO app_metadata (key, value) VALUES (?, ?)", (key, str(value)))
+            conn.commit()
+
+    def is_privacy_masking_enabled(self):
+        return self.get_setting('privacy_masking', 'Y') == 'Y'
+
+    def is_password_lock_enabled(self):
+        return self.get_setting('password_lock', 'N') == 'Y' and bool(self.get_setting('password_hash', ''))
+
+    def verify_password(self, raw_pwd):
+        stored_hash = self.get_setting('password_hash', '')
+        if not stored_hash:
+            return True
+        input_hash = hashlib.sha256(raw_pwd.encode('utf-8')).hexdigest()
+        return input_hash == stored_hash
+
+    def set_password(self, raw_pwd):
+        pwd_hash = hashlib.sha256(raw_pwd.encode('utf-8')).hexdigest()
+        self.set_setting('password_hash', pwd_hash)
+
 
 
 class QueryEditDialog(QDialog):
@@ -15535,7 +15927,7 @@ class OracleGuideApp(QMainWindow):
         self.loaded_table_count = 0
         self.open_query_tabs = {}  # 쿼리 상세 탭 관리
         self.open_task_tabs = {}   # 업무 정보 상세 탭 관리
-        self.setWindowTitle(f"DB 돋보기 ({APP_VERSION})")
+        self.setWindowTitle(f"전산 바이블 ({APP_VERSION})")
         self.resize(1250, 800)
         self.setWindowIcon(get_app_icon())
         
@@ -15618,7 +16010,7 @@ class OracleGuideApp(QMainWindow):
         top_layout = QHBoxLayout()
         top_layout.setContentsMargins(12, 0, 12, 0)
 
-        lbl_app_title = QLabel(f"🔍 DB 돋보기 ({APP_VERSION})")
+        lbl_app_title = QLabel(f"📘 전산 바이블 ({APP_VERSION})")
         lbl_app_title.setStyleSheet("""
             font-size: 14px; 
             font-weight: 800; 
@@ -15634,6 +16026,9 @@ class OracleGuideApp(QMainWindow):
         
         btn_all_relations = QPushButton("🔗 전체 테이블 관계")
         btn_all_relations.clicked.connect(self.open_all_relations_tab)
+
+        btn_erd = QPushButton("ERD 보기")
+        btn_erd.clicked.connect(self.open_erd_tab)
 
         btn_export_spec = QPushButton("📊 명세서 내보내기")
         btn_export_spec.clicked.connect(self.on_export_spec_clicked)
@@ -15653,7 +16048,7 @@ class OracleGuideApp(QMainWindow):
                 color: #2563EB;
             }
         """
-        for btn in [btn_all_codes, btn_all_relations, btn_export_spec]:
+        for btn in [btn_all_codes, btn_all_relations, btn_erd, btn_export_spec]:
             btn.setStyleSheet(btn_shortcut_style)
             btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             top_layout.addWidget(btn)
@@ -15695,6 +16090,11 @@ class OracleGuideApp(QMainWindow):
         act_code_setup.setStatusTip("○ 공통코드 테이블 및 컬럼 지정\n○ 공통코드와 명세 컬럼 간 매핑 기준 설정\n○ 최대 3개 공통코드 설정 관리")
         act_code_setup.triggered.connect(self.on_code_setup_clicked)
         self.settings_menu.addAction(act_code_setup)
+
+        act_security = QAction("🛡️  보안 및 환경설정", self)
+        act_security.setStatusTip("○ 개인정보 자동 마스킹 ON/OFF\n○ 프로그램 실행 비밀번호 잠금 및 변경\n○ 데이터 보안 환경설정 관리")
+        act_security.triggered.connect(self.on_security_settings_clicked)
+        self.settings_menu.addAction(act_security)
 
         self.settings_menu.addSeparator()
 
@@ -16448,7 +16848,7 @@ class OracleGuideApp(QMainWindow):
         header_layout.setContentsMargins(28, 20, 28, 20)
         header_layout.setSpacing(10)
         
-        lbl_welcome = QLabel("🔍 DB 돋보기 — 통합 데이터베이스 명세 & SQL 플랫폼")
+        lbl_welcome = QLabel("📘 전산 바이블 — 통합 데이터베이스 명세 & SQL 플랫폼")
         lbl_welcome.setStyleSheet("font-size: 18px; color: #FFFFFF; font-weight: bold; font-family: 'Malgun Gothic'; background: transparent;")
         lbl_sub_welcome = QLabel("데이터베이스 명세·업무자료·SQL을 체계적으로 관리하는 전산업무 지원 도구")
         lbl_sub_welcome.setStyleSheet("font-size: 12px; color: #DBEAFE; font-family: 'Malgun Gothic'; background: transparent;")
@@ -17523,6 +17923,172 @@ class OracleGuideApp(QMainWindow):
         self.tab_widget.setCurrentIndex(new_idx)
         return all_rels_view
 
+    def open_erd_tab(self):
+        """상단 'ERD 보기' 버튼 - 테이블 관계도(ERD) 탭 열기"""
+        # 이미 열려 있으면 해당 탭으로 이동
+        tab = getattr(self, "_erd_tab", None)
+        if tab is not None:
+            try:
+                for idx in range(self.tab_widget.count()):
+                    if self.tab_widget.widget(idx) is tab:
+                        self.tab_widget.setCurrentIndex(idx)
+                        return tab
+            except Exception:
+                pass
+
+        # 시작 페이지가 열려있다면 안전하게 닫기
+        for idx in range(self.tab_widget.count()):
+            if self.tab_widget.tabText(idx) == "시작 페이지":
+                self.tab_widget.removeTab(idx)
+                break
+
+        view = ErDiagramView(self.db_mgr)
+        self._erd_view = view
+        view.table_double_clicked.connect(self.open_table_tab)
+
+        tab = self._build_erd_tab(view)
+        self._erd_tab = tab
+        new_idx = self.tab_widget.addTab(tab, "ERD 다이어그램")
+        self.tab_widget.setCurrentIndex(new_idx)
+        return tab
+
+    def _build_erd_tab(self, view):
+        """ERD 탭(툴바 + 그래픽 뷰) 구성"""
+        tab = QWidget()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
+
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(6)
+
+        lbl = QLabel("테이블 관계도 (ERD)")
+        lbl.setStyleSheet("font-size: 13px; font-weight: bold; color: #1E3A8A; padding-right: 4px;")
+        toolbar.addWidget(lbl)
+
+        # 테이블 빠른 검색/이동 콤보박스
+        cb_search = QComboBox()
+        cb_search.addItem("테이블 바로 이동...")
+        tables = sorted(list(view.canvas.boxes.keys()))
+        for tname in tables:
+            t_box = view.canvas.boxes[tname]
+            label = f"{tname} ({t_box.table_ko_name})" if t_box.table_ko_name else tname
+            cb_search.addItem(label, tname)
+        cb_search.setStyleSheet("""
+            QComboBox {
+                background-color: #FFFFFF;
+                color: #1E293B;
+                border: 1px solid #CBD5E1;
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-size: 11px;
+                min-width: 170px;
+            }
+            QComboBox:hover {
+                border-color: #2563EB;
+            }
+        """)
+        def on_search_selected(idx):
+            if idx > 0:
+                tname = cb_search.itemData(idx)
+                if tname:
+                    view.focus_table(tname)
+        cb_search.currentIndexChanged.connect(on_search_selected)
+        toolbar.addWidget(cb_search)
+
+        btn_style = """
+            QPushButton {
+                background-color: #FFFFFF;
+                color: #334155;
+                border: 1px solid #E2E8F0;
+                border-radius: 4px;
+                padding: 5px 10px;
+                font-size: 11px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                border-color: #2563EB;
+                color: #2563EB;
+            }
+            QPushButton:checked {
+                background-color: #EFF6FF;
+                border-color: #2563EB;
+                color: #2563EB;
+            }
+        """
+
+        def make_btn(text, slot, tip, checkable=False, checked=False):
+            b = QPushButton(text)
+            b.setStyleSheet(btn_style)
+            b.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            b.setToolTip(tip)
+            if checkable:
+                b.setCheckable(True)
+                b.setChecked(checked)
+                b.clicked.connect(lambda chk: slot(chk))
+            else:
+                b.clicked.connect(slot)
+            return b
+
+        toolbar.addWidget(make_btn("전체 보기", view.fit_in_view, "다이어그램을 화면에 맞게 축소/확대"))
+        toolbar.addWidget(make_btn("확대", view.zoom_in, "화면 확대 (휠 스크롤 가능)"))
+        toolbar.addWidget(make_btn("축소", view.zoom_out, "화면 축소 (휠 스크롤 가능)"))
+        toolbar.addWidget(make_btn("배율 초기화", view.reset_zoom, "배율을 100%로 초기화"))
+        toolbar.addWidget(make_btn("자동 배치", view.reset_layout, "국제 표준 계층형(Hierarchical) 레이아웃으로 자동 정렬"))
+
+        # 컴팩트 모드 토글 (PK/FK만 보기)
+        btn_compact = make_btn("PK/FK만 보기", view.set_show_compact, "주요 식별자(PK)와 외래키(FK) 컬럼만 축약하여 표시합니다.", checkable=True, checked=False)
+        toolbar.addWidget(btn_compact)
+
+        # 한글 논리명 표시 토글
+        btn_ko = make_btn("한글명 표시", view.set_show_ko_columns, "컬럼 한글 논리명을 함께 표시하거나 숨깁니다.", checkable=True, checked=True)
+        toolbar.addWidget(btn_ko)
+
+        # 자기 참조 표시 토글
+        btn_self_ref = make_btn("자기참조 표시", view.set_show_self_ref, "상위 카테고리(UP_CAT_ID) 등 자기 자신을 참조하는 관계를 표시합니다.", checkable=True, checked=view.show_self_ref)
+        toolbar.addWidget(btn_self_ref)
+
+        toolbar.addWidget(make_btn("PNG 저장", self._erd_export_png, "현재 관계도를 고해상도 PNG 이미지로 저장"))
+        toolbar.addStretch()
+
+        hint = QLabel(
+            "안내: 테이블 드래그=이동 · 우클릭 드래그=화면 이동 · 휠=확대/축소 · 더블클릭=테이블 명세 이동"
+        )
+        hint.setStyleSheet("color: #64748B; font-size: 10px;")
+        toolbar.addWidget(hint)
+
+        layout.addLayout(toolbar)
+        layout.addWidget(view, 1)
+        tab.setLayout(layout)
+        return tab
+
+    def _erd_export_png(self):
+        view = getattr(self, "_erd_view", None)
+        if view is None:
+            return
+        default_name = "ERD_관계도_{}.png".format(datetime.now().strftime("%Y%m%d_%H%M%S"))
+        path, _ = QFileDialog.getSaveFileName(
+            self, "ERD 이미지 저장", default_name, "PNG 이미지 (*.png)"
+        )
+        if not path:
+            return
+        ok = view.export_png(path)
+        if ok:
+            msg = QMessageBox(self)
+            msg.setIcon(QMessageBox.Icon.Information)
+            msg.setWindowTitle("저장 완료")
+            msg.setText("ERD 이미지가 저장되었습니다.\n\n{}".format(path))
+            btn_open = msg.addButton("폴더 열기", QMessageBox.ButtonRole.ActionRole)
+            msg.addButton("확인", QMessageBox.ButtonRole.AcceptRole)
+            msg.exec()
+            if msg.clickedButton() == btn_open:
+                try:
+                    os.startfile(os.path.dirname(os.path.abspath(path)))
+                except Exception:
+                    pass
+        else:
+            QMessageBox.warning(self, "저장 실패", "ERD 이미지를 저장하지 못했습니다.")
+
     def on_export_spec_clicked(self):
         """테이블 명세서 Excel 내보내기 다이얼로그 열기"""
         dlg = SpecExportDialog(self.db_mgr, self)
@@ -17846,6 +18412,11 @@ class OracleGuideApp(QMainWindow):
 
     # 초기화 시 비우지 않는 테이블 (스키마 관리용)
     RESET_KEEP_TABLES = {"sqlite_sequence"}
+
+    def on_security_settings_clicked(self):
+        """보안 및 환경설정 다이얼로그 열기"""
+        dlg = AppSettingsDialog(self.db_mgr, self)
+        dlg.exec()
 
     def on_reset_all_data(self):
         """저장된 모든 데이터를 지우고 빈 상태로 되돌린다."""
@@ -21224,6 +21795,12 @@ def main():
         }
     """)
     
+    db_mgr = DatabaseManager()
+    if db_mgr.is_password_lock_enabled():
+        auth_dlg = PasswordAuthDialog(db_mgr)
+        if auth_dlg.exec() != QDialog.DialogCode.Accepted:
+            sys.exit(0)
+
     window = OracleGuideApp()
     window.show()
     sys.exit(app.exec())
