@@ -21920,7 +21920,7 @@ def format_sql(sql):
 
     import re
 
-    # 1. 홑따옴표와 쌍따옴표 내부 문자열 및 주석(Line/Block comment) 임시 마스킹
+    # 1. 홑따옴표와 쌍따옴표 내부 문자열 및 블록 주석(/*...*/) 마스킹
     strings = []
     def repl_string(m):
         strings.append(m.group(0))
@@ -21929,17 +21929,21 @@ def format_sql(sql):
     # Block comment 마스킹
     masked_sql = re.sub(r"/\*.*?\*/", repl_string, sql, flags=re.DOTALL)
 
-    # Line comment 마스킹 (개행 문자 보존)
-    def repl_line_comment(m):
-        val = m.group(0)
-        suffix = "\n" if val.endswith("\n") or val.endswith("\r") else ""
-        strings.append(val.rstrip("\r\n"))
-        return f"__SQL_STR_{len(strings)-1}__" + suffix
-    masked_sql = re.sub(r"--.*?(?:\r?\n|$)", repl_line_comment, masked_sql)
-
     # 문자열 마스킹
     masked_sql = re.sub(r"'(?:''|[^'])*'", repl_string, masked_sql)
     masked_sql = re.sub(r'"(?:""|[^"])*"', repl_string, masked_sql)
+
+    # Line comment 마스킹: 줄바꿈 문자는 유지하고 주석 내용만 마스킹 식별자로 대체
+    line_comments = []
+    def repl_line_comment(m):
+        raw = m.group(0)
+        content = raw.rstrip("\r\n")
+        has_newline = raw.endswith("\n") or raw.endswith("\r")
+        line_comments.append(content)
+        idx = len(line_comments) - 1
+        return f" __SQL_LCMT_{idx}__ " + ("\n" if has_newline else "")
+
+    masked_sql = re.sub(r"--.*?(?:\r?\n|$)", repl_line_comment, masked_sql)
 
     # 2. SQL 예약어 목록 정의 (길이 긴 순으로 정렬하여 정확한 매칭 보장)
     join_keywords = [
@@ -21971,9 +21975,11 @@ def format_sql(sql):
         pattern = re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE)
         masked_sql = pattern.sub(kw.upper(), masked_sql)
 
-    # 3. 토크나이징 (바인드 변수, 단어, Oracle 식별자, 복합 연산자, 예약어 등)
+    # 3. 토크나이징 (개행 문자를 감지하여 주석 전후의 줄바꿈 여부 판별)
     token_pattern = re.compile(
         r'(__SQL_STR_\d+__)|'
+        r'(__SQL_LCMT_\d+__)|'
+        r'(\n)|'
         r'(:\w+)|'  # 바인드 변수 (:ID, :NAME 등)
         r'\b(' + '|'.join(re.escape(k) for k in all_keywords_sorted) + r')\b|'
         r'([a-zA-Z0-9_가-힣$#{}]+)|'  # Oracle 식별자 ($와 # 포함)
@@ -21981,9 +21987,20 @@ def format_sql(sql):
         re.IGNORECASE
     )
 
-    tokens = []
+    raw_tokens = []
     for match in token_pattern.finditer(masked_sql):
-        tokens.append(match.group(0))
+        raw_tokens.append(match.group(0))
+
+    tokens = []
+    newline_before_token = {}
+    had_newline = False
+    for tok in raw_tokens:
+        if tok == '\n':
+            had_newline = True
+        else:
+            tokens.append(tok)
+            newline_before_token[len(tokens)-1] = had_newline
+            had_newline = False
 
     # 멀티라인 서브쿼리 여부 사전 식별
     multiline_parens = set()
@@ -22053,7 +22070,7 @@ def format_sql(sql):
 
     def get_current_base_indent():
         if paren_indent_stack:
-            return paren_indent_stack[-1] + 7
+            return paren_indent_stack[-1] + 6
         else:
             return 0
 
@@ -22069,6 +22086,16 @@ def format_sql(sql):
     i = 0
     while i < len(tokens):
         tok = tokens[i]
+
+        # 라인 주석(--...) 처리
+        if tok.startswith("__SQL_LCMT_"):
+            if formatted_parts and not formatted_parts[-1].endswith(("\n", " ")):
+                formatted_parts.append(" ")
+            formatted_parts.append(tok)
+            target_indent = get_current_base_indent() + (current_clause_indent if current_clause in ["SELECT", "WHERE", "SET"] else 0)
+            add_newline(target_indent)
+            i += 1
+            continue
 
         if tok == '(':
             is_multi = (i in multiline_parens)
@@ -22120,17 +22147,23 @@ def format_sql(sql):
 
         elif tok == ',':
             formatted_parts.append(",")
-            # SELECT 절이나 SET 절에서 최상위 레벨(paren_depth == 0)일 때만 항목마다 줄바꿈 (키워드 길이+1 들여쓰기)
-            # GROUP BY나 ORDER BY에서는 줄바꿈하지 않고 한 줄에 콤마 공백으로 연결 ("GROUP BY a, b, c")
-            if paren_depth == 0 and current_clause in ["SELECT", "SET"]:
-                add_newline(get_current_base_indent() + current_clause_indent)
-            else:
+            # 다음 토큰이 라인 주석이고 개행 없이 붙은 꼬리 주석인지 확인
+            next_is_lcmt = (i + 1 < len(tokens) and tokens[i+1].startswith("__SQL_LCMT_"))
+            next_has_nl = newline_before_token.get(i + 1, False)
+
+            if next_is_lcmt and not next_has_nl:
                 formatted_parts.append(" ")
+            else:
+                # SELECT 절이나 SET 절에서 최상위 레벨(paren_depth == 0)일 때만 항목마다 줄바꿈
+                if paren_depth == 0 and current_clause in ["SELECT", "SET"]:
+                    add_newline(get_current_base_indent() + current_clause_indent)
+                else:
+                    formatted_parts.append(" ")
             after_clause_start = False
 
-        elif tok in ["SELECT", "WHERE", "HAVING", "SET"]:
-            current_clause = tok
-            current_clause_indent = len(tok) + 1  # SELECT: 7, WHERE: 6, HAVING: 7, SET: 4
+        elif tok == "SELECT":
+            current_clause = "SELECT"
+            current_clause_indent = 7
             if is_multiline_context():
                 add_newline(get_current_base_indent())
                 after_clause_start = True
@@ -22141,10 +22174,22 @@ def format_sql(sql):
             formatted_parts.append(tok)
             formatted_parts.append(" ")
 
+        elif tok in ["WHERE", "HAVING"]:
+            current_clause = tok
+            current_clause_indent = 7
+            if is_multiline_context():
+                add_newline(get_current_base_indent())
+            else:
+                if formatted_parts and not formatted_parts[-1].endswith(("\n", " ", "(", ".")):
+                    formatted_parts.append(" ")
+            formatted_parts.append(tok)
+            formatted_parts.append(" ")
+            after_clause_start = False  # WHERE 바로 다음 첫 조건은 줄바꿈하지 않고 같은 줄에 배치!
+
         elif tok in newline_keywords:
             current_clause = tok
             if tok in join_keywords:
-                current_join_indent = len(tok) + 1  # LEFT JOIN: 10, INNER JOIN: 11, JOIN: 5
+                current_join_indent = len(tok) + 1
             if is_multiline_context():
                 add_newline(get_current_base_indent())
             else:
@@ -22179,7 +22224,6 @@ def format_sql(sql):
             after_clause_start = False
 
         else:
-            # 음수 기호(-) 처리: 앞 토큰이 연산자나 쉼표, 여는 괄호인 경우 뒤 숫자와 붙여씀
             prev_tok = tokens[i-1] if i > 0 else ""
             is_unary_minus = (tok == "-" and prev_tok in ["(", ",", "=", "<", ">", "<=", ">=", "!=", "<>", "BETWEEN"])
 
@@ -22188,11 +22232,9 @@ def format_sql(sql):
                     add_newline(get_current_base_indent() + current_clause_indent)
                 after_clause_start = False
             elif formatted_parts and not formatted_parts[-1].endswith(("\n", " ", "(", ".")):
-                # 단항 음수 기호 뒤에는 공백 추가 안 함
                 if tok not in [".", ";"] and not (prev_tok == "-" and i > 1 and tokens[i-2] in ["(", ",", "=", "<", ">"]):
                     formatted_parts.append(" ")
 
-            # 비교 연산자 앞뒤 공백 처리 (단항 마이너스가 아닐 때)
             is_cmp_op = (tok in ["=", "<", ">", "<=", ">=", "!=", "<>"])
             if is_cmp_op and formatted_parts and not formatted_parts[-1].endswith(" "):
                 formatted_parts.append(" ")
@@ -22209,6 +22251,9 @@ def format_sql(sql):
     # 5. 마스킹 복원
     for idx, orig_str in enumerate(strings):
         res = res.replace(f"__SQL_STR_{idx}__", orig_str)
+
+    for idx, orig_cmt in enumerate(line_comments):
+        res = res.replace(f"__SQL_LCMT_{idx}__", orig_cmt)
 
     # 중복 공백 및 빈 개행 정리
     res = re.sub(r"[ \t]+\n", "\n", res)
