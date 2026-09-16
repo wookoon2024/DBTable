@@ -4,7 +4,7 @@ import sqlite3
 from datetime import datetime
 import pandas as pd
 from PyQt6.QtCore import Qt, pyqtSignal, QSize, QEvent, QRegularExpression, QByteArray, QBuffer, QIODevice, QDate, QRect, QObject, QTimer
-from PyQt6.QtGui import QFont, QColor, QCursor, QIcon, QAction, QSyntaxHighlighter, QTextCharFormat, QImage, QTextCursor, QTextImageFormat, QTextTable, QShortcut, QKeySequence, QTextDocument, QPainter
+from PyQt6.QtGui import QFont, QColor, QCursor, QIcon, QAction, QSyntaxHighlighter, QTextCharFormat, QImage, QTextCursor, QTextImageFormat, QTextTable, QShortcut, QKeySequence, QTextDocument, QPainter, QBrush, QPen, QFontMetrics
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QSplitter, QLineEdit, QListWidget, QListWidgetItem, QTabWidget, 
@@ -3178,6 +3178,13 @@ class HighlightedCalendar(QCalendarWidget):
         super().__init__(parent)
         self.db_mgr = db_mgr
         self.repeating_tasks = []
+        self.setVerticalHeaderFormat(QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader)
+        self.setHorizontalHeaderFormat(QCalendarWidget.HorizontalHeaderFormat.ShortDayNames)
+        self.setGridVisible(False)
+        
+        f = self.font()
+        f.setFamily("Malgun Gothic")
+        self.setFont(f)
         self.load_all_repeating_tasks()
         
     def load_all_repeating_tasks(self):
@@ -3189,34 +3196,133 @@ class HighlightedCalendar(QCalendarWidget):
             self.repeating_tasks = []
         
     def paintCell(self, painter, rect, date):
-        super().paintCell(painter, rect, date)
-        try:
-            py_date = date.toPyDate()
-            task_count = 0
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+
+        is_cur_month = (date.month() == self.monthShown())
+        is_selected = (date == self.selectedDate())
+        is_today = (date == QDate.currentDate())
+        py_date = date.toPyDate()
+        day_of_week = date.dayOfWeek()  # 1=Mon .. 7=Sun
+
+        # 1. 셀 배경
+        if is_selected:
+            bg_color = QColor("#EFF6FF")
+        elif not is_cur_month:
+            bg_color = QColor("#F8FAFC")
+        else:
+            bg_color = QColor("#FFFFFF")
+
+        painter.fillRect(rect, bg_color)
+
+        # 2. 그리드 선 (우측 및 하단 경계선)
+        painter.setPen(QPen(QColor("#E2E8F0"), 1))
+        painter.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom())
+        painter.drawLine(rect.right(), rect.top(), rect.right(), rect.bottom())
+
+        # 3. 선택 영역 테두리
+        if is_selected:
+            painter.setPen(QPen(QColor("#3B82F6"), 2))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), 4, 4)
+
+        # 4. 좌측 상단 일자 숫자 렌더링
+        day_str = str(date.day())
+        font = QFont("Malgun Gothic", 9, QFont.Weight.Bold)
+        painter.setFont(font)
+
+        if is_today:
+            # 오늘 날짜: 블루 원형 뱃지 (구글 캘린더 스타일)
+            badge_size = 22
+            badge_rect = QRect(rect.left() + 5, rect.top() + 4, badge_size, badge_size)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(QColor("#2563EB")))
+            painter.drawRoundedRect(badge_rect, badge_size // 2, badge_size // 2)
+
+            painter.setPen(QColor("#FFFFFF"))
+            painter.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, day_str)
+        else:
+            # 일반 일자: 좌측 상단 정렬
+            num_rect = QRect(rect.left() + 7, rect.top() + 5, 26, 18)
+            if not is_cur_month:
+                text_color = QColor("#94A3B8")
+            elif day_of_week == 7:  # 일요일 (소프트 레드)
+                text_color = QColor("#EF4444")
+            elif day_of_week == 6:  # 토요일 (소프트 블루)
+                text_color = QColor("#2563EB")
+            else:  # 평일 (다크 슬레이트)
+                text_color = QColor("#1E293B")
+
+            painter.setPen(text_color)
+            painter.drawText(num_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, day_str)
+
+        # 5. 업무 일정 이벤트 칩(태그) 표시
+        if is_cur_month:
+            day_tasks = []
             for doc in self.repeating_tasks:
                 try:
                     if is_task_scheduled_on_date(doc, py_date):
-                        task_count += 1
-                except Exception as ex:
-                    print(f"Error checking schedule for task {doc.get('id')}: {ex}")
-                    
-            if task_count > 0:
-                painter.save()
-                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-                
-                # Draw the "+n" text at the bottom center of the cell
-                text_rect = QRect(rect.left(), rect.bottom() - 18, rect.width(), 14)
-                
-                painter.setPen(QColor("#0284C7"))
-                font = painter.font()
-                font.setPointSize(8)
-                font.setBold(True)
-                painter.setFont(font)
-                painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, f"+{task_count}")
-                
-                painter.restore()
-        except Exception as e:
-            print(f"Error in HighlightedCalendar.paintCell: {e}")
+                        day_tasks.append(doc)
+                except Exception:
+                    pass
+
+            if day_tasks:
+                pill_y = rect.top() + 26
+                pill_height = 17
+                avail_width = rect.width() - 10
+
+                max_pills = 1
+                if rect.height() >= 75:
+                    max_pills = 2
+                elif rect.height() >= 95:
+                    max_pills = 3
+
+                pill_styles = [
+                    (QColor("#E0F2FE"), QColor("#BAE6FD"), QColor("#0369A1")),  # Sky blue
+                    (QColor("#DCFCE7"), QColor("#BBF7D0"), QColor("#15803D")),  # Emerald
+                    (QColor("#FEF3C7"), QColor("#FDE68A"), QColor("#B45309")),  # Amber
+                    (QColor("#F3E8FF"), QColor("#E9D5FF"), QColor("#7E22CE")),  # Purple
+                ]
+
+                drawn_count = min(len(day_tasks), max_pills)
+                show_more = len(day_tasks) > drawn_count
+
+                if show_more and drawn_count > 1:
+                    drawn_count -= 1
+
+                for i in range(drawn_count):
+                    t = day_tasks[i]
+                    p_bg, p_border, p_text = pill_styles[i % len(pill_styles)]
+                    p_rect = QRect(rect.left() + 5, pill_y, avail_width, pill_height)
+
+                    painter.setPen(QPen(p_border, 1))
+                    painter.setBrush(QBrush(p_bg))
+                    painter.drawRoundedRect(p_rect, 3, 3)
+
+                    painter.setPen(p_text)
+                    p_font = QFont("Malgun Gothic", 7, QFont.Weight.Medium)
+                    painter.setFont(p_font)
+                    fm = QFontMetrics(p_font)
+                    t_title = t.get('title', '')
+                    elided = fm.elidedText(f"{t_title}", Qt.TextElideMode.ElideRight, avail_width - 8)
+                    painter.drawText(p_rect.adjusted(4, 0, -2, 0), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, elided)
+
+                    pill_y += pill_height + 2
+
+                if show_more:
+                    remain = len(day_tasks) - drawn_count
+                    more_rect = QRect(rect.left() + 5, pill_y, avail_width, pill_height)
+                    painter.setPen(QPen(QColor("#CBD5E1"), 1))
+                    painter.setBrush(QBrush(QColor("#F1F5F9")))
+                    painter.drawRoundedRect(more_rect, 3, 3)
+
+                    painter.setPen(QColor("#64748B"))
+                    p_font = QFont("Malgun Gothic", 7, QFont.Weight.Bold)
+                    painter.setFont(p_font)
+                    painter.drawText(more_rect, Qt.AlignmentFlag.AlignCenter, f"+{remain}건 더보기")
+
+        painter.restore()
 
 class TaskCalendarWidget(QWidget):
     def __init__(self, db_mgr, main_win, parent=None):
@@ -3243,7 +3349,7 @@ class TaskCalendarWidget(QWidget):
         cal_layout.setContentsMargins(10, 10, 10, 10)
         cal_layout.setSpacing(8)
         
-        lbl_cal_title = QLabel("📅 업무 실행 달력")
+        lbl_cal_title = QLabel("업무 실행 달력")
         lbl_cal_title.setStyleSheet("font-weight: bold; color: #1E293B; font-size: 13px; border: none; background: transparent;")
         
         # 오늘 버튼 추가
@@ -3278,14 +3384,14 @@ class TaskCalendarWidget(QWidget):
         
         self.calendar = HighlightedCalendar(self.db_mgr, self)
         self.calendar.setStyleSheet("""
-            QCalendarWidget QWidget {
-                alternate-background-color: #F8FAFC;
+            QCalendarWidget {
+                background-color: #FFFFFF;
+                border: none;
             }
             QCalendarWidget QWidget#qt_calendar_navigationbar {
                 background-color: #F8FAFC;
                 border-bottom: 1px solid #E2E8F0;
-                border-top-left-radius: 8px;
-                border-top-right-radius: 8px;
+                min-height: 44px;
             }
             QCalendarWidget QWidget#qt_calendar_navigationbar QToolButton {
                 color: #0F172A;
@@ -3293,14 +3399,11 @@ class TaskCalendarWidget(QWidget):
                 font-weight: bold;
                 background-color: transparent;
                 border: none;
-                border-radius: 4px;
-                padding: 4px 8px;
+                border-radius: 6px;
+                padding: 6px 12px;
             }
             QCalendarWidget QWidget#qt_calendar_navigationbar QToolButton:hover {
                 background-color: #E2E8F0;
-            }
-            QCalendarWidget QWidget#qt_calendar_navigationbar QToolButton::menu-indicator {
-                image: none;
             }
             QCalendarWidget QToolButton#qt_calendar_monthbutton,
             QCalendarWidget QToolButton#qt_calendar_yearbutton {
@@ -3309,15 +3412,22 @@ class TaskCalendarWidget(QWidget):
                 color: #1E293B;
                 padding: 4px 10px;
             }
-            QCalendarWidget QAbstractItemView:enabled {
-                color: #1E293B;
-                selection-background-color: #EFF6FF;
-                selection-color: #2563EB;
-                font-size: 12px;
-                font-weight: bold;
+            QCalendarWidget QTableView {
+                background-color: #FFFFFF;
+                border: 1px solid #E2E8F0;
+                selection-background-color: transparent;
+                outline: 0;
             }
-            QCalendarWidget QAbstractItemView:disabled {
-                color: #CBD5E1;
+            QCalendarWidget QTableView QHeaderView::section {
+                background-color: #F8FAFC;
+                color: #64748B;
+                font-family: 'Malgun Gothic';
+                font-size: 11px;
+                font-weight: bold;
+                border: none;
+                border-bottom: 1px solid #E2E8F0;
+                padding: 6px 0px;
+                text-align: center;
             }
             QCalendarWidget QMenu {
                 background-color: white;
@@ -3325,8 +3435,6 @@ class TaskCalendarWidget(QWidget):
                 font-size: 11px;
             }
         """)
-        self.calendar.setGridVisible(True)
-        self.calendar.setVerticalHeaderFormat(QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader)
         self.calendar.clicked.connect(self.on_date_clicked)
         cal_layout.addWidget(self.calendar, 1)
         

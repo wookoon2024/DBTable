@@ -47,8 +47,8 @@ attachments/      샘플 첨부파일 · 이미지
 <summary>파일 검증 (SHA-256)</summary>
 
 ```
-885ca09313112f4b45234c6b917df4dd01f5b90c50e48a951a244260e8ff3179  DBTable_v1.6_win64.zip
-0e00b370be266d4c179802e3574811ebd9a81b7ab8e49a3f4f3e44fb19a55f42  DB돋보기.exe
+2e123b7bd50279567e73129a3613cbde738082cf5467de69d5b008f65226fe20  DBTable_v1.6_win64.zip
+a60264c36bbd9710f20b6ce694d5f03eb1d83901d129c8a66b5a99221a571125  DB돋보기.exe
 ```
 
 PowerShell 에서 확인:
