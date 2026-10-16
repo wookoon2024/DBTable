@@ -10,16 +10,16 @@
 
 ## 다운로드
 
-## ⬇️ [<ins>**DBTable_v1.6_win64.zip 내려받기 (81.7 MB - 최신 버전)**</ins>](https://github.com/wookoon2024/DBTable/raw/main/release/DBTable_v1.6_win64.zip)
+## ⬇️ [<ins>**DBTable_v1.7_win64.zip 내려받기 (90.8 MB - 최신 버전)**</ins>](https://github.com/wookoon2024/DBTable/raw/main/release/DBTable_v1.7_win64.zip)
 
 파이썬 설치 없이 바로 실행할 수 있는 단독 실행 파일입니다.
 위 링크를 클릭하면 곧바로 다운로드가 시작됩니다.
 
 | | |
 |---|---|
-| 파일 | `DBTable_v1.6_win64.zip` |
-| 버전 | `v1.6` (최신) |
-| 크기 | 81.7 MB |
+| 파일 | `DBTable_v1.7_win64.zip` |
+| 버전 | `v1.7` (최신) |
+| 크기 | 90.8 MB |
 | 요구 사항 | Windows 10 이상 64bit · 별도 설치 불필요 |
 
 **사용법**
@@ -47,14 +47,14 @@ attachments/      샘플 첨부파일 · 이미지
 <summary>파일 검증 (SHA-256)</summary>
 
 ```
-927d54409f7cb00efef723e6b3894da4f4d71a1089f002d36a02a230b92ba1ac  DBTable_v1.6_win64.zip
-354f0bb8b80deee8ef57feae5129704ea24375da5320a417db327504da21c4aa  DB돋보기.exe
+d2184985915a7826e6d2a9e3147862d19fb8a3967de6291d14e0656169ea35a3  DBTable_v1.7_win64.zip
+f6dcaf010b706e68581fc0f9fbfc4e85d8c2912e81d09e70fbd5649f0f25cb31  DB돋보기.exe
 ```
 
 PowerShell 에서 확인:
 
 ```powershell
-Get-FileHash .\release\DBTable_v1.6_win64.zip -Algorithm SHA256
+Get-FileHash .\release\DBTable_v1.7_win64.zip -Algorithm SHA256
 ```
 
 </details>

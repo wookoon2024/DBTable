@@ -323,8 +323,8 @@ class ErdCanvasItem(QGraphicsItem):
 
         # 헤더 타이틀 (영문 물리명 볼드 + 한글 논리명)
         painter.setPen(QColor("#FFFFFF"))
-        font_header_en = QFont("Segoe UI", 10, QFont.Weight.Bold)
-        font_header_ko = QFont("Malgun Gothic", 9, QFont.Weight.Normal)
+        font_header_en = QFont("Pretendard", 10, QFont.Weight.Bold)
+        font_header_ko = QFont("Pretendard", 9, QFont.Weight.Normal)
 
         painter.setFont(font_header_en)
         en_text = box.table_name
@@ -347,10 +347,10 @@ class ErdCanvasItem(QGraphicsItem):
         has_divider = bool(box.pk_cols and box.normal_cols and not box.show_compact)
         pk_count = len([c for c in cols_to_show if box.is_pk(c)])
 
-        font_name = QFont("Segoe UI", 9, QFont.Weight.DemiBold)
-        font_ko_col = QFont("Malgun Gothic", 8, QFont.Weight.Normal)
-        font_type = QFont("Segoe UI", 8, QFont.Weight.Normal)
-        font_badge = QFont("Segoe UI", 7, QFont.Weight.Bold)
+        font_name = QFont("Pretendard", 9, QFont.Weight.DemiBold)
+        font_ko_col = QFont("Pretendard", 8, QFont.Weight.Normal)
+        font_type = QFont("Pretendard", 8, QFont.Weight.Normal)
+        font_badge = QFont("Pretendard", 7, QFont.Weight.Bold)
 
         for idx, col in enumerate(cols_to_show):
             # PK 섹션과 일반 속성 섹션을 가르는 굵은 구분선

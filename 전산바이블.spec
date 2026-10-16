@@ -14,10 +14,13 @@
 #   2. collect_data_files('hwpx')
 #      python-hwpx 의 템플릿 데이터가 빠지면 HWPX 내보내기가 동작하지 않는다.
 #
+import os
 from PyInstaller.utils.hooks import collect_data_files
 
 datas = []
 datas += collect_data_files('hwpx')
+if os.path.exists('fonts'):
+    datas.append(('fonts', 'fonts'))
 
 
 a = Analysis(
