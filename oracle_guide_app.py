@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import sqlite3
 from datetime import datetime
 import pandas as pd
@@ -13,7 +14,7 @@ from PyQt6.QtWidgets import (
     QStatusBar, QAbstractItemView, QMenu, QRadioButton, QButtonGroup, QComboBox, QCheckBox,
     QTextEdit, QPlainTextEdit, QTreeWidget, QTreeWidgetItem, QStackedWidget, QTreeWidgetItemIterator,
     QStyledItemDelegate, QStyle, QStyleOptionViewItem, QGridLayout, QSpinBox, QSizePolicy,
-    QGraphicsDropShadowEffect, QStylePainter, QStyleOptionTab, QTableView
+    QGraphicsDropShadowEffect, QStylePainter, QStyleOptionTab, QTableView, QProxyStyle
 )
 from erd_widget import ErDiagramView
 
@@ -26,11 +27,91 @@ else:
     base_dir = os.path.dirname(os.path.abspath(__file__))
 
 DB_FILE = os.path.normpath(os.path.join(base_dir, "metadata.db"))
-APP_VERSION = "v1.7"
+APP_VERSION = "v1.8"
+
+
+def enable_windows_dpi_awareness():
+    """Windows 고해상도(DPI) 환경에서 글꼴이 흐리거나 깨지지 않도록 Per-Monitor V2 인식 모드 활성화"""
+    if sys.platform == 'win32':
+        try:
+            import ctypes
+            # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
+            ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+        except Exception:
+            try:
+                import ctypes
+                ctypes.windll.shcore.SetProcessDpiAwareness(2)
+            except Exception:
+                pass
+
+
+def get_app_font(size_pt=10.0, weight=None, bold=False):
+    """Pretendard 폰트를 생성하고 NoHinting 및 안티앨리어싱을 강제 적용하여 글꼴 깨짐 방지 (bold 완전 제거)"""
+    font = QFont("Pretendard")
+    font.setStyleHint(QFont.StyleHint.SansSerif)
+    font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias | QFont.StyleStrategy.PreferQuality)
+    font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
+    font.setWeight(QFont.Weight.Normal)
+    font.setBold(False)
+    font.setPointSizeF(float(size_pt))
+    return font
+
+
+_FONT_SIZE_PX_RE = re.compile(r"font-size\s*:\s*(\d+(?:\.\d+)?)\s*px")
+_FONT_FAMILY_FALLBACK_RE = re.compile(r"font-family\s*:\s*['\"][^'\"]*Pretendard[^'\"]*['\"][^;]*;")
+_FONT_WEIGHT_BOLD_RE = re.compile(r"font-weight\s*:\s*(bold|[5-9]00)\s*;?", re.IGNORECASE)
+_style_hook_installed = False
+_orig_qwidget_set_style_sheet = None
+
+def _clean_and_scale_qss(qss: str) -> str:
+    if not qss:
+        return qss
+    # 1. Qt QSS에서 쉼표로 나열된 font-family 구문 단일화
+    qss = _FONT_FAMILY_FALLBACK_RE.sub('font-family: "Pretendard";', qss)
+    # 2. 모든 bold 제거 (사용자 요청: 폰트에 bold 다 제거해)
+    qss = _FONT_WEIGHT_BOLD_RE.sub('font-weight: normal;', qss)
+    # 3. 작은 픽셀 폰트 크기 상향 조정 (10px -> 12px, 11px -> 13px, 12px -> 13.5px)
+    def repl_px(m):
+        val = float(m.group(1))
+        if val <= 9:
+            new_val = val + 2
+        elif val == 10:
+            new_val = 12
+        elif val == 11:
+            new_val = 13
+        elif val == 12:
+            new_val = 13.5
+        else:
+            return m.group(0)
+        return f"font-size: {new_val}px"
+    return _FONT_SIZE_PX_RE.sub(repl_px, qss)
+
+_orig_qapp_set_style_sheet = None
+
+def install_style_hook():
+    """모든 위젯 및 애플리케이션의 setStyleSheet에 폰트 크기 및 패밀리 최적화를 자동 적용 (bold 완전 제거)"""
+    global _style_hook_installed, _orig_qwidget_set_style_sheet, _orig_qapp_set_style_sheet
+    if _style_hook_installed:
+        return
+    _orig_qwidget_set_style_sheet = QWidget.setStyleSheet
+    def patched_widget_set_style_sheet(widget, qss):
+        scaled = _clean_and_scale_qss(qss) if qss else ""
+        return _orig_qwidget_set_style_sheet(widget, scaled)
+    QWidget.setStyleSheet = patched_widget_set_style_sheet
+
+    _orig_qapp_set_style_sheet = QApplication.setStyleSheet
+    def patched_app_set_style_sheet(app_inst, qss):
+        scaled = _clean_and_scale_qss(qss) if qss else ""
+        return _orig_qapp_set_style_sheet(app_inst, scaled)
+    QApplication.setStyleSheet = patched_app_set_style_sheet
+
+    _style_hook_installed = True
 
 
 def init_application_fonts():
     """fonts 디렉토리의 프리텐다드(Pretendard) 폰트 파일을 Qt 애플리케이션 폰트 데이터베이스에 등록"""
+    enable_windows_dpi_awareness()
+    install_style_hook()
     from PyQt6.QtGui import QFontDatabase
     candidates = [
         os.path.join(base_dir, "fonts"),
@@ -225,6 +306,25 @@ class DragDropTableListWidget(QListWidget):
                     if " (" in text:
                         text = text.split(" (")[0]
                     mime_data.setText(text.strip())
+        return mime_data
+
+
+class DragDropTableTreeWidget(QTreeWidget):
+    """최근 조회 테이블 항목 드래그 시 테이블명을 plain text로 전달하는 QTreeWidget"""
+    def mimeData(self, items):
+        mime_data = super().mimeData(items)
+        if items:
+            item = items[0]
+            if item.data(0, Qt.ItemDataRole.UserRole + 1) == "date":
+                return mime_data
+            t_name = item.data(0, Qt.ItemDataRole.UserRole)
+            if t_name:
+                mime_data.setText(t_name)
+            else:
+                text = item.text(0).replace("🕒", "").strip()
+                if " (" in text:
+                    text = text.split(" (")[0]
+                mime_data.setText(text.strip())
         return mime_data
 
 
@@ -1026,7 +1126,7 @@ class TableSelectionOverlay(QWidget):
         from PyQt6.QtCore import QRect
         
         painter = QPainter(self)
-        painter.setFont(QFont("Pretendard", 9, QFont.Weight.DemiBold))
+        painter.setFont(get_app_font(10))
         
         cols_grid, rows_grid = self.get_grid_lines()
         if not cols_grid or not rows_grid:
@@ -3205,8 +3305,7 @@ class HighlightedCalendar(QCalendarWidget):
         self.setHorizontalHeaderFormat(QCalendarWidget.HorizontalHeaderFormat.ShortDayNames)
         self.setGridVisible(False)
         
-        f = self.font()
-        f.setFamily("Pretendard")
+        f = get_app_font(10.0, weight=QFont.Weight.Medium)
         self.setFont(f)
         self.load_all_repeating_tasks()
         self._fix_header_row_height()
@@ -3215,7 +3314,7 @@ class HighlightedCalendar(QCalendarWidget):
         tv = self.findChild(QTableView)
         if tv:
             tv.verticalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-            tv.setRowHeight(0, 26)
+            tv.setRowHeight(0, 28)
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -3267,12 +3366,12 @@ class HighlightedCalendar(QCalendarWidget):
 
         # 4. 좌측 상단 일자 숫자 렌더링
         day_str = str(date.day())
-        font = QFont("Pretendard", 9, QFont.Weight.Bold)
+        font = get_app_font(10.5, bold=True)
         painter.setFont(font)
 
         if is_today:
             # 오늘 날짜: 블루 원형 뱃지 (구글 캘린더 스타일)
-            badge_size = 22
+            badge_size = 24
             badge_rect = QRect(rect.left() + 5, rect.top() + 4, badge_size, badge_size)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QBrush(QColor("#2563EB")))
@@ -3282,7 +3381,7 @@ class HighlightedCalendar(QCalendarWidget):
             painter.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, day_str)
         else:
             # 일반 일자: 좌측 상단 정렬
-            num_rect = QRect(rect.left() + 7, rect.top() + 5, 26, 18)
+            num_rect = QRect(rect.left() + 7, rect.top() + 5, 28, 20)
             if not is_cur_month:
                 text_color = QColor("#94A3B8")
             elif day_of_week == 7:  # 일요일 (소프트 레드)
@@ -3306,8 +3405,8 @@ class HighlightedCalendar(QCalendarWidget):
                     pass
 
             if day_tasks:
-                text_y = rect.top() + (26 if is_today else 24)
-                line_height = 15
+                text_y = rect.top() + (28 if is_today else 26)
+                line_height = 17
                 line_spacing = 2
                 avail_width = rect.width() - 10
                 avail_height = rect.bottom() - text_y - 2
@@ -3331,7 +3430,7 @@ class HighlightedCalendar(QCalendarWidget):
                 if show_more and drawn_count > 1:
                     drawn_count -= 1
 
-                t_font = QFont("Pretendard", 8, QFont.Weight.Medium)
+                t_font = get_app_font(9.5, weight=QFont.Weight.Medium)
                 painter.setFont(t_font)
                 fm = QFontMetrics(t_font)
 
@@ -3361,7 +3460,7 @@ class HighlightedCalendar(QCalendarWidget):
                     remain = len(day_tasks) - drawn_count
                     more_rect = QRect(rect.left() + 6, text_y, avail_width, line_height)
                     painter.setPen(QColor("#64748B"))
-                    more_font = QFont("Pretendard", 7, QFont.Weight.Bold)
+                    more_font = get_app_font(8.5, bold=True)
                     painter.setFont(more_font)
                     painter.drawText(more_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, f"+{remain}건 더보기")
 
@@ -4221,10 +4320,12 @@ class TaskDetailTabWidget(QWidget):
         top_form = QHBoxLayout()
         top_form.setSpacing(8)
 
-        lbl_title = QLabel('업무 제목:')
-        lbl_title.setStyleSheet('font-weight: bold; color: #1E293B; font-size: 12px;')
+        lbl_title = QLabel('제목:')
+        lbl_title.setStyleSheet('color: #1E293B; font-size: 12px; font-weight: normal;')
+
         self.txt_title = QLineEdit()
         self.txt_title.setPlaceholderText('업무 제목을 입력해 주세요...')
+        self.txt_title.setFixedWidth(400)
         self.txt_title.setStyleSheet("""
             QLineEdit {
                 padding: 6px 10px;
@@ -4238,28 +4339,14 @@ class TaskDetailTabWidget(QWidget):
             }
         """)
 
-        lbl_cat = QLabel('분류:')
-        lbl_cat.setStyleSheet('font-weight: bold; color: #1E293B; font-size: 12px;')
+        # 분류 콤보박스는 UI 표시에서는 제거하고 내부 카테고리 데이터 보존용으로 유지
         self.combo_cat = QComboBox()
-        self.combo_cat.setFixedWidth(180)
-        self.combo_cat.setStyleSheet("""
-            QComboBox {
-                padding: 5px 8px;
-                border: 1px solid #CBD5E1;
-                border-radius: 4px;
-                background-color: #F8FAFC;
-                font-size: 12px;
-            }
-            QComboBox:focus {
-                border: 1px solid #3B82F6;
-            }
-        """)
+        self.combo_cat.hide()
         self.refresh_categories()
 
         top_form.addWidget(lbl_title)
-        top_form.addWidget(self.txt_title, 1)
-        top_form.addWidget(lbl_cat)
-        top_form.addWidget(self.combo_cat)
+        top_form.addWidget(self.txt_title)
+        top_form.addStretch()
         main_layout.addLayout(top_form)
 
         # 2. 본문 편집기 및 첨부파일 영역 (가로 분할 스플리터)
@@ -5415,14 +5502,14 @@ class TaskInfoSidebarWidget(QWidget):
                 background-color: #FFFFFF;
             }
             QTabBar::tab {
-                font-family: "Pretendard", "Malgun Gothic", "맑은 고딕", sans-serif;
+                font-family: "Pretendard";
                 background-color: #F1F5F9;
                 color: #475569;
-                padding: 5px 8px;
+                padding: 6px 10px;
                 border-top-left-radius: 4px;
                 border-top-right-radius: 4px;
                 font-weight: 600;
-                font-size: 11px;
+                font-size: 13px;
                 margin-right: 1px;
                 border: 1px solid #E2E8F0;
                 border-bottom: none;
@@ -5445,7 +5532,7 @@ class TaskInfoSidebarWidget(QWidget):
                 border: 1px solid #CBD5E1;
                 border-radius: 4px;
                 padding: 4px 6px;
-                font-size: 11px;
+                font-size: 12px;
                 min-width: 80px;
                 max-width: 85px;
             }
@@ -5458,23 +5545,24 @@ class TaskInfoSidebarWidget(QWidget):
             QTreeWidget {
                 background-color: #FFFFFF;
                 border: 1px solid #CBD5E1;
-                border-radius: 3px;
-                padding: 2px;
+                border-radius: 4px;
+                padding: 3px;
+                outline: 0;
             }
             QTreeWidget::item {
-                height: 20px;
-                font-size: 11px;
-                color: #334155;
+                height: 24px;
+                font-size: 13px;
+                color: #1E293B;
             }
             QTreeWidget::item:hover {
                 background-color: #F1F5F9;
-                border-radius: 2px;
+                border-radius: 3px;
             }
             QTreeWidget::item:selected {
                 background-color: #EFF6FF;
                 color: #2563EB;
                 font-weight: bold;
-                border-radius: 2px;
+                border-radius: 3px;
             }
         """
 
@@ -9392,7 +9480,7 @@ class DatabaseManager:
 
 
     def add_recent_table(self, table_name):
-        """최근 조회한 테이블 추가/갱신 (최대 15개 유지)"""
+        """최근 조회한 테이블 추가/갱신 (최대 50개 유지)"""
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -9401,12 +9489,12 @@ class DatabaseManager:
             VALUES (?, ?)
             """, (table_name, now_str))
             
-            # 15개 초과분 자동 삭제
+            # 50개 초과분 자동 삭제
             cursor.execute("""
             DELETE FROM recent_tables 
             WHERE table_name NOT IN (
                 SELECT table_name FROM recent_tables 
-                ORDER BY viewed_at DESC LIMIT 15
+                ORDER BY viewed_at DESC LIMIT 50
             )
             """)
             conn.commit()
@@ -11214,6 +11302,7 @@ class TableListWidgetItem(QWidget):
 
         ko_text = f" ({table_ko_name_disp})" if table_ko_name_disp else ""
         self.lbl_text = QLabel(f"{table_name_disp}{ko_text}")
+        self.lbl_text.setFont(get_app_font(10.0))
         self.lbl_text.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         self.lbl_text.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         layout.addWidget(self.lbl_text)
@@ -11272,6 +11361,7 @@ class SimpleSidebarWidgetItem(QWidget):
             sub_text_val = None
         sub_desc = f" ({sub_text_val})" if sub_text_val else ""
         self.lbl_text = QLabel(f"{self.main_text}{sub_desc}")
+        self.lbl_text.setFont(get_app_font(10.0))
         self.lbl_text.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(self.lbl_text)
         layout.addStretch()
@@ -11282,6 +11372,71 @@ class SimpleSidebarWidgetItem(QWidget):
         from PyQt6.QtWidgets import QApplication
         QApplication.clipboard().setText(self.main_text)
         show_copy_message(f"📋 {self.main_text} (이)가 클립보드에 복사되었습니다!", self)
+
+
+class ModernCheckboxStyle(QProxyStyle):
+    """모든 QCheckBox 및 테이블/트리 체크박스 인디케이터를 통일된 #2563EB 테마로 렌더링하는 전역 프록시 스타일"""
+    def subElementRect(self, element, option, widget=None):
+        r = super().subElementRect(element, option, widget)
+        if element in (QStyle.SubElement.SE_CheckBoxIndicator, QStyle.SubElement.SE_ItemViewItemCheckIndicator):
+            return QRect(r.x(), r.y(), max(r.width(), 16), max(r.height(), 16))
+        return r
+
+    def drawPrimitive(self, element, option, painter, widget=None):
+        if element == QStyle.PrimitiveElement.PE_IndicatorCheckBox:
+            painter.save()
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+            box_size = 15
+            rect = option.rect
+            x = rect.left() + (rect.width() - box_size) // 2
+            y = rect.top() + (rect.height() - box_size) // 2
+            box_rect = QRect(x, y, box_size, box_size)
+
+            is_checked = bool(option.state & QStyle.StateFlag.State_On)
+            is_partial = bool(option.state & QStyle.StateFlag.State_NoChange)
+            is_hover = bool(option.state & QStyle.StateFlag.State_MouseOver)
+            is_disabled = not bool(option.state & QStyle.StateFlag.State_Enabled)
+
+            if is_checked:
+                bg_color = QColor("#94A3B8") if is_disabled else QColor("#2563EB")
+                painter.setPen(QPen(bg_color, 1.0))
+                painter.setBrush(QBrush(bg_color))
+                painter.drawRoundedRect(box_rect, 3, 3)
+
+                check_pen = QPen(Qt.GlobalColor.white, 2.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+                painter.setPen(check_pen)
+                p1_x = box_rect.left() + int(box_rect.width() * 0.25)
+                p1_y = box_rect.top() + int(box_rect.height() * 0.52)
+                p2_x = box_rect.left() + int(box_rect.width() * 0.44)
+                p2_y = box_rect.top() + int(box_rect.height() * 0.72)
+                p3_x = box_rect.left() + int(box_rect.width() * 0.78)
+                p3_y = box_rect.top() + int(box_rect.height() * 0.28)
+                painter.drawLine(p1_x, p1_y, p2_x, p2_y)
+                painter.drawLine(p2_x, p2_y, p3_x, p3_y)
+            elif is_partial:
+                bg_color = QColor("#94A3B8") if is_disabled else QColor("#2563EB")
+                painter.setPen(QPen(bg_color, 1.0))
+                painter.setBrush(QBrush(bg_color))
+                painter.drawRoundedRect(box_rect, 3, 3)
+
+                minus_pen = QPen(Qt.GlobalColor.white, 2.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+                painter.setPen(minus_pen)
+                p1_x = box_rect.left() + int(box_rect.width() * 0.25)
+                p1_y = box_rect.top() + int(box_rect.height() * 0.5)
+                p2_x = box_rect.left() + int(box_rect.width() * 0.75)
+                p2_y = box_rect.top() + int(box_rect.height() * 0.5)
+                painter.drawLine(p1_x, p1_y, p2_x, p2_y)
+            else:
+                border_color = QColor("#3B82F6") if is_hover else QColor("#94A3B8")
+                painter.setPen(QPen(border_color, 1.2))
+                painter.setBrush(QBrush(Qt.GlobalColor.white))
+                painter.drawRoundedRect(box_rect, 3, 3)
+
+            painter.restore()
+            return
+
+        super().drawPrimitive(element, option, painter, widget)
 
 
 class CenteredCheckboxDelegate(QStyledItemDelegate):
@@ -11316,15 +11471,36 @@ class CenteredCheckboxDelegate(QStyledItemDelegate):
         # 체크박스 인디케이터가 활성화된 항목인 경우 정중앙에 그리기
         if opts.features & QStyleOptionViewItem.ViewItemFeature.HasCheckIndicator:
             check_state = index.data(Qt.ItemDataRole.CheckStateRole)
-            if check_state == Qt.CheckState.Checked or check_state == 2:
-                opts.state |= QStyle.StateFlag.State_On
-                opts.state &= ~QStyle.StateFlag.State_Off
-            else:
-                opts.state |= QStyle.StateFlag.State_Off
-                opts.state &= ~QStyle.StateFlag.State_On
+            is_checked = (check_state == Qt.CheckState.Checked or check_state == 2)
             
-            opts.rect = self.get_checkbox_rect(opts, widget)
-            style.drawPrimitive(QStyle.PrimitiveElement.PE_IndicatorItemViewItemCheck, opts, painter, None)
+            box_rect = self.get_checkbox_rect(opts, widget)
+            painter.save()
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            
+            if is_checked:
+                # 선택(체크)된 상태: 블루 배경 + 흰색 체크마크
+                painter.setPen(QPen(QColor("#2563EB"), 1.0))
+                painter.setBrush(QBrush(QColor("#2563EB")))
+                painter.drawRoundedRect(box_rect, 3, 3)
+                
+                # 체크 마크 그리기 (선명한 흰색)
+                check_pen = QPen(Qt.GlobalColor.white, 2.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+                painter.setPen(check_pen)
+                p1_x = box_rect.left() + int(box_rect.width() * 0.25)
+                p1_y = box_rect.top() + int(box_rect.height() * 0.52)
+                p2_x = box_rect.left() + int(box_rect.width() * 0.44)
+                p2_y = box_rect.top() + int(box_rect.height() * 0.72)
+                p3_x = box_rect.left() + int(box_rect.width() * 0.78)
+                p3_y = box_rect.top() + int(box_rect.height() * 0.28)
+                painter.drawLine(p1_x, p1_y, p2_x, p2_y)
+                painter.drawLine(p2_x, p2_y, p3_x, p3_y)
+            else:
+                # 미선택 상태: 테두리 있는 깔끔한 흰색 박스
+                painter.setPen(QPen(QColor("#94A3B8"), 1.2))
+                painter.setBrush(QBrush(Qt.GlobalColor.white))
+                painter.drawRoundedRect(box_rect, 3, 3)
+            
+            painter.restore()
         else:
             super().paint(painter, option, index)
 
@@ -11706,36 +11882,35 @@ class ExcelBulkQueryDialog(QDialog):
         title.setStyleSheet("font-size: 14px; font-weight: bold; color: #1E293B; padding-bottom: 2px;")
         layout.addWidget(title)
 
-        # 2. 서로 다른 데이터 입력 방식을 시각적으로 구분
-        file_box = QFrame()
-        file_box.setStyleSheet("QFrame { background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px; }")
+        # 2. 데이터 입력 컨트롤 (테두리 제거, 라벨 회색, 버튼 통일)
+        file_box = QWidget()
         file_layout = QHBoxLayout(file_box)
-        file_layout.setContentsMargins(8, 6, 8, 6)
+        file_layout.setContentsMargins(0, 4, 0, 4)
         file_layout.setSpacing(10)
 
         lbl_file = QLabel("① 엑셀 파일")
-        lbl_file.setStyleSheet("font-weight: bold; color: #1D4ED8;")
+        lbl_file.setStyleSheet("font-size: 11px; font-weight: normal; color: #64748B;")
         self.txt_file_path = QLineEdit()
         self.txt_file_path.setReadOnly(True)
         self.txt_file_path.setPlaceholderText("파일 선택 시 자동 불러오기 (*.xlsx, *.xls, *.csv)")
 
         btn_browse = QPushButton("엑셀 파일 선택")
         btn_browse.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_browse.setStyleSheet("background-color: #2563EB; color: #FFFFFF; border: none; border-radius: 4px; padding: 6px 12px; font-weight: bold; font-size: 11px;")
+        btn_browse.setStyleSheet("background-color: #2563EB; color: #FFFFFF; border: none; border-radius: 4px; padding: 6px 12px; font-weight: normal; font-size: 11px;")
         btn_browse.clicked.connect(self.browse_file)
 
         separator = QFrame()
         separator.setFrameShape(QFrame.Shape.VLine)
         separator.setFrameShadow(QFrame.Shadow.Sunken)
-        separator.setStyleSheet("color: #CBD5E1;")
+        separator.setStyleSheet("color: #E2E8F0;")
 
         lbl_clipboard = QLabel("② 클립보드 데이터")
-        lbl_clipboard.setStyleSheet("font-weight: bold; color: #6D28D9;")
+        lbl_clipboard.setStyleSheet("font-size: 11px; font-weight: normal; color: #64748B;")
 
         btn_paste = QPushButton("클립보드 붙여넣기")
         btn_paste.setToolTip("복사한 엑셀 파일 또는 셀 데이터를 붙여넣습니다.")
         btn_paste.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_paste.setStyleSheet("background-color: #7C3AED; color: #FFFFFF; border: none; border-radius: 4px; padding: 6px 13px; font-weight: bold; font-size: 11px;")
+        btn_paste.setStyleSheet("background-color: #2563EB; color: #FFFFFF; border: none; border-radius: 4px; padding: 6px 13px; font-weight: normal; font-size: 11px;")
         btn_paste.clicked.connect(self.paste_from_clipboard)
 
         file_layout.addWidget(lbl_file)
@@ -11746,10 +11921,9 @@ class ExcelBulkQueryDialog(QDialog):
         file_layout.addWidget(btn_paste)
         layout.addWidget(file_box)
 
-        # 상태 안내 라벨
-        self.lbl_status = QLabel("○ 대기: 입력 방식을 선택하면 컬럼을 자동 매핑합니다.")
-        self.lbl_status.setStyleSheet("font-size: 12px; font-weight: bold; color: #047857; background-color: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 4px; padding: 6px 8px;")
-        layout.addWidget(self.lbl_status)
+        # 상태 안내 라벨 (사용자 요청으로 대기관련 1줄 영역 제거, 필요 시 로드 완료 알림용으로만 숨김 보관)
+        self.lbl_status = QLabel("")
+        self.lbl_status.hide()
 
         # 3. 분할 스플리터 (매핑 테이블 영역과 SQL 결과 영역을 자유롭게 크기 조절 가능)
         splitter = QSplitter(Qt.Orientation.Vertical)
@@ -11761,29 +11935,33 @@ class ExcelBulkQueryDialog(QDialog):
         top_layout.setSpacing(6)
 
         lbl_map = QLabel("컬럼 매핑 및 입력값 설정")
-        lbl_map.setStyleSheet("font-size: 12px; font-weight: bold; color: #334155;")
+        lbl_map.setStyleSheet("font-size: 12px; font-weight: normal; color: #334155;")
         top_layout.addWidget(lbl_map)
 
         self.tbl_map = QTableWidget()
-        self.tbl_map.setColumnCount(4)
-        self.tbl_map.setHorizontalHeaderLabels(["구분", "대상 테이블 컬럼", "매핑 엑셀 컬럼", "입력값 / 수식 표현식"])
+        self.tbl_map.setColumnCount(6)
+        self.tbl_map.setHorizontalHeaderLabels(["구분", "컬럼명", "한글명", "데이터타입", "매핑 엑셀 컬럼", "입력값 / 수식 표현식"])
         self.tbl_map.verticalHeader().setVisible(False)
         self.tbl_map.verticalHeader().setDefaultSectionSize(38)
         self.tbl_map.verticalHeader().setMinimumSectionSize(34)
         self.tbl_map.setEditTriggers(QAbstractItemView.EditTrigger.AllEditTriggers)
         self.tbl_map.setStyleSheet("""
             QTableWidget { background-color: #FFFFFF; border: 1px solid #E2E8F0; gridline-color: #F1F5F9; font-size: 11px; }
-            QTableWidget::item { padding: 3px 4px; }
-            QHeaderView::section { background-color: #F1F5F9; color: #475569; padding: 6px 8px; font-weight: bold; font-size: 11px; border: none; border-bottom: 1px solid #E2E8F0; }
+            QTableWidget::item { padding: 3px 6px; }
+            QHeaderView::section { background-color: #F1F5F9; color: #475569; padding: 6px 8px; font-weight: normal; font-size: 11px; border: none; border-bottom: 1px solid #E2E8F0; }
         """)
         h = self.tbl_map.horizontalHeader()
         h.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        h.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        h.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
         h.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
         h.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
-        self.tbl_map.setColumnWidth(0, 105)
-        self.tbl_map.setColumnWidth(2, 230)
-        self.tbl_map.setColumnWidth(3, 280)
+        h.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
+        h.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        self.tbl_map.setColumnWidth(0, 75)
+        self.tbl_map.setColumnWidth(1, 140)
+        self.tbl_map.setColumnWidth(2, 130)
+        self.tbl_map.setColumnWidth(3, 110)
+        self.tbl_map.setColumnWidth(4, 210)
         self.tbl_map.setMinimumHeight(180)
         top_layout.addWidget(self.tbl_map, 1)
 
@@ -12033,40 +12211,47 @@ class ExcelBulkQueryDialog(QDialog):
             # 구분 컬럼
             item_role = QTableWidgetItem()
             item_role.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            font_role = item_role.font()
-            font_role.setBold(True)
-            item_role.setFont(font_role)
             item_role.setFlags(item_role.flags() & ~Qt.ItemFlag.ItemIsEditable)
             
             if role == 'SET':
-                item_role.setText("수정값 (SET)")
+                item_role.setText("수정")
+                item_role.setToolTip("UPDATE 문의 수정 대상 컬럼 (SET 절)")
                 item_role.setForeground(QColor("#1D4ED8"))
                 item_role.setBackground(QColor("#EFF6FF"))
             elif role == 'WHERE':
-                item_role.setText("조건 (WHERE)")
+                item_role.setText("조건")
+                item_role.setToolTip("UPDATE / DELETE 문의 조건 대상 컬럼 (WHERE 절)")
                 item_role.setForeground(QColor("#B45309"))
                 item_role.setBackground(QColor("#FEF3C7"))
             else:
-                item_role.setText("입력값 (INSERT)")
+                item_role.setText("입력")
+                item_role.setToolTip("INSERT 문의 입력 대상 컬럼")
                 item_role.setForeground(QColor("#047857"))
                 item_role.setBackground(QColor("#ECFDF5"))
             
             self.tbl_map.setItem(r_idx, 0, item_role)
 
-            # 대상 테이블 컬럼명
-            col_display_parts = [col_name]
-            if ko_name:
-                col_display_parts.append(ko_name)
-            if dt:
-                col_display_parts.append(dt)
-            col_display = " | ".join(col_display_parts)
-            
-            item_col = QTableWidgetItem(col_display)
-            item_col.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-            item_col.setFlags(item_col.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.tbl_map.setItem(r_idx, 1, item_col)
+            # 대상 테이블 컬럼 3개 분리 (컬럼명, 한글명, 데이터타입)
+            item_col_name = QTableWidgetItem(col_name)
+            item_col_name.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+            item_col_name.setFlags(item_col_name.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.tbl_map.setItem(r_idx, 1, item_col_name)
 
-            # 매핑 엑셀 컬럼 콤보박스
+            item_ko_name = QTableWidgetItem(ko_name or "-")
+            item_ko_name.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+            item_ko_name.setFlags(item_ko_name.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            if not ko_name:
+                item_ko_name.setForeground(QColor("#94A3B8"))
+            self.tbl_map.setItem(r_idx, 2, item_ko_name)
+
+            item_dt = QTableWidgetItem(dt or "-")
+            item_dt.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+            item_dt.setFlags(item_dt.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            if not dt:
+                item_dt.setForeground(QColor("#94A3B8"))
+            self.tbl_map.setItem(r_idx, 3, item_dt)
+
+            # 매핑 엑셀 컬럼 콤보박스 (열 4)
             combo = QComboBox()
             combo.addItem("[직접 값 입력]", "__DIRECT__")
             
@@ -12079,7 +12264,7 @@ class ExcelBulkQueryDialog(QDialog):
             # 2. 엑셀 컬럼과 자동 매칭 검사
             best_match_idx = self._find_best_match_index(col_name, ko_name, excel_cols)
 
-            # 직접 입력값 / 수식 표현식 에디터
+            # 직접 입력값 / 수식 표현식 에디터 (열 5)
             val_edit = QLineEdit()
             
             def make_on_combo_change(c_box, v_edit):
@@ -12134,8 +12319,8 @@ class ExcelBulkQueryDialog(QDialog):
 
             val_edit.keyPressEvent = make_key_press_handler(r_idx, val_edit)
 
-            self.tbl_map.setCellWidget(r_idx, 2, combo)
-            self.tbl_map.setCellWidget(r_idx, 3, val_edit)
+            self.tbl_map.setCellWidget(r_idx, 4, combo)
+            self.tbl_map.setCellWidget(r_idx, 5, val_edit)
 
             self.row_entries.append({
                 'role': role,
@@ -12360,6 +12545,9 @@ class InsertUpdateDialog(QDialog):
 
     def __init__(self, table_name, columns, pk_cols, where_cols, query_type, db_mgr, parent=None):
         super().__init__(parent)
+        app_inst = QApplication.instance()
+        if app_inst and not isinstance(app_inst.style(), ModernCheckboxStyle):
+            app_inst.setStyle(ModernCheckboxStyle(app_inst.style()))
         self.table_name = table_name
         # UPDATE에서도 PK를 포함한 모든 컬럼을 SET 또는 WHERE에 자유롭게 사용할 수 있다.
         self.columns = columns
@@ -12400,25 +12588,6 @@ class InsertUpdateDialog(QDialog):
         header_layout.addWidget(title)
         header_layout.addStretch()
 
-        btn_paste = QPushButton("클립보드 붙여넣기")
-        btn_paste.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_paste.setStyleSheet("""
-            QPushButton {
-                background-color: #2563EB;
-                color: #FFFFFF;
-                border: none;
-                border-radius: 4px;
-                padding: 6px 12px;
-                font-weight: bold;
-                font-size: 11px;
-            }
-            QPushButton:hover {
-                background-color: #1D4ED8;
-            }
-        """)
-        btn_paste.clicked.connect(self.paste_from_clipboard)
-        header_layout.addWidget(btn_paste)
-
         btn_select_all = QPushButton("전체선택")
         btn_select_all.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         btn_select_all.setStyleSheet("""
@@ -12428,7 +12597,7 @@ class InsertUpdateDialog(QDialog):
                 border: 1px solid #CBD5E1;
                 border-radius: 4px;
                 padding: 6px 10px;
-                font-weight: bold;
+                font-weight: normal;
                 font-size: 11px;
             }
             QPushButton:hover {
@@ -12447,7 +12616,7 @@ class InsertUpdateDialog(QDialog):
                 border: 1px solid #CBD5E1;
                 border-radius: 4px;
                 padding: 6px 10px;
-                font-weight: bold;
+                font-weight: normal;
                 font-size: 11px;
             }
             QPushButton:hover {
@@ -12457,22 +12626,41 @@ class InsertUpdateDialog(QDialog):
         btn_deselect_all.clicked.connect(self._deselect_all_columns)
         header_layout.addWidget(btn_deselect_all)
 
+        btn_paste = QPushButton("클립보드 붙여넣기")
+        btn_paste.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_paste.setStyleSheet("""
+            QPushButton {
+                background-color: #2563EB;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-weight: normal;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #1D4ED8;
+            }
+        """)
+        btn_paste.clicked.connect(self.paste_from_clipboard)
+        header_layout.addWidget(btn_paste)
+
         # 엑셀 불러오기(대량) 버튼 (INSERT/UPDATE/DELETE 쿼리 지원)
         if self.query_type in ["insert", "update", "delete"]:
             btn_excel_bulk = QPushButton("엑셀 불러오기(대량)")
             btn_excel_bulk.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             btn_excel_bulk.setStyleSheet("""
                 QPushButton {
-                    background-color: #059669;
+                    background-color: #2563EB;
                     color: #FFFFFF;
                     border: none;
                     border-radius: 4px;
                     padding: 6px 12px;
-                    font-weight: bold;
+                    font-weight: normal;
                     font-size: 11px;
                 }
                 QPushButton:hover {
-                    background-color: #047857;
+                    background-color: #1D4ED8;
                 }
             """)
             btn_excel_bulk.clicked.connect(self.open_excel_bulk_dialog)
@@ -13934,11 +14122,11 @@ class TableDetailWidget(QWidget):
 
         # (icon, label_html, label_color, desc)
         help_data = [
-            ("🔗", "<b>연결테이블</b>", "#1D4ED8",
-             ": 해당 컬럼이 참조하는 FK 대상 테이블 — 클릭 시 해당 테이블 상세로 이동 / <b>우클릭</b>으로 자유롭게 수정·등록 가능"),
-            ("🏷️", "<b>공통코드</b>", "#059669",
-             ": 해당 컬럼에 매핑된 공통코드 그룹 — 클릭 시 코드 목록이 우측 패널에 표시 / <b>우클릭</b>으로 자유롭게 수정·등록 가능"),
-            ("☑", "<b>조건</b>", "#7C3AED",
+            ("🔗", "연결테이블", "#1D4ED8",
+             ": 해당 컬럼이 참조하는 FK 대상 테이블 — 클릭 시 해당 테이블 상세로 이동 / 우클릭으로 자유롭게 수정·등록 가능"),
+            ("🏷️", "공통코드", "#059669",
+             ": 해당 컬럼에 매핑된 공통코드 그룹 — 클릭 시 코드 목록이 우측 패널에 표시 / 우클릭으로 자유롭게 수정·등록 가능"),
+            ("☑", "조건", "#7C3AED",
              ": WHERE 절 조건 컬럼 여부 — 체크된 컬럼은 Select/Update/Delete 생성 시 WHERE 절에 포함됩니다."),
         ]
         for r, (icon, label_html, color, desc) in enumerate(help_data):
@@ -13985,7 +14173,6 @@ class TableDetailWidget(QWidget):
             placeholder_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             placeholder_item.setForeground(QColor("#EF4444"))
             font = placeholder_item.font()
-            font.setBold(True)
             font.setPointSize(10)
             placeholder_item.setFont(font)
             self.table_widget.setItem(0, 0, placeholder_item)
@@ -14020,9 +14207,6 @@ class TableDetailWidget(QWidget):
             col_name_item = QTableWidgetItem(col['column_name'])
             col_name_item.setToolTip("더블클릭 시 클립보드에 복사됩니다.")
             if pk_text:
-                font = col_name_item.font()
-                font.setBold(True)
-                col_name_item.setFont(font)
                 col_name_item.setForeground(QColor("#D97706"))
             self.table_widget.setItem(row_idx, 3, col_name_item)
 
@@ -14030,9 +14214,6 @@ class TableDetailWidget(QWidget):
             col_ko_item = QTableWidgetItem(col['column_ko_name'] or "")
             col_ko_item.setToolTip("더블클릭 시 클립보드에 복사됩니다.")
             if pk_text:
-                font = col_ko_item.font()
-                font.setBold(True)
-                col_ko_item.setFont(font)
                 col_ko_item.setForeground(QColor("#D97706"))
             self.table_widget.setItem(row_idx, 4, col_ko_item)
 
@@ -14060,7 +14241,6 @@ class TableDetailWidget(QWidget):
                 link_item.setForeground(QColor("#2563EB"))
                 font = link_item.font()
                 font.setUnderline(True)
-                font.setBold(True)
                 link_item.setFont(font)
                 self.table_widget.setItem(row_idx, 7, link_item)
             else:
@@ -16597,19 +16777,19 @@ class CategoryTabBar(QTabBar):
                     'border': QColor('#DDD6FE'), 'selected_border': QColor('#7C3AED'),
                     'text': QColor('#6D28D9'), 'selected_text': QColor('#4C1D95')
                 }
-            # 4. 업무 실행 달력 (Amber / Orange)
+            # 4. 업무 실행 달력 (Rose / Coral Pink)
             elif cname == 'TaskCalendarWidget' or '달력' in title:
+                return {
+                    'normal_bg': QColor('#FFF1F2'), 'selected_bg': QColor('#FFE4E6'),
+                    'border': QColor('#FECDD3'), 'selected_border': QColor('#E11D48'),
+                    'text': QColor('#BE123C'), 'selected_text': QColor('#881337')
+                }
+            # 5. 문법 정보 (Warm Amber / Orange)
+            elif cname == 'GrammarDetailTabWidget' or '문법' in title:
                 return {
                     'normal_bg': QColor('#FFFBEB'), 'selected_bg': QColor('#FEF3C7'),
                     'border': QColor('#FDE68A'), 'selected_border': QColor('#D97706'),
                     'text': QColor('#B45309'), 'selected_text': QColor('#78350F')
-                }
-            # 5. 문법 정보 (Teal)
-            elif cname == 'GrammarDetailTabWidget' or '문법' in title:
-                return {
-                    'normal_bg': QColor('#F0FDFA'), 'selected_bg': QColor('#CCFBF1'),
-                    'border': QColor('#99F6E4'), 'selected_border': QColor('#0D9488'),
-                    'text': QColor('#0F766E'), 'selected_text': QColor('#134E4A')
                 }
             # 6. 전체 공통코드 / 관계 / ERD (Cyan)
             elif '공통코드' in title or '관계' in title or 'ERD' in title:
@@ -16666,12 +16846,13 @@ class OracleGuideApp(QMainWindow):
     def __init__(self):
         super().__init__()
         init_application_fonts()
-        font = QFont("Pretendard", 9)
-        font.setStyleHint(QFont.StyleHint.SansSerif)
+        font = get_app_font(10.0)
         self.setFont(font)
         app_inst = QApplication.instance()
         if app_inst:
             app_inst.setFont(font)
+            if not isinstance(app_inst.style(), ModernCheckboxStyle):
+                app_inst.setStyle(ModernCheckboxStyle(app_inst.style()))
         self.db_mgr = DatabaseManager()
         self.all_tables = []
         self.loaded_table_count = 0
@@ -16795,23 +16976,17 @@ class OracleGuideApp(QMainWindow):
         btn_all_relations = QPushButton("🔗 전체 테이블 관계")
         btn_all_relations.clicked.connect(self.open_all_relations_tab)
 
-        btn_erd = QPushButton("ERD 보기")
-        btn_erd.clicked.connect(self.open_erd_tab)
-
         btn_calendar = QPushButton("📅 업무 달력")
         btn_calendar.clicked.connect(self.open_calendar_tab)
-
-        btn_export_spec = QPushButton("📊 명세서 내보내기")
-        btn_export_spec.clicked.connect(self.on_export_spec_clicked)
 
         btn_shortcut_style = """
             QPushButton {
                 background-color: #FFFFFF;
                 color: #334155;
                 border: 1px solid #E2E8F0;
-                font-weight: bold;
-                font-size: 11px;
-                padding: 5px 12px;
+                font-weight: normal;
+                font-size: 12.5px;
+                padding: 6px 14px;
                 border-radius: 4px;
             }
             QPushButton:hover {
@@ -16819,14 +16994,14 @@ class OracleGuideApp(QMainWindow):
                 color: #2563EB;
             }
         """
-        for btn in [btn_all_codes, btn_all_relations, btn_erd, btn_calendar, btn_export_spec]:
+        for btn in [btn_all_codes, btn_all_relations, btn_calendar]:
             btn.setStyleSheet(btn_shortcut_style)
             btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             top_layout.addWidget(btn)
 
         top_layout.addStretch()
 
-        # 설정 메뉴 (톱니바퀴) - 데이터 불러오기 / 공통코드 변환 설정 / 기본 정보 초기화
+        # 설정 메뉴 (톱니바퀴) - 데이터 불러오기 / 명세서 내보내기 / ERD 보기 / 공통코드 변환 설정 / 기본 정보 초기화
         self.settings_menu = QMenu(self)
         self.settings_menu.setStyleSheet("""
             QMenu {
@@ -16856,6 +17031,18 @@ class OracleGuideApp(QMainWindow):
         act_import.setStatusTip("○ 엑셀·CSV 명세서 불러오기\n○ 테이블·컬럼·관계 정보 적재\n○ 기존 데이터와의 중복 및 반영 결과 확인")
         act_import.triggered.connect(self.on_import_clicked)
         self.settings_menu.addAction(act_import)
+
+        act_export_spec = QAction("📊  명세서 내보내기", self)
+        act_export_spec.setStatusTip("○ 테이블 명세서를 Excel 파일로 일괄 내보내기")
+        act_export_spec.triggered.connect(self.on_export_spec_clicked)
+        self.settings_menu.addAction(act_export_spec)
+
+        act_erd = QAction("🗺️  ERD 보기", self)
+        act_erd.setStatusTip("○ 테이블 간 전체 관계도(ERD) 시각화 탭 열기")
+        act_erd.triggered.connect(self.open_erd_tab)
+        self.settings_menu.addAction(act_erd)
+
+        self.settings_menu.addSeparator()
 
         act_code_setup = QAction("🔤  공통코드 설정", self)
         act_code_setup.setStatusTip("○ 공통코드 테이블 및 컬럼 지정\n○ 공통코드와 명세 컬럼 간 매핑 기준 설정\n○ 최대 3개 공통코드 설정 관리")
@@ -16936,14 +17123,14 @@ class OracleGuideApp(QMainWindow):
                 background-color: #FFFFFF;
             }
             QTabBar::tab {
-                font-family: "Pretendard", "Malgun Gothic", "맑은 고딕", sans-serif;
+                font-family: "Pretendard";
                 background-color: #F1F5F9;
                 color: #475569;
-                padding: 5px 8px;
+                padding: 6px 10px;
                 border-top-left-radius: 4px;
                 border-top-right-radius: 4px;
                 font-weight: 600;
-                font-size: 11px;
+                font-size: 13px;
                 margin-right: 1px;
                 border: 1px solid #E2E8F0;
                 border-bottom: none;
@@ -17220,18 +17407,64 @@ class OracleGuideApp(QMainWindow):
         tab_task_widget.setLayout(tab_task_layout)
         self.sidebar_tab.addTab(tab_task_widget, "업무별")
 
-        # [사이드바 탭 2] 최근조회 목록
+        # [사이드바 탭 2] 최근조회 목록 (날짜별 그룹화 트리)
         tab_recent_widget = QWidget()
         tab_recent_layout = QVBoxLayout()
         tab_recent_layout.setContentsMargins(6, 6, 6, 6)
         tab_recent_layout.setSpacing(6)
-        
-        self.list_recent = DragDropTableListWidget()
-        self.list_recent.setStyleSheet(self.get_sidebar_list_style())
-        self.list_recent.setDragEnabled(True)
-        self.list_recent.itemDoubleClicked.connect(self.on_recent_table_double_clicked)
-        tab_recent_layout.addWidget(self.list_recent)
-        
+
+        # 최근조회 검색 영역
+        search_rec_bar = QHBoxLayout()
+        search_rec_bar.setSpacing(4)
+
+        self.txt_search_recent_tables = QLineEdit()
+        self.txt_search_recent_tables.setPlaceholderText("테이블명, 한글명 검색...")
+        self.txt_search_recent_tables.setFixedHeight(30)
+        self.txt_search_recent_tables.setStyleSheet(self.get_sidebar_search_style())
+        self.txt_search_recent_tables.textChanged.connect(self.filter_recent_tables_tree)
+
+        self.btn_reset_search_recent_tables = QPushButton("↺")
+        self.btn_reset_search_recent_tables.setFixedWidth(28)
+        self.btn_reset_search_recent_tables.setFixedHeight(30)
+        self.btn_reset_search_recent_tables.setToolTip("검색 초기화")
+        self.btn_reset_search_recent_tables.setStyleSheet(self.get_sidebar_reset_button_style())
+        self.btn_reset_search_recent_tables.clicked.connect(self.clear_search_recent_tables)
+
+        search_rec_bar.addWidget(self.txt_search_recent_tables)
+        search_rec_bar.addWidget(self.btn_reset_search_recent_tables)
+        tab_recent_layout.addLayout(search_rec_bar)
+
+        self.tree_recent = DragDropTableTreeWidget()
+        self.tree_recent.setHeaderHidden(True)
+        self.tree_recent.setDragEnabled(True)
+        self.tree_recent.setStyleSheet("""
+            QTreeWidget {
+                background-color: #FFFFFF;
+                border: 1px solid #CBD5E1;
+                border-radius: 4px;
+                padding: 3px;
+                outline: 0;
+            }
+            QTreeWidget::item {
+                height: 26px;
+                font-size: 11px;
+                color: #1E293B;
+            }
+            QTreeWidget::item:hover {
+                background-color: #F1F5F9;
+                border-radius: 3px;
+            }
+            QTreeWidget::item:selected {
+                background-color: #EFF6FF;
+                color: #2563EB;
+                border-radius: 3px;
+            }
+        """)
+        self.tree_recent.itemClicked.connect(self.on_recent_table_clicked)
+        self.tree_recent.itemDoubleClicked.connect(self.on_recent_table_double_clicked)
+        tab_recent_layout.addWidget(self.tree_recent)
+        self.list_recent = self.tree_recent  # 호환성 유지
+
         self.btn_clear_recent = QPushButton("🧹 최근조회 비우기")
         self.btn_clear_recent.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_clear_recent.setStyleSheet("""
@@ -17241,7 +17474,7 @@ class OracleGuideApp(QMainWindow):
                 border: 1px solid #FCA5A5;
                 border-radius: 4px;
                 font-size: 11px;
-                font-weight: bold;
+                font-weight: normal;
                 padding: 4px;
             }
             QPushButton:hover {
@@ -17251,7 +17484,7 @@ class OracleGuideApp(QMainWindow):
         """)
         self.btn_clear_recent.clicked.connect(self.on_clear_recent_clicked)
         tab_recent_layout.addWidget(self.btn_clear_recent)
-        
+
         tab_recent_widget.setLayout(tab_recent_layout)
 
         # [사이드바 탭 3] 공통코드 목록
@@ -17406,7 +17639,7 @@ class OracleGuideApp(QMainWindow):
 
         # 왼쪽에 세로로 장착할 프리미엄 사이드바 메뉴바 생성
         self.sidebar_menu = DragMenuContainer()
-        self.sidebar_menu.setFixedWidth(64)
+        self.sidebar_menu.setFixedWidth(68)
         self.sidebar_menu.setObjectName("sidebarMenu")
         self.sidebar_menu.setStyleSheet("""
             QWidget#sidebarMenu {
@@ -17452,11 +17685,11 @@ class OracleGuideApp(QMainWindow):
                     background-color: transparent;
                     color: #475569;
                     border: 1px solid transparent;
-                    font-family: "Pretendard", "Malgun Gothic", "맑은 고딕", sans-serif;
-                    font-size: 11px;
+                    font-family: "Pretendard";
+                    font-size: 12px;
                     font-weight: bold;
                     padding: 10px 0px;
-                    line-height: 14px;
+                    line-height: 16px;
                     border-radius: 6px;
                     text-align: center;
                 }}
@@ -17474,7 +17707,7 @@ class OracleGuideApp(QMainWindow):
 
         set_menu_btn_style(self.btn_menu_table, "#EFF6FF", "#2563EB", "#BFDBFE")
         set_menu_btn_style(self.btn_menu_query, "#F5F3FF", "#6366F1", "#DDD6FE")
-        set_menu_btn_style(self.btn_menu_grammar, "#F8FAFC", "#475569", "#CBD5E1")
+        set_menu_btn_style(self.btn_menu_grammar, "#FFFBEB", "#D97706", "#FDE68A")
         set_menu_btn_style(self.btn_menu_task_info, "#ECFDF5", "#059669", "#A7F3D0")
 
         self.btn_menu_table.clicked.connect(lambda: self.sidebar_stacked.setCurrentIndex(0))
@@ -17549,11 +17782,11 @@ class OracleGuideApp(QMainWindow):
             }
             QTabBar::tab {
                 background: transparent;
-                padding: 6px 14px;
+                padding: 7px 16px;
                 margin-right: 2px;
-                font-family: "Pretendard", "Malgun Gothic", "맑은 고딕", sans-serif;
+                font-family: "Pretendard";
                 font-weight: 500;
-                font-size: 12px;
+                font-size: 13px;
                 border: none;
             }
         """)
@@ -17749,10 +17982,10 @@ class OracleGuideApp(QMainWindow):
         lbl_tip_title = QLabel("💡 유용한 빠른 단축키 & 조작 팁")
         lbl_tip_title.setStyleSheet("font-size: 12px; font-weight: bold; color: #1E293B; background: transparent;")
         lbl_tip_desc = QLabel(
-            "• <b>Ctrl + S</b> : 업무정보 및 쿼리 편집 즉시 저장 | "
-            "• <b>더블클릭</b> : 좌측 사이드바(테이블/업무/공통코드/관계/쿼리) 상세 탭 열기\n"
-            "• <b>드래그 앤 드롭</b> : 테이블 간 조인 설정 및 업무정보 첨부파일 등록 | "
-            "• <b>우클릭</b> : 공통코드 슬롯 선택, 테이블 일괄 변경 및 탭 닫기 메뉴"
+            "• Ctrl + S : 업무정보 및 쿼리 편집 즉시 저장 | "
+            "• 더블클릭 : 좌측 사이드바(테이블/업무/공통코드/관계/쿼리) 상세 탭 열기\n"
+            "• 드래그 앤 드롭 : 테이블 간 조인 설정 및 업무정보 첨부파일 등록 | "
+            "• 우클릭 : 공통코드 슬롯 선택, 테이블 일괄 변경 및 탭 닫기 메뉴"
         )
         lbl_tip_desc.setStyleSheet("font-size: 11px; color: #64748B; background: transparent; line-height: 16px;")
         
@@ -17850,7 +18083,7 @@ class OracleGuideApp(QMainWindow):
             QListWidget QLabel {
                 color: #1E293B;
                 font-size: 12px;
-                font-weight: 500;
+                font-weight: normal;
                 background: transparent;
             }
             QListWidget::item {
@@ -17924,7 +18157,7 @@ class OracleGuideApp(QMainWindow):
                 sub_item = QTreeWidgetItem(parent_item)
                 sub_item.setText(0, f"📁 {sub['name']}")
                 sub_item.setData(0, Qt.ItemDataRole.UserRole, {"type": "category", "name": sub['name'], "full_path": sub['full_path']})
-                sub_item.setFont(0, QFont("Pretendard", 9, QFont.Weight.Bold))
+                sub_item.setFont(0, get_app_font(10))
                 sub_item.setForeground(0, QColor("#1E293B"))
                 sub_item.setFlags(sub_item.flags() | Qt.ItemFlag.ItemIsDragEnabled | Qt.ItemFlag.ItemIsDropEnabled)
                 
@@ -18949,9 +19182,9 @@ class OracleGuideApp(QMainWindow):
         action_close_others.triggered.connect(lambda checked=False, idx=index: self.close_other_tabs(idx))
         menu.addAction(action_close_others)
 
-        # 3. 해당 유형 탭 외에 모두 닫기
+        # 3. 이 탭 유형 외에 모두 닫기
         target_type = target_widget.__class__
-        action_close_type_others = QAction("해당 유형 탭 외에 모두 닫기", self)
+        action_close_type_others = QAction("이 탭 유형 외에 모두 닫기", self)
         action_close_type_others.triggered.connect(lambda checked=False, t_type=target_type: self.close_other_type_tabs(t_type))
         menu.addAction(action_close_type_others)
 
@@ -19140,25 +19373,76 @@ class OracleGuideApp(QMainWindow):
             QMessageBox.critical(self, "오류", f"데이터 로드 중 에러가 발생했습니다:\n{msg}")
 
     def load_recent_tables_list(self):
-        self.list_recent.clear()
+        if not hasattr(self, 'tree_recent'):
+            return
+        self.tree_recent.clear()
         recents = self.db_mgr.get_recent_tables()
+        
+        date_map = {}
         for r in recents:
-            item = QListWidgetItem(self.list_recent)
-            sub_desc = f" ({r['table_ko_name']})" if r['table_ko_name'] else ""
-            item.setText(f"{r['table_name']}{sub_desc}")
-            item.setData(Qt.ItemDataRole.UserRole, r['table_name'])
-            item.setSizeHint(QSize(100, 32))
-            self.list_recent.addItem(item)
+            date_str = r['viewed_at'].split(' ')[0] if r.get('viewed_at') else "이전 이력"
+            if date_str not in date_map:
+                date_map[date_str] = []
+            date_map[date_str].append(r)
+            
+        for date_str, r_list in sorted(date_map.items(), reverse=True):
+            date_item = QTreeWidgetItem(self.tree_recent)
+            date_item.setText(0, f"📅 {date_str}")
+            date_item.setData(0, Qt.ItemDataRole.UserRole + 1, "date")
+            font = date_item.font(0)
+            font.setBold(False)
+            date_item.setFont(0, font)
+            date_item.setForeground(0, QColor("#475569"))
+            
+            for r in r_list:
+                item = QTreeWidgetItem(date_item)
+                sub_desc = f" ({r['table_ko_name']})" if r.get('table_ko_name') else ""
+                item.setText(0, f"🕒 {r['table_name']}{sub_desc}")
+                item.setData(0, Qt.ItemDataRole.UserRole, r['table_name'])
+                item.setData(0, Qt.ItemDataRole.UserRole + 1, "table")
+                item.setData(0, Qt.ItemDataRole.UserRole + 2, r.get('table_ko_name', '') or '')
+                item.setToolTip(0, f"{r['table_name']}{sub_desc}\n조회 일시: {r.get('viewed_at', '')}")
+                
+        self.tree_recent.expandAll()
+        if hasattr(self, 'txt_search_recent_tables') and self.txt_search_recent_tables.text().strip():
+            self.filter_recent_tables_tree(self.txt_search_recent_tables.text())
 
-    def on_recent_table_clicked(self, item):
-        table_name = item.data(Qt.ItemDataRole.UserRole)
-        if table_name:
-            self.open_table_tab(table_name)
+    def clear_search_recent_tables(self):
+        if hasattr(self, 'txt_search_recent_tables'):
+            self.txt_search_recent_tables.clear()
+        self.filter_recent_tables_tree("")
 
-    def on_recent_table_double_clicked(self, item):
-        table_name = item.data(Qt.ItemDataRole.UserRole)
-        if table_name:
-            self.open_table_tab(table_name)
+    def filter_recent_tables_tree(self, text):
+        if not hasattr(self, 'tree_recent'):
+            return
+        val = text.strip().lower()
+        for i in range(self.tree_recent.topLevelItemCount()):
+            date_item = self.tree_recent.topLevelItem(i)
+            has_visible_child = False
+            for j in range(date_item.childCount()):
+                child = date_item.child(j)
+                t_name = (child.data(0, Qt.ItemDataRole.UserRole) or "").lower()
+                ko_name = (child.data(0, Qt.ItemDataRole.UserRole + 2) or "").lower()
+                if not val or (val in t_name) or (val in ko_name):
+                    child.setHidden(False)
+                    has_visible_child = True
+                else:
+                    child.setHidden(True)
+            date_item.setHidden(not has_visible_child)
+
+    def on_recent_table_clicked(self, item, column=0):
+        node_type = item.data(0, Qt.ItemDataRole.UserRole + 1)
+        if node_type == "date":
+            item.setExpanded(not item.isExpanded())
+
+    def on_recent_table_double_clicked(self, item, column=0):
+        node_type = item.data(0, Qt.ItemDataRole.UserRole + 1)
+        if node_type == "table":
+            table_name = item.data(0, Qt.ItemDataRole.UserRole)
+            if table_name:
+                self.open_table_tab(table_name)
+        elif node_type == "date":
+            item.setExpanded(not item.isExpanded())
 
     def on_clear_recent_clicked(self):
         self.db_mgr.clear_recent_tables()
@@ -19974,9 +20258,7 @@ class HierarchySelectionDialog(QDialog):
         item.setCheckState(0, Qt.CheckState.Checked)
         item.setData(0, Qt.ItemDataRole.UserRole, data or {"type": "category"})
         item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsAutoTristate)
-        from PyQt6.QtGui import QFont
-        f = QFont("Pretendard", 9, QFont.Weight.Bold)
-        item.setFont(0, f)
+        item.setFont(0, get_app_font(10))
         item.setForeground(0, QColor("#1E293B"))
         return item
 
@@ -20621,14 +20903,14 @@ class QuerySidebarWidget(QWidget):
                 background-color: #FFFFFF;
             }
             QTabBar::tab {
-                font-family: "Pretendard", "Malgun Gothic", "맑은 고딕", sans-serif;
+                font-family: "Pretendard";
                 background-color: #F1F5F9;
                 color: #475569;
-                padding: 5px 8px;
+                padding: 6px 10px;
                 border-top-left-radius: 4px;
                 border-top-right-radius: 4px;
                 font-weight: 600;
-                font-size: 11px;
+                font-size: 13px;
                 margin-right: 1px;
                 border: 1px solid #E2E8F0;
                 border-bottom: none;
@@ -20652,7 +20934,7 @@ class QuerySidebarWidget(QWidget):
                 border: 1px solid #CBD5E1;
                 border-radius: 4px;
                 padding: 4px 6px;
-                font-size: 11px;
+                font-size: 12px;
                 min-width: 80px;
                 max-width: 85px;
             }
@@ -20666,23 +20948,24 @@ class QuerySidebarWidget(QWidget):
             QTreeWidget {
                 background-color: #FFFFFF;
                 border: 1px solid #CBD5E1;
-                border-radius: 3px;
-                padding: 2px;
+                border-radius: 4px;
+                padding: 3px;
+                outline: 0;
             }
             QTreeWidget::item {
-                height: 20px;
-                font-size: 11px;
-                color: #334155;
+                height: 24px;
+                font-size: 13px;
+                color: #1E293B;
             }
             QTreeWidget::item:hover {
                 background-color: #F1F5F9;
-                border-radius: 2px;
+                border-radius: 3px;
             }
             QTreeWidget::item:selected {
                 background-color: #EFF6FF;
                 color: #2563EB;
                 font-weight: bold;
-                border-radius: 2px;
+                border-radius: 3px;
             }
         """
 
@@ -21591,20 +21874,31 @@ class QueryDetailTabWidget(QWidget):
         # 폼 레이아웃 (제목, 설명, 카테고리 콤보박스)
         form_frame = QFrame()
         form_frame.setObjectName("QueryFormFrame")
-        form_frame.setStyleSheet("QFrame#QueryFormFrame { background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; }")
+        form_frame.setStyleSheet("""
+            QFrame#QueryFormFrame {
+                background-color: #F8FAFC;
+                border: 1px solid #E2E8F0;
+                border-radius: 6px;
+            }
+            QLabel {
+                font-size: 13px;
+                font-weight: 600;
+                color: #1E293B;
+            }
+        """)
         form_layout = QFormLayout(form_frame)
-        form_layout.setContentsMargins(10, 10, 10, 10)
-        form_layout.setSpacing(8)
+        form_layout.setContentsMargins(12, 12, 12, 12)
+        form_layout.setSpacing(10)
 
         # 제목 에디터
         self.txt_title = QLineEdit()
         self.txt_title.setText(q_data['query_title'])
-        self.txt_title.setStyleSheet("QLineEdit { padding: 4px; border: 1px solid #CBD5E1; border-radius: 4px; }")
+        self.txt_title.setStyleSheet("QLineEdit { padding: 6px 8px; border: 1px solid #CBD5E1; border-radius: 4px; font-size: 13px; color: #1E293B; }")
 
         # 설명 에디터
         self.txt_desc = QLineEdit()
         self.txt_desc.setText(q_data['description'] or "")
-        self.txt_desc.setStyleSheet("QLineEdit { padding: 4px; border: 1px solid #CBD5E1; border-radius: 4px; }")
+        self.txt_desc.setStyleSheet("QLineEdit { padding: 6px 8px; border: 1px solid #CBD5E1; border-radius: 4px; font-size: 13px; color: #1E293B; }")
 
         # 카테고리 콤보박스
         self.combo_cat = QComboBox()
@@ -21613,7 +21907,7 @@ class QueryDetailTabWidget(QWidget):
             self.combo_cat.addItem(c['category_name'], c['id'])
             if c['id'] == q_data['category_id']:
                 self.combo_cat.setCurrentIndex(idx)
-        self.combo_cat.setStyleSheet("QComboBox { padding: 4px; border: 1px solid #CBD5E1; border-radius: 4px; }")
+        self.combo_cat.setStyleSheet("QComboBox { padding: 6px 8px; border: 1px solid #CBD5E1; border-radius: 4px; font-size: 13px; color: #1E293B; }")
 
         form_layout.addRow("쿼리 제목:", self.txt_title)
         form_layout.addRow("쿼리 설명:", self.txt_desc)
@@ -21621,22 +21915,21 @@ class QueryDetailTabWidget(QWidget):
         layout.addWidget(form_frame)
 
         # SQL 본문 편집창
-        layout.addWidget(QLabel("💬 SQL 구문 (편집 가능):"))
         self.txt_sql = QTextEdit()
-        self.txt_sql.setFont(QFont("Consolas", 10))
+        self.txt_sql.setFont(QFont("Consolas", 11))
         self.txt_sql.setAcceptRichText(False)
         self.txt_sql.setPlainText(q_data['query_content'])
-        self.txt_sql.setStyleSheet("QTextEdit { background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 4px; padding: 8px; }")
+        self.txt_sql.setStyleSheet("QTextEdit { background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 4px; padding: 10px; font-size: 13.5px; }")
         self.sql_highlighter = SqlHighlighter(self.txt_sql.document())
         layout.addWidget(self.txt_sql)
 
-        # 하단 컨트롤 버튼 (업무정보 탭과 동일하게 삭제/저장을 우측에 배치 및 단축키 지원)
+        # 하단 컨트롤 버튼 (순서: 즐겨찾기 -> 클립보드 복사 -> SQL 정렬 -> 되돌리기 ... 삭제 -> 저장)
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(6)
 
+        btn_fav = QPushButton("즐겨찾기 등록")
         btn_copy = QPushButton("클립보드 복사")
         btn_format = QPushButton("SQL 정렬")
-        btn_fav = QPushButton("즐겨찾기 토글")
         self.btn_revert = QPushButton("되돌리기")
         self.btn_revert.setEnabled(False)
         
@@ -21647,22 +21940,25 @@ class QueryDetailTabWidget(QWidget):
         self.save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
         self.save_shortcut.activated.connect(self.on_save_clicked)
 
-        for btn in [btn_copy, btn_format, btn_fav, self.btn_revert, btn_del, btn_save]:
+        for btn in [btn_fav, btn_copy, btn_format, self.btn_revert, btn_del, btn_save]:
             btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            
-        btn_copy.setStyleSheet("background-color: #059669; color: white; font-weight: bold; padding: 8px 16px; border-radius: 4px; font-size: 12px;")
-        btn_format.setStyleSheet("background-color: #E0F2FE; color: #0369A1; border: 1px solid #BAE6FD; font-weight: bold; padding: 8px 16px; border-radius: 4px; font-size: 12px;")
-        self.btn_revert.setStyleSheet("""
+
+        sec_btn_style = """
             QPushButton {
-                background-color: #F1F5F9;
-                color: #475569;
+                background-color: #FFFFFF;
+                color: #334155;
                 border: 1px solid #CBD5E1;
-                font-weight: bold;
-                padding: 8px 16px;
                 border-radius: 4px;
+                padding: 8px 16px;
                 font-size: 12px;
+                font-weight: normal;
             }
             QPushButton:hover {
+                background-color: #F8FAFC;
+                border-color: #94A3B8;
+                color: #0F172A;
+            }
+            QPushButton:pressed {
                 background-color: #E2E8F0;
             }
             QPushButton:disabled {
@@ -21670,7 +21966,11 @@ class QueryDetailTabWidget(QWidget):
                 color: #94A3B8;
                 border: 1px solid #E2E8F0;
             }
-        """)
+        """
+            
+        btn_copy.setStyleSheet(sec_btn_style)
+        btn_format.setStyleSheet(sec_btn_style)
+        self.btn_revert.setStyleSheet(sec_btn_style)
         
         btn_del.setStyleSheet("""
             QPushButton {
@@ -21680,7 +21980,7 @@ class QueryDetailTabWidget(QWidget):
                 border-radius: 4px;
                 padding: 8px 16px;
                 font-size: 12px;
-                font-weight: bold;
+                font-weight: normal;
             }
             QPushButton:hover {
                 background-color: #DC2626;
@@ -21695,7 +21995,7 @@ class QueryDetailTabWidget(QWidget):
                 border-radius: 4px;
                 padding: 8px 16px;
                 font-size: 12px;
-                font-weight: bold;
+                font-weight: normal;
             }
             QPushButton:hover {
                 background-color: #1D4ED8;
@@ -21706,16 +22006,16 @@ class QueryDetailTabWidget(QWidget):
         is_fav = q_data.get('is_favorite') == 1
         self.update_fav_btn_style(btn_fav, is_fav)
 
+        btn_fav.clicked.connect(lambda: self.on_fav_clicked(btn_fav))
         btn_copy.clicked.connect(self.on_copy_clicked)
         btn_format.clicked.connect(self.on_format_clicked)
-        btn_fav.clicked.connect(lambda: self.on_fav_clicked(btn_fav))
         self.btn_revert.clicked.connect(self.on_revert_clicked)
         btn_del.clicked.connect(self.on_delete_clicked)
         btn_save.clicked.connect(self.on_save_clicked)
 
+        btn_layout.addWidget(btn_fav)
         btn_layout.addWidget(btn_copy)
         btn_layout.addWidget(btn_format)
-        btn_layout.addWidget(btn_fav)
         btn_layout.addWidget(self.btn_revert)
         btn_layout.addStretch()
         btn_layout.addWidget(btn_del)
@@ -21725,10 +22025,42 @@ class QueryDetailTabWidget(QWidget):
     def update_fav_btn_style(self, btn, is_fav):
         if is_fav:
             btn.setText("즐겨찾기 해제")
-            btn.setStyleSheet("background-color: #FEF3C7; color: #D97706; border: 1px solid #FDE68A; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #FEF3C7;
+                    color: #B45309;
+                    border: 1px solid #FCD34D;
+                    border-radius: 4px;
+                    padding: 8px 16px;
+                    font-size: 12px;
+                    font-weight: normal;
+                }
+                QPushButton:hover {
+                    background-color: #FDE68A;
+                    border-color: #F59E0B;
+                }
+            """)
         else:
             btn.setText("즐겨찾기 등록")
-            btn.setStyleSheet("background-color: #FFFFFF; color: #475569; border: 1px solid #CBD5E1; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #FFFFFF;
+                    color: #334155;
+                    border: 1px solid #CBD5E1;
+                    border-radius: 4px;
+                    padding: 8px 16px;
+                    font-size: 12px;
+                    font-weight: normal;
+                }
+                QPushButton:hover {
+                    background-color: #F8FAFC;
+                    border-color: #94A3B8;
+                    color: #0F172A;
+                }
+                QPushButton:pressed {
+                    background-color: #E2E8F0;
+                }
+            """)
 
     def on_format_clicked(self):
         sql = self.txt_sql.toPlainText()
@@ -22348,7 +22680,7 @@ class GrammarDetailTabWidget(QWidget):
         info_layout.setContentsMargins(12, 12, 12, 12)
         info_layout.setSpacing(6)
 
-        lbl_title = QLabel(f"💡 {self.grammar_data['title']}")
+        lbl_title = QLabel(f"{self.grammar_data['title']}")
         lbl_title.setStyleSheet("font-size: 16px; font-weight: bold; color: #1E3A8A;")
         info_layout.addWidget(lbl_title)
 
@@ -22359,7 +22691,7 @@ class GrammarDetailTabWidget(QWidget):
         layout.addWidget(info_frame)
 
         # 2. Syntax 영역
-        layout.addWidget(QLabel("📝 기본 구문 (Syntax):"))
+        layout.addWidget(QLabel("기본 구문 (Syntax):"))
         self.txt_syntax = QTextEdit()
         self.txt_syntax.setFont(QFont("Consolas", 10))
         self.txt_syntax.setReadOnly(True)
@@ -22374,7 +22706,7 @@ class GrammarDetailTabWidget(QWidget):
         layout.addWidget(self.txt_syntax)
 
         # 3. Example SQL 영역
-        layout.addWidget(QLabel("💬 예제 SQL 코드:"))
+        layout.addWidget(QLabel("예제 SQL 코드:"))
         self.txt_example = QTextEdit()
         self.txt_example.setFont(QFont("Consolas", 10))
         self.txt_example.setReadOnly(True)
@@ -22391,7 +22723,7 @@ class GrammarDetailTabWidget(QWidget):
             tip_layout = QHBoxLayout(tip_frame)
             tip_layout.setContentsMargins(10, 8, 10, 8)
             
-            lbl_tip_icon = QLabel("💡 팁 / 차이점:")
+            lbl_tip_icon = QLabel("팁 / 차이점:")
             lbl_tip_icon.setStyleSheet("font-weight: bold; color: #D97706; font-size: 11px;")
             tip_layout.addWidget(lbl_tip_icon)
             
@@ -22404,9 +22736,9 @@ class GrammarDetailTabWidget(QWidget):
 
         # 하단 컨트롤 버튼
         btn_layout = QHBoxLayout()
-        btn_copy = QPushButton("📋 예제 코드 복사")
+        btn_copy = QPushButton("예제 코드 복사")
         btn_copy.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        btn_copy.setStyleSheet("background-color: #2563EB; color: white; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
+        btn_copy.setStyleSheet("background-color: #2563EB; color: white; font-weight: normal; padding: 6px 16px; border-radius: 4px;")
         btn_copy.clicked.connect(self.on_copy_clicked)
         btn_layout.addWidget(btn_copy)
         btn_layout.addStretch()
@@ -22417,7 +22749,7 @@ class GrammarDetailTabWidget(QWidget):
         if not example_code:
             return
         QApplication.clipboard().setText(example_code)
-        show_copy_message("📋 예제 코드가 클립보드에 복사되었습니다!", self)
+        show_copy_message("예제 코드가 클립보드에 복사되었습니다!", self)
 
 
 class RecentQueryDetailTabWidget(QWidget):
@@ -22452,7 +22784,6 @@ class RecentQueryDetailTabWidget(QWidget):
         layout.addWidget(info_frame)
 
         # SQL 편집 및 뷰어
-        layout.addWidget(QLabel("💬 SQL 구문 (수정 및 복사 가능):"))
         self.txt_sql = QTextEdit()
         self.txt_sql.setFont(QFont("Consolas", 10))
         self.txt_sql.setAcceptRichText(False)
@@ -22463,17 +22794,50 @@ class RecentQueryDetailTabWidget(QWidget):
 
         # 하단 버튼
         btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(6)
         btn_copy = QPushButton("클립보드에 재복사")
         btn_format = QPushButton("SQL 정렬")
         btn_del = QPushButton("이력 삭제")
 
         for btn in [btn_copy, btn_format, btn_del]:
             btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            btn.setStyleSheet("font-weight: bold; padding: 6px 16px; border-radius: 4px;")
 
-        btn_copy.setStyleSheet("background-color: #2563EB; color: white; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
-        btn_format.setStyleSheet("background-color: #E0F2FE; color: #0369A1; border: 1px solid #BAE6FD; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
-        btn_del.setStyleSheet("background-color: #FFFFFF; color: #DC2626; border: 1px solid #FCA5A5; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
+        sec_btn_style = """
+            QPushButton {
+                background-color: #FFFFFF;
+                color: #334155;
+                border: 1px solid #CBD5E1;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-size: 12px;
+                font-weight: normal;
+            }
+            QPushButton:hover {
+                background-color: #F8FAFC;
+                border-color: #94A3B8;
+                color: #0F172A;
+            }
+            QPushButton:pressed {
+                background-color: #E2E8F0;
+            }
+        """
+
+        btn_copy.setStyleSheet(sec_btn_style)
+        btn_format.setStyleSheet(sec_btn_style)
+        btn_del.setStyleSheet("""
+            QPushButton {
+                background-color: #EF4444;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-size: 12px;
+                font-weight: normal;
+            }
+            QPushButton:hover {
+                background-color: #DC2626;
+            }
+        """)
 
         btn_copy.clicked.connect(self.on_copy_clicked)
         btn_format.clicked.connect(self.on_format_clicked)
@@ -22523,6 +22887,7 @@ class RecentQueryDetailTabWidget(QWidget):
 
 
 def main():
+    enable_windows_dpi_awareness()
     # Windows 작업표시줄 아이콘 분리 표시를 위한 AppUserModelID 설정
     if sys.platform == 'win32':
         try:
@@ -22537,18 +22902,17 @@ def main():
     )
     
     app = QApplication(sys.argv)
+    app.setStyle(ModernCheckboxStyle(app.style()))
     init_application_fonts()
     app.setWindowIcon(get_app_icon())
     
-    font = QFont("Pretendard", 9)
-    font.setStyleHint(QFont.StyleHint.SansSerif)
-    font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias | QFont.StyleStrategy.PreferQuality)
-    font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
+    font = get_app_font(10.0)
     app.setFont(font)
     
     app.setStyleSheet("""
         QMainWindow, QDialog, QWidget {
-            font-family: 'Pretendard', 'Malgun Gothic', -apple-system, sans-serif;
+            font-family: "Pretendard";
+            font-size: 13px;
         }
         QMainWindow {
             background-color: #F1F5F9;
@@ -22559,8 +22923,8 @@ def main():
             border: 1px solid #10B981;
             padding: 6px;
             border-radius: 4px;
-            font-size: 11px;
-            font-family: 'Pretendard', 'Malgun Gothic', sans-serif;
+            font-size: 12px;
+            font-family: "Pretendard";
         }
     """)
     
