@@ -63,3 +63,8 @@ test_base64.html
 제안서_첨부이미지/
 *.hwpx
 *.docx
+
+# 임시 압축 및 덤프 파일
+/*.zip
+!release/*.zip
+metadata_dump.sql

@@ -15,7 +15,19 @@
 #      python-hwpx 의 템플릿 데이터가 빠지면 HWPX 내보내기가 동작하지 않는다.
 #
 import os
+import base64
 from PyInstaller.utils.hooks import collect_data_files
+
+# 업무망 등 .ico 반입이 차단된 환경 대응: app_icon.ico가 없으면 코드 내장 Base64에서 자동 복원
+ico_file = 'app_icon.ico'
+if not os.path.exists(ico_file) or os.path.getsize(ico_file) == 0:
+    try:
+        from oracle_guide_app import APP_ICON_BASE64
+        with open(ico_file, 'wb') as f:
+            f.write(base64.b64decode(APP_ICON_BASE64.strip()))
+        print(f"[OK] Automatically restored {ico_file} from embedded code!")
+    except Exception as e:
+        print(f"[Warning] Failed to restore {ico_file}: {e}")
 
 datas = []
 datas += collect_data_files('hwpx')

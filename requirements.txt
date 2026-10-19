@@ -1,0 +1,8 @@
+# 전산바이블 / DB돋보기 (v1.8) 실행 및 빌드에 필요한 Python 패키지
+PyQt6>=6.8.0
+pandas>=2.2.0
+openpyxl>=3.1.2
+beautifulsoup4>=4.12.0
+pywin32>=308
+python-hwpx>=2.10.0
+pyinstaller>=6.10.0
